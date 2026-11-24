@@ -1,4 +1,4 @@
-.cap-strip { margin-top: 14px; padding: 12px 0 0; border-top: 1px solid var(--line,#2b3930); }
+.cap-strip { margin: 0; padding: 12px 14px 14px; border-top: 1px solid var(--line,#2b3930); }
 .cap-heading,.cap-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .cap-heading { justify-content:space-between; margin-bottom: 8px; }
 .cap-heading h3 { margin: 0; color: var(--ink,#e5ede4); font:600 .85rem var(--face,sans-serif); }

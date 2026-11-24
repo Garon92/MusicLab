@@ -120,7 +120,7 @@
         session.chunks.length = 0;
         load(blob, 'Mikrofon-' + stamp() + '.' + extension, token);
       }, { once: true });
-      stream.getAudioTracks()[0]?.addEventListener('ended', finish, { once: true });
+      stream.getAudioTracks()[0]?.addEventListener('ended', () => { if (current === session) finish(); }, { once: true });
       recorder.start();
       started = performance.now();
       phase = 'recording';
