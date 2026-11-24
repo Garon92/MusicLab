@@ -1,0 +1,204 @@
+.pat {
+  --pat-ink: #d8e8db;
+  --pat-muted: #98ada1;
+  --pat-lime: #b2f664;
+  --pat-border: #2b3930;
+  --pat-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  container-type: inline-size;
+  color: var(--pat-ink);
+}
+
+.pat button {
+  box-sizing: border-box;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pat-tools,
+.pat-tracks,
+.pat-track,
+.pat-row,
+.pat-icon {
+  display: flex;
+  align-items: center;
+}
+
+.pat-tools { margin-bottom: 0.95rem; }
+
+.pat-tracks {
+  display: inline-flex;
+  gap: 0.22rem;
+  padding: 0.22rem;
+  border: 1px solid var(--pat-border);
+  border-radius: 0.45rem;
+  background: #0b110e;
+}
+
+.pat .pat-track {
+  gap: 0.45rem;
+  justify-content: center;
+  min-height: 1.9rem;
+  min-width: 4.5rem;
+  padding: 0.22rem 0.64rem;
+  color: var(--pat-muted);
+  font: 600 0.76rem/1 var(--pat-mono);
+  letter-spacing: 0.04em;
+  border: 1px solid transparent;
+  border-radius: 0.26rem;
+  background: transparent;
+}
+
+.pat .pat-track:hover { color: #e0efde; }
+
+.pat .pat-track[aria-pressed="true"] {
+  color: #c9f29e;
+  border-color: #546d44;
+  background: #243423;
+}
+
+.pat-icon { pointer-events: none; }
+.pat-icon svg { display: block; width: 1rem; height: 1rem; }
+
+.pat-scroll {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--pat-border) #111b15;
+}
+
+.pat-grid {
+  --pat-label: 5.3rem;
+  --pat-gap: 0.28rem;
+  --pat-section-gap: 0.28rem;
+  --pat-height: clamp(2.1rem, 5cqw, 3rem);
+  display: grid;
+  grid-template-columns: var(--pat-label) repeat(16, minmax(0, 1fr));
+  align-items: stretch;
+  min-width: 34rem;
+  gap: 0.32rem var(--pat-gap);
+  padding: 0.14rem 0.12rem 0.17rem 0;
+}
+
+.pat-grid.pat-tonal { --pat-height: clamp(1.4rem, 3.4cqw, 1.95rem); }
+
+.pat-count {
+  align-self: end;
+  min-width: 0;
+  padding-bottom: 0.21rem;
+  color: #81958a;
+  text-align: center;
+  font: 500 0.71rem/1.4 var(--pat-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.pat-grid [data-step="4"],
+.pat-grid [data-step="8"],
+.pat-grid [data-step="12"] {
+  margin-inline-start: var(--pat-section-gap);
+}
+
+.pat-count[data-step="0"],
+.pat-count[data-step="4"],
+.pat-count[data-step="8"],
+.pat-count[data-step="12"] { color: #c0d1c3; }
+
+.pat-count.pat-now { color: #c5ff86; font-weight: 750; }
+
+.pat .pat-row {
+  gap: 0.43rem;
+  min-width: 0;
+  padding: 0.1rem 0;
+  color: var(--pat-ink);
+  font: 600 0.83rem/1.2 var(--pat-mono);
+  white-space: nowrap;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+
+.pat-row .pat-icon {
+  opacity: 0;
+  margin-left: auto;
+  color: var(--pat-muted);
+}
+
+.pat-row .pat-icon svg { width: 0.63rem; height: 0.63rem; }
+.pat-row:is(:hover, :focus-visible) .pat-icon { opacity: 1; }
+
+.pat-stripe {
+  flex: 0 0 auto;
+  width: 0.23rem;
+  height: 1rem;
+  border-radius: 0.075rem;
+}
+
+.pat-tonal .pat-stripe { height: 0.56rem; }
+
+.pat .pat-pad {
+  position: relative;
+  min-width: 0;
+  width: auto;
+  min-height: 0;
+  height: var(--pat-height);
+  padding: 0;
+  touch-action: manipulation;
+  user-select: none;
+  border: 1px solid #354139;
+  border-radius: 0.25rem;
+  background: linear-gradient(180deg, #263229, #222b25);
+  box-shadow: inset 0 1px #ffffff07, 0 1px 1px #0003;
+}
+
+.pat-pad:is([data-step="4"], [data-step="5"], [data-step="6"], [data-step="7"],
+  [data-step="12"], [data-step="13"], [data-step="14"], [data-step="15"]) {
+  border-color: #2e3b32;
+  background: linear-gradient(180deg, #1f2a22, #1a241d);
+}
+
+.pat .pat-pad[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--pat-voice) 82%, #e5ffda);
+  background: linear-gradient(180deg, var(--pat-voice), color-mix(in srgb, var(--pat-voice) 78%, #2b693d));
+  box-shadow: inset 0 1px #efffdd42, 0 1px 2px #050a07bd;
+}
+
+.pat .pat-pad[aria-pressed="true"]::after {
+  content: "";
+  display: block;
+  position: absolute;
+  bottom: 0.28rem;
+  left: 24%;
+  right: 24%;
+  height: 2px;
+  background: #1238216b;
+  border-radius: 2px;
+}
+
+.pat .pat-pad.pat-now {
+  border-color: #b6e994;
+  box-shadow: inset 0 -0.2rem #abdf87;
+}
+
+.pat .pat-pad.pat-now[aria-pressed="true"] {
+  background: #dbffb9;
+  box-shadow: 0 0 0.5rem #a2fd7038;
+}
+
+.pat .pat-pad:hover { border-color: #b5c7b7; }
+
+.pat button:focus-visible {
+  outline: 2px solid #e1ffc8;
+  outline-offset: 1px;
+  z-index: 1;
+}
+
+@container (max-width: 41rem) {
+  .pat-grid {
+    --pat-label: 3.75rem;
+    --pat-gap: 0.19rem;
+    --pat-section-gap: 0.13rem;
+    min-width: 31rem;
+  }
+
+  .pat .pat-row { gap: 0.28rem; font-size: 0.75rem; }
+  .pat-row .pat-icon { display: none; }
+}

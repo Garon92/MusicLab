@@ -1,19 +1,33 @@
 # MusicLab
 
-Rodinná hudební laboratoř do prohlížeče. Poskládejte rytmus ze čtyř bicích nástrojů, nakreslete melodii z pěti tónů nebo si na klaviatuře poslechněte, jak stejný tón zní s různými tvary zvukové vlny.
+MusicLab je hudební pracovní stanice v češtině. V prohlížeči poskládáš pattern, seřadíš takty do aranže a k přehrávané skladbě můžeš živě přidávat akordy nebo zvukové vzorky. [Otevřít MusicLab](https://garon92.github.io/MusicLab/)
 
-## Spuštění doma
+## Od patternu ke skladbě
 
-Stáhněte projekt do počítače a případný ZIP rozbalte. Ve složce `docs` dvojklikem otevřete [index.html](./docs/index.html) v prohlížeči. Celá laboratoř pak funguje i bez internetu.
+1. V **Centrále** vyber u rytmického radaru banku A–D a v sekvenceru stopu **Drums**, **Bass** nebo **Lead**. Každá banka obsahuje jeden takt se 16 kroky. Kliknutím do mřížky přidáš úder či tón. Tlačítkem **Spustit** přehraješ všechny tři stopy společně.
+2. V **Aranžéru** přiřaď každé sekci banku a počet opakování. Sekce můžeš kopírovat, přesouvat a odebírat. Kliknutím na sekci v časové ose spustíš skladbu od daného místa.
+3. V transportu uprav tempo a swing. **Pauza** podrží pozici pro další přehrávání, **Stop** se vrátí na začátek.
 
-Prohlížeč si průběžně ukládá váš poslední rytmus, melodii a nastavení zvuku. Až se k nim budete chtít vrátit, otevřete laboratoř na stejném počítači, ve stejném profilu prohlížeče a ze stejného místa. Místní soubor a stránka na GitHub Pages mají každý vlastní uložení.
+## Nástroje
 
-## První pokus ve dvou
+| Pracovní plocha | Co ovládá |
+| --- | --- |
+| Algoritmy | Generátor pulzů rozdělí údery mezi 16 kroků eukleidovským algoritmem nebo pomocí opakovatelné 16bitové posloupnosti. Rytmus můžeš otočit, invertovat a zapsat do zvolené bicí stopy. Dvě modulační jednotky (LFO) umí v rytmu měnit filtr, hlasitost, panoramu nebo úroveň efektu delay. |
+| Harmonie | Výběr tóniny a stupnice, akordové stupně, obraty a septakordy. Vlastní progresi o 4–8 akordech lze přehrát s transportem jako akordy nebo arpeggio. |
+| Syntezátor | Tvar vlny, filtr, rezonanci, náběh a dozvuk. Klaviatura a bicí pady reagují na myš i klávesnici. |
+| Sampler | Import zvukového souboru, přímý odběr z mikrofonu nebo použití posledního vlastního záznamu WAV. Ořez, změna rychlosti a zpětné přehrávání. Osm řezů lze hrát z padů nebo přiřadit k šestnácti krokům. |
+| Mixáž a FX | Hlasitost a polohu stop ve stereu, sólo, ztlumení, delay a třípásmový ekvalizér hlavního výstupu. |
+| Analýza | Osciloskop, frekvenční spektrum, spektrogram a ladičku. Jako zdroj lze zvolit hlavní výstup nebo mikrofon. |
+| MIDI a vstupy | Připojení MIDI vstupu a výstupu, export aranže do souboru MIDI a načtení prvních čtyř taktů souboru MIDI do bank A–D. |
 
-Zvolte **Začít s rytmem**, vyberte vzor **První rytmus** a spusťte přehrávání. Jeden počítá „raz, dva, tři, čtyři“ a druhý tleská s virblem na druhou a čtvrtou dobu. Pak přidejte jeden úder do prázdného políčka v řádku virblu. Pozná druhý hráč se zavřenýma očima, kam úder přibyl? Vyměňte si role.
+Pro MIDI zařízení potřebuje prohlížeč podporu Web MIDI a povolení přístupu. Pro mikrofon otevři web přes HTTPS a povol jeho použití.
 
-## Vystavení na GitHub Pages
+## Záznam a uložení
 
-Pro soukromý repozitář na osobním účtu je potřeba tarif podporující GitHub Pages v soukromých repozitářích, například GitHub Pro. Repozitář může zůstat soukromý a publikovaný web bude veřejně dostupný. [Podmínky GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/creating-a-github-pages-site)
+- **Stereo WAV.** Stiskni **REC** před úsekem, který chceš nahrát. Záznam snímá hlavní výstup včetně živé hry. Dalším stiskem **REC** nahrávání ukončíš a stáhneš WAV. **Stop** ukončí současně přehrávání i rozběhnutý záznam.
+- **Rozpracovaný projekt.** Stanice průběžně ukládá patterny, aranž, nastavení nástrojů a mix v aktuálním profilu prohlížeče. Vlastní zvukový vzorek ukládá do místní databáze prohlížeče.
+- **Přenosná kopie.** Přes **Projekt → Export projektu (.json)** stáhneš projekt včetně vloženého vlastního samplu. Přes **Projekt → Import projektu (.json)** jej znovu otevřeš i na jiném počítači.
 
-V nastavení repozitáře otevřete **Settings → Pages**. V části **Build and deployment** zvolte **Deploy from a branch**, vyberte větev `main` a složku `/docs` a klikněte na **Save**. Po nasazení otevřete web přes **Visit site**. Další změny ve složce [docs](./docs/) se po odeslání do větve `main` zveřejní automaticky. [Nastavení zdroje v GitHub Docs](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
+## Spuštění bez internetu
+
+Stáhni a rozbal celý repozitář. Ve složce `docs` otevři dvojklikem [index.html](./docs/index.html). Syntezátor, bicí, výchozí vzorek i písma jsou součástí projektu. Online a místní verze mají oddělená úložiště. Rozpracovanou skladbu mezi nimi přeneseš exportem a importem projektu.

@@ -1,0 +1,30 @@
+.mix-row .fader-col output {
+  color: #a0b4a3;
+  font: .65rem/1.05 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.mix-row .ch-meter span { background: var(--chan); }
+.mix-list .mix-labels span:nth-last-child(-n+2) { text-align: center; }
+.mx-master-row { display: grid; grid-template-columns: minmax(0,1fr) 27px; gap: 9px; align-items: center; }
+.mx-master-row output { min-width: 5em; text-align: right; }
+.mix-master { gap: 7px; }
+.mix-master .ch-meter { height: 4px; }
+.ch-meter span.mx-hot { background: #f2ac74; }
+.mx-toggle {
+  border: 1px solid var(--line); border-radius: 3px;
+  background: #1b2820; color: #b9c9bb; padding: 4px 7px;
+  font: 500 .69rem var(--mono); min-height: 24px;
+}
+.mx-toggle[aria-pressed="true"] { border-color: #927648; color: #f7ce8a; background: #40351d; }
+.mx-fx-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.mx-fx-head strong { font: 600 .94rem var(--face); color: var(--ink); }
+.mx-fx-head label { font: .69rem var(--mono); color: var(--muted); }
+.mx-fx-head select { padding: 3px 7px; min-height: 26px; border-radius: 3px; }
+.mx-eq-head { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.mx-bands, .mx-delay { grid-template-columns: repeat(3,minmax(0,1fr)); border: 0; padding-top: 0; gap: 10px; }
+.mx-bands label span, .mx-delay label span { flex-wrap: wrap; gap: 2px 3px; }
+.mx-bands small { color: var(--muted); font: .67rem var(--mono); }
+.mx-bands input:disabled, .mx-delay input:disabled { opacity: .45; }
+@media (max-width: 440px) {
+  .mx-delay label span, .mx-bands label span { display: grid; }
+}
