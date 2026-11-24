@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f7f6f0">
+  <meta name="description" content="Rodinná hudební laboratoř. Zahraj si na bicí, nakresli vlastní melodii a vyzkoušej, jak zní různé tvary vln.">
+  <title>MusicLab · Hudební laboratoř</title>
+  <link rel="icon" href="./assets/mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./assets/fonts/fonts.css">
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./sequence.css">
+  <link rel="stylesheet" href="./sound.css">
+  <script defer src="./audio.js"></script>
+  <script defer src="./sequence.js"></script>
+  <script defer src="./sound.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.4"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1.4"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1.4"/><rect x="14" y="14" width="6.5" height="6.5" rx="1.4"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M10 3c0 5-2.5 7.5-7.5 8 5 .6 7.5 3 7.5 8 .6-5 3.1-7.4 7.5-8C13 10.5 10.6 8 10 3Z"/><path d="M19 3v4m-2-2h4m-2 10v5m-2.5-2.5h5"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16.5 8a6 6 0 0 1 0 8m2.5-10.5a9 9 0 0 1 0 13"/></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM17 10l5 5m0-5-5 5"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.8a1 1 0 0 1 1.5-.85L21 11.1a1.04 1.04 0 0 1 0 1.8L8.5 20.05A1 1 0 0 1 7 19.2z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-headphones" viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 1 1 16 0v2"/><rect x="3.5" y="12" width="4.5" height="8" rx="2"/><rect x="16" y="12" width="4.5" height="8" rx="2"/></symbol>
+    <symbol id="i-wave" viewBox="0 0 24 24"><path d="M2 12h3l2-6 3 12 3-15 3 18 2-9h4"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M9 17V6l11-3v11M9 9l11-3"/><ellipse cx="6.2" cy="18" rx="2.8" ry="2.2"/><ellipse cx="17.2" cy="15" rx="2.8" ry="2.2"/></symbol>
+  </svg>
+  <a class="skip" href="#main">Přejít na obsah</a>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#experimenty" aria-label="MusicLab – úvod"><img src="./assets/mark.svg" alt="" width="36" height="36">MusicLab</a>
+      <nav aria-label="Hlavní nabídka">
+        <a class="nav-item" href="#experimenty" data-nav="home"><svg class="icon"><use href="#i-grid"/></svg><span>Experimenty</span></a>
+        <a class="nav-item" href="#vyzvy" data-nav="challenges"><svg class="icon"><use href="#i-spark"/></svg><span>Výzvy</span></a>
+      </nav>
+      <button class="sound-switch" id="mute" aria-pressed="false"><svg class="icon"><use href="#i-volume"/></svg><span>Zvuk zapnutý</span></button>
+    </div>
+  </header>
+  <main id="main" tabindex="-1"></main>
+  <footer class="footer"><span><img src="./assets/mark.svg" width="22" height="22" alt="">MusicLab</span><p>Domácí hudební laboratoř</p></footer>
+  <div role="status" aria-live="polite" id="notice"></div>
+  <template id="home">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-grid" aria-hidden="true"></div>
+      <div class="hero-copy">
+        <div class="hero-kicker"><svg class="icon"><use href="#i-wave"/></svg> Rodinná hudební laboratoř</div>
+        <h1 id="hero-title">Hraj si<br><em>se zvukem.</em></h1>
+        <p>Poskládej rytmus, nakresli melodii a objev, jak vzniká zvuk. Stačí ti myš a tvoje uši.</p>
+        <div class="hero-actions">
+          <a class="primary" href="#rytmus"><svg class="icon"><use href="#i-play"/></svg> Začít s rytmem</a>
+          <button class="demo" data-demo><svg class="icon"><use href="#i-headphones"/></svg> <span>Pustit ukázku</span></button>
+        </div>
+      </div>
+      <div class="hero-art"><img src="./assets/sampler.webp" alt="" width="1050" height="636" fetchpriority="high"></div>
+    </section>
+    <section class="experiments" aria-labelledby="experiment-heading">
+      <h2 id="experiment-heading">Vyber si experiment<span class="heading-dot" aria-hidden="true">.</span></h2>
+      <div class="card-grid" id="cards"></div>
+    </section>
+    <aside class="family"><div class="family-icon"><svg class="icon"><use href="#i-spark"/></svg></div><div><h2>Hrajete ve dvou?</h2><p>Jeden vymyslí rytmus, druhý ho zkusí vytleskat. Objevte další společné výzvy.</p></div><a class="outline-button" href="#vyzvy">Vybrat výzvu</a></aside>
+  </template>
+  <noscript>Pro přehrávání a skládání hudby zapni v prohlížeči JavaScript.</noscript>
+</body>
+</html>

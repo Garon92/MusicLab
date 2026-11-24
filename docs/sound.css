@@ -1,0 +1,103 @@
+.snd-lab {
+  --snd-ink: #243830;
+  --snd-border: #cbd3cc;
+  color: var(--snd-ink);
+  display: grid;
+  gap: 13px;
+}
+.snd-lab button, .snd-lab select { color: inherit; font: inherit; }
+.snd-label { font-size: .94rem; font-weight: 700; }
+.snd-wave-controls, .snd-key-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+}
+.snd-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.snd-options button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--snd-border);
+  background: #fafbf7;
+  padding: 6px 10px;
+  min-height: 36px;
+  cursor: pointer;
+  font-size: .875rem;
+  font-weight: 600;
+}
+.snd-options button:hover, .snd-key-controls select:hover { border-color: #617b65; }
+.snd-options button[aria-pressed="true"] { border-color: #416a51; background: #d3efcc; color: #233e2a; }
+.snd-symbol { width: 1rem; height: 12px; display: inline-block; background: currentColor; }
+.snd-symbol-sine { clip-path: polygon(0 52%, 8% 31%, 17% 14%, 25% 10%, 34% 17%, 42% 32%, 58% 67%, 67% 80%, 75% 82%, 83% 74%, 91% 56%, 100% 35%, 100% 58%, 92% 78%, 84% 93%, 75% 100%, 66% 98%, 57% 85%, 41% 50%, 33% 34%, 25% 27%, 18% 30%, 9% 48%, 0 71%); }
+.snd-symbol-triangle { clip-path: polygon(0 77%, 28% 9%, 71% 75%, 100% 11%, 100% 35%, 72% 98%, 29% 32%, 0 100%); }
+.snd-symbol-square { clip-path: polygon(0 47%, 20% 47%, 20% 9%, 57% 9%, 57% 75%, 76% 75%, 76% 47%, 100% 47%, 100% 63%, 86% 63%, 86% 92%, 46% 92%, 46% 26%, 31% 26%, 31% 63%, 0 63%); }
+.snd-symbol-sawtooth { clip-path: polygon(0 76%, 49% 8%, 49% 67%, 100% 0, 100% 22%, 38% 97%, 38% 38%, 0 98%); }
+.snd-screen {
+  padding: 10px 15px 8px;
+  overflow: hidden;
+  background-color: #203630;
+  background-image: linear-gradient(to right, #a0d3af13 1px, transparent 1px), linear-gradient(to bottom, #a0d3af13 1px, transparent 1px);
+  background-size: 20px 20px;
+  border: 1px solid #233c32;
+  border-radius: 11px;
+  color: #e7faed;
+}
+.snd-readout {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font: 500 .875rem/1.5 ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+.snd-wave-label { color: #bfddc6; }
+.snd-screen canvas { display: block; width: 100%; height: clamp(60px, 7.5vw, 89px); }
+.snd-description, .snd-help { margin: 0; color: #485b50; font-size: .875rem; line-height: 1.45; }
+.snd-key-controls { margin-top: 6px; }
+.snd-key-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .875rem;
+  font-weight: 600;
+}
+.snd-key-controls select {
+  padding: 5px 29px 5px 9px;
+  min-height: 34px;
+  border-radius: 7px;
+  border: 1px solid var(--snd-border);
+  cursor: pointer;
+  appearance: none;
+  background-color: #fafbf7;
+  background-image: linear-gradient(45deg, transparent 50%, #38573f 50%), linear-gradient(135deg, #38573f 50%, transparent 50%);
+  background-position: calc(100% - 13px) 51%, calc(100% - 9px) 51%;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+}
+.snd-keys { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
+.snd-keys button {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 66px;
+  border: 1px solid var(--snd-border);
+  border-bottom: 4px solid #aebdb0;
+  border-radius: 7px;
+  background: #fdfefa;
+  cursor: pointer;
+}
+.snd-keys button:hover { background: #edf5e9; }
+.snd-keys button.snd-active, .snd-keys button:active { border-color: #548067; background: #c5e9c4; }
+.snd-keys b { font-size: 1.15rem; line-height: 1.1; }
+.snd-keys kbd { font: 500 .78rem/1 ui-monospace, "SFMono-Regular", Consolas, monospace; color: #526758; }
+.snd-lab :is(button, select):focus-visible { outline: 3px solid #387252; outline-offset: 2px; }
+@media (max-width: 540px) {
+  .snd-options { gap: 4px; }
+  .snd-options button { padding-inline: 7px; }
+  .snd-keys { gap: 3px; }
+  .snd-keys button { min-height: 57px; padding: 2px; }
+  .snd-screen canvas { height: 66px; }
+}
