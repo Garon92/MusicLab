@@ -1,8 +1,0 @@
-.cap-strip { margin: 0; padding: 12px 14px 14px; border-top: 1px solid var(--line,#2b3930); }
-.cap-heading,.cap-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.cap-heading { justify-content:space-between; margin-bottom: 8px; }
-.cap-heading h3 { margin: 0; color: var(--ink,#e5ede4); font:600 .85rem var(--face,sans-serif); }
-.cap-heading output { color: var(--muted,#99a79c); font:500 .69rem var(--mono,monospace); }
-.cap-controls .btn { min-height:30px; }
-.cap-controls .btn.cap-recording { border-color:#946252; color:#ffc8a7; background:#352820; }
-.cap-controls .btn:disabled { opacity:.5; cursor:default; }

@@ -1,0 +1,485 @@
+/* MUSICLAB · core — constants, parameter schema, project model, storage */
+(() => {
+  "use strict";
+  const App = (window.App = {});
+
+  /* ── math / music ─────────────────────────────────────────────── */
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const pc = (m) => ((m % 12) + 12) % 12;
+  const FLATS = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
+  // Semitones from each scale's root up to its parent major key (by SCALES index); that key decides sharps or flats,
+  // so C minor reads Eb Ab Bb and E major reads F# G# C# D#.
+  const PARENT = [null, 0, 3, 10, 8, 7, 5, 1, 3, 3, 0, 3, 3, null];
+  const names = () => {
+    const P = App.P, o = P ? PARENT[P.scale] : null;
+    return o != null && [5, 10, 3, 8, 1, 6].includes(pc(P.key + o)) ? FLATS : NOTES;
+  };
+  const noteName = (m) => names()[pc(m)] + (Math.floor(m / 12) - 1);
+  const mtof = (m) => 440 * 2 ** ((m - 69) / 12);
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const pad2 = (n) => String(n).padStart(2, "0");
+
+  const SCALES = [
+    ["CHROMATIC", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]],
+    ["MAJOR", [0, 2, 4, 5, 7, 9, 11]],
+    ["MINOR", [0, 2, 3, 5, 7, 8, 10]],
+    ["DORIAN", [0, 2, 3, 5, 7, 9, 10]],
+    ["PHRYGIAN", [0, 1, 3, 5, 7, 8, 10]],
+    ["LYDIAN", [0, 2, 4, 6, 7, 9, 11]],
+    ["MIXOLYDIAN", [0, 2, 4, 5, 7, 9, 10]],
+    ["LOCRIAN", [0, 1, 3, 5, 6, 8, 10]],
+    ["HARMONIC MIN", [0, 2, 3, 5, 7, 8, 11]],
+    ["MELODIC MIN", [0, 2, 3, 5, 7, 9, 11]],
+    ["PENTA MAJOR", [0, 2, 4, 7, 9]],
+    ["PENTA MINOR", [0, 3, 5, 7, 10]],
+    ["BLUES", [0, 3, 5, 6, 7, 10]],
+    ["WHOLE TONE", [0, 2, 4, 6, 8, 10]],
+  ];
+  const SIGS = [[2, 4], [3, 4], [4, 4], [5, 4], [6, 4], [7, 4], [5, 8], [6, 8], [7, 8], [9, 8], [12, 8]];
+  const PATS = "ABCDEFGH";
+
+  // One step is always a 16th note. Signature only decides how steps group into beats and bars.
+  const spb = (P) => SIGS[P.sig][0] * (SIGS[P.sig][1] === 8 ? 2 : 4);
+  const beatSteps = (P) => (SIGS[P.sig][1] === 4 ? 4 : SIGS[P.sig][0] % 3 === 0 ? 6 : 2);
+  const maxBars = (P) => clamp(Math.floor(64 / spb(P)), 1, 4);
+  const patSteps = (P, pi) => Math.min(P.pats[pi].bars, maxBars(P)) * spb(P);
+  const inScale = (P, m) => SCALES[P.scale][1].includes(pc(m - P.key));
+
+  // Stack diatonic thirds on a note; out-of-scale roots and the chromatic scale fall back to a dominant shape.
+  const chordNotes = (P, n, count) => {
+    if (count <= 1) return [n];
+    const sc = SCALES[P.scale][1], d = sc.indexOf(pc(n - P.key));
+    if (sc.length === 12 || d < 0) return [0, 4, 7, 10].slice(0, count).map((x) => n + x);
+    const base = n - pc(n - P.key);
+    return Array.from({ length: count }, (_, k) => base + sc[(d + 2 * k) % sc.length] + 12 * Math.floor((d + 2 * k) / sc.length));
+  };
+
+  const CHORDS = [
+    ["", [0, 4, 7]], ["m", [0, 3, 7]], ["dim", [0, 3, 6]], ["aug", [0, 4, 8]], ["sus2", [0, 2, 7]], ["sus4", [0, 5, 7]],
+    ["maj7", [0, 4, 7, 11]], ["7", [0, 4, 7, 10]], ["m7", [0, 3, 7, 10]], ["mMaj7", [0, 3, 7, 11]], ["dim7", [0, 3, 6, 9]],
+    ["m7b5", [0, 3, 6, 10]], ["6", [0, 4, 7, 9]], ["m6", [0, 3, 7, 9]], ["5", [0, 7]],
+  ];
+  const chordName = (notes) => {
+    const set = [...new Set(notes.map(pc))].sort((a, b) => a - b);
+    if (set.length < 2) return "";
+    const bass = pc(Math.min(...notes));
+    for (const root of [bass, ...set.filter((x) => x !== bass)]) {
+      const iv = set.map((x) => pc(x - root)).sort((a, b) => a - b).join();
+      const hit = CHORDS.find((c) => c[1].join() === iv);
+      if (hit) return names()[root] + hit[0] + (root !== bass ? "/" + names()[bass] : "");
+    }
+    return "";
+  };
+
+  /* ── value formatting ─────────────────────────────────────────── */
+  const fHz = (v) => (v >= 10000 ? (v / 1000).toFixed(1) + "k" : v >= 1000 ? (v / 1000).toFixed(2) + "k" : v >= 100 ? v.toFixed(0) : v.toFixed(1));
+  const fTime = (v) => (v >= 1 ? v.toFixed(2) + "s" : v >= 0.01 ? Math.round(v * 1000) + "ms" : (v * 1000).toFixed(1) + "ms");
+  const fDb = (g) => (g <= 0.00001 ? "-INF" : (20 * Math.log10(g)).toFixed(1));
+  const sign = (v, s) => (v > 0 ? "+" : "") + s;
+
+  const fmt = (d, v) => {
+    if (d.f) return d.f(v);
+    if (d.opts) return d.opts[v];
+    if (d.bool) return v ? "ON" : "OFF";
+    switch (d.u) {
+      case "hz": return fHz(v);
+      case "t": return fTime(v);
+      case "pc": return Math.round(v * 100) + "%";
+      case "pc1": return (v * 100).toFixed(1) + "%";
+      case "st": return sign(v, String(v));
+      case "ct": return sign(v, Math.round(v) + "c");
+      case "db": return sign(v, v.toFixed(1));
+      case "oct": return sign(v, v.toFixed(2));
+      case "gain": return fDb(v * v);
+      case "pan": return Math.abs(v) < 0.005 ? "C" : (v < 0 ? "L" : "R") + Math.round(Math.abs(v) * 100);
+      case "note": return noteName(v);
+      case "bpm": return v.toFixed(1);
+      default: return d.int ? String(v) : v.toFixed(d.dp ?? 2);
+    }
+  };
+  const UNIT = { hz: " Hz", gain: " dB", db: " dB", oct: " OCT", st: " ST", bpm: " BPM" };
+
+  const parse = (d, s) => {
+    s = String(s).trim().toUpperCase().replace(",", ".");
+    const x = parseFloat(s);
+    switch (d.u) {
+      case "hz": return /K/.test(s) ? x * 1000 : x;
+      case "t": return /MS/.test(s) ? x / 1000 : /S/.test(s) ? x : x / 1000;
+      case "pc": case "pc1": return x / 100;
+      case "gain": return /INF/.test(s) ? 0 : Math.sqrt(10 ** (x / 20));
+      case "pan": return s[0] === "C" ? 0 : s[0] === "L" ? -parseFloat(s.slice(1)) / 100 : s[0] === "R" ? parseFloat(s.slice(1)) / 100 : x / 100;
+      case "note": { // C#3, Eb3 or a MIDI number
+        const m = /^([A-G])(#|B)?(-?\d)$/.exec(s);
+        return m ? "C D EF G A B".indexOf(m[1]) + (m[2] === "#" ? 1 : m[2] ? -1 : 0) + 12 * (+m[3] + 1) : x;
+      }
+      default: return x;
+    }
+  };
+
+  const toN = (d, v) =>
+    d.c === "exp" ? Math.log(v / d.min) / Math.log(d.max / d.min) : d.c === "sq" ? Math.sqrt((v - d.min) / (d.max - d.min)) : (v - d.min) / (d.max - d.min);
+  const fromN = (d, x, fine) => {
+    x = clamp(x, 0, 1);
+    let v = d.c === "exp" ? d.min * (d.max / d.min) ** x : d.c === "sq" ? d.min + (d.max - d.min) * x * x : d.min + (d.max - d.min) * x;
+    if (d.int || d.opts || d.bool) return Math.round(v);
+    if (d.step) { const q = fine && d.fine ? d.fine : d.step; return clamp(Math.round(v / q) * q, d.min, d.max); }
+    return +v.toPrecision(4);
+  };
+
+  /* ── parameter schema ─────────────────────────────────────────── */
+  const N = (k, l, name, min, max, def, o) => ({ k, l, name, min, max, def, ...o });
+  const EN = (k, l, name, opts, def = 0) => ({ k, l, name, opts, min: 0, max: opts.length - 1, def });
+  const BO = (k, l, name, def = 0) => ({ k, l, name, bool: 1, min: 0, max: 1, def });
+  const dict = (a) => Object.fromEntries(a.map((d) => [d.k, d]));
+  const WAVES = ["SINE", "TRI", "SAW", "SQUARE"];
+
+  const env = (x, nm, a, d, s, r) => [
+    N(x + "a", "ATTACK", nm + " ATTACK", 0.001, 8, a, { c: "exp", u: "t" }),
+    N(x + "d", "DECAY", nm + " DECAY", 0.005, 8, d, { c: "exp", u: "t" }),
+    N(x + "s", "SUSTAIN", nm + " SUSTAIN", 0, 1, s, { u: "pc" }),
+    N(x + "r", "RELEASE", nm + " RELEASE", 0.005, 8, r, { c: "exp", u: "t" }),
+  ];
+  const filt = (cut) => [
+    EN("ftype", "TYPE", "FILTER TYPE", ["LP 12", "LP 24", "HP 12", "BP 12"]),
+    N("cut", "CUTOFF", "FILTER CUTOFF", 20, 20000, cut, { c: "exp", u: "hz" }),
+    N("res", "RES", "FILTER RESONANCE", 0, 24, 1, { dp: 1 }),
+    N("fenv", "ENV", "FILTER ENVELOPE DEPTH", -5, 5, 0, { u: "oct", bi: 1 }),
+    N("ftrk", "KEY", "FILTER KEY TRACKING", 0, 1, 0, { u: "pc" }),
+  ];
+  const lfo = [
+    EN("lw", "WAVE", "LFO WAVEFORM", WAVES),
+    N("lrate", "RATE", "LFO RATE", 0.02, 40, 4, { c: "exp", u: "hz" }),
+    EN("ldiv", "RATE", "LFO RATE (TEMPO SYNC)", ["8 BAR", "4 BAR", "2 BAR", "1 BAR", "1/2", "1/4", "1/8", "1/16"], 3),
+    BO("lsync", "SYNC", "LFO TEMPO SYNC"),
+    EN("ldest", "DEST", "LFO DESTINATION", ["OFF", "PITCH", "CUTOFF", "AMP", "PAN"]),
+    N("ldep", "DEPTH", "LFO DEPTH", 0, 1, 0.3, { u: "pc" }),
+  ];
+
+  const DEF = {
+    top: dict([
+      N("bpm", "BPM", "TEMPO", 40, 300, 120, { u: "bpm", sens: 520, step: 1, fine: 0.1 }),
+      N("swing", "SWING", "SWING · DELAYS EVERY 2ND 16TH · 66 = TRIPLET", 0, 100, 0, { int: 1, sens: 260 }),
+      EN("sig", "SIG", "TIME SIGNATURE", SIGS.map((s) => s.join("/")), 2),
+      { ...EN("key", "KEY", "KEY ROOT", ["C", "C# / Db", "D", "D# / Eb", "E", "F", "F# / Gb", "G", "G# / Ab", "A", "A# / Bb", "B"], 0), f: (v) => names()[v] },
+      EN("scale", "SCALE", "SCALE · MARKS EDITOR ROWS · FEEDS CHORD + FOLD", SCALES.map((s) => s[0]), 2),
+    ]),
+    trk: dict([
+      N("vol", "LEVEL", "TRACK LEVEL", 0, 1, 0.8, { u: "gain" }),
+      N("pan", "PAN", "TRACK PAN", -1, 1, 0, { u: "pan", bi: 1 }),
+      BO("mute", "M", "MUTE"),
+      BO("solo", "S", "SOLO"),
+      N("drive", "DRIVE", "TRACK SATURATION", 0, 1, 0, { u: "pc" }),
+      N("dly", "DELAY", "DELAY SEND", 0, 1, 0, { u: "pc" }),
+      N("rev", "REVERB", "REVERB SEND", 0, 1, 0, { u: "pc" }),
+    ]),
+    arp: dict([
+      EN("mode", "MODE", "ARPEGGIATOR · PLAYS HELD SEQUENCE NOTES ONE BY ONE", ["OFF", "UP", "DOWN", "UP-DN", "RANDOM"]),
+      EN("rate", "RATE", "ARPEGGIATOR RATE", ["1/8", "1/16", "1/32"], 1),
+      N("oct", "RANGE", "ARPEGGIATOR OCTAVE RANGE", 1, 3, 1, { int: 1 }),
+      N("gate", "GATE", "ARPEGGIATOR NOTE LENGTH", 0.05, 1, 0.5, { u: "pc" }),
+    ]),
+    syn: dict([
+      EN("w1", "WAVE", "OSC 1 WAVEFORM", WAVES, 2),
+      N("oct1", "OCTAVE", "OSC 1 OCTAVE", -3, 3, 0, { int: 1, u: "st", bi: 1 }),
+      N("lv1", "LEVEL", "OSC 1 LEVEL", 0, 1, 0.8, { u: "pc" }),
+      EN("w2", "WAVE", "OSC 2 WAVEFORM", WAVES, 2),
+      N("semi2", "SEMI", "OSC 2 TRANSPOSE", -24, 24, 0, { int: 1, u: "st", bi: 1 }),
+      N("fine2", "FINE", "OSC 2 DETUNE (CENTS)", -50, 50, 0, { int: 1, u: "ct", bi: 1 }),
+      N("lv2", "LEVEL", "OSC 2 LEVEL", 0, 1, 0, { u: "pc" }),
+      N("sub", "SUB", "SUB OSCILLATOR LEVEL · SINE ONE OCTAVE DOWN", 0, 1, 0, { u: "pc" }),
+      N("noise", "NOISE", "NOISE LEVEL", 0, 1, 0, { u: "pc" }),
+      N("fm", "FM", "FM DEPTH · OSC 2 MODULATES OSC 1", 0, 1, 0, { u: "pc" }),
+      ...filt(2400),
+      ...env("f", "FILTER ENV", 0.002, 0.25, 0.3, 0.2),
+      ...env("a", "AMP ENV", 0.003, 0.2, 0.7, 0.15),
+      ...lfo,
+      EN("mode", "MODE", "VOICE MODE", ["POLY", "MONO"]),
+      N("glide", "GLIDE", "GLIDE TIME (MONO)", 0, 2, 0, { c: "sq", u: "t" }),
+    ]),
+    smp: dict([
+      EN("mode", "MODE", "PITCH = KEYS TRANSPOSE SAMPLE · SLICE = KEYS PLAY SLICES", ["PITCH", "SLICE"]),
+      N("slices", "SLICES", "SLICE COUNT", 2, 16, 8, { int: 1 }),
+      N("root", "ROOT", "ROOT NOTE · KEY THAT PLAYS ORIGINAL PITCH", 24, 96, 60, { int: 1, u: "note" }),
+      N("tune", "TUNE", "SAMPLE TRANSPOSE", -24, 24, 0, { int: 1, u: "st", bi: 1 }),
+      N("st", "START", "SAMPLE START", 0, 1, 0, { u: "pc1" }),
+      N("en", "END", "SAMPLE END", 0, 1, 1, { u: "pc1" }),
+      BO("shot", "1-SHOT", "ONE-SHOT · IGNORE NOTE LENGTH, PLAY TO END", 1),
+      BO("loop", "LOOP", "LOOP REGION WHILE NOTE IS HELD"),
+      BO("rev", "REVERSE", "PLAY REVERSED"),
+      ...filt(20000),
+      ...env("f", "FILTER ENV", 0.002, 0.25, 0.3, 0.2),
+      ...env("a", "AMP ENV", 0.001, 0.1, 1, 0.05),
+      ...lfo,
+    ]),
+    pad: dict([
+      EN("src", "SOURCE", "PAD SOURCE", ["SYNTH", "SAMPLE"]),
+      EN("wave", "WAVE", "TONE WAVEFORM", WAVES),
+      N("tune", "TUNE", "TONE PITCH", 20, 4000, 100, { c: "exp", u: "hz" }),
+      N("sweep", "SWEEP", "PITCH SWEEP DOWN FROM", 0, 60, 0, { int: 1, u: "st" }),
+      N("swt", "TIME", "PITCH SWEEP TIME", 0.002, 0.5, 0.04, { c: "exp", u: "t" }),
+      N("dec", "DECAY", "DECAY TIME", 0.01, 4, 0.3, { c: "exp", u: "t" }),
+      N("tone", "LEVEL", "TONE LEVEL", 0, 1, 1, { u: "pc" }),
+      N("nz", "LEVEL", "NOISE LEVEL", 0, 1, 0, { u: "pc" }),
+      N("col", "COLOR", "NOISE COLOR · THE BAND STARTS HERE AND SPANS TO 5× THIS", 100, 14000, 3000, { c: "exp", u: "hz" }),
+      N("ndec", "DECAY", "NOISE DECAY", 0.005, 3, 0.1, { c: "exp", u: "t" }),
+      N("burst", "BURST", "NOISE RETRIGGERS · 3 = CLAP", 1, 4, 1, { int: 1 }),
+      N("st", "START", "SAMPLE START", 0, 1, 0, { u: "pc1" }),
+      N("en", "END", "SAMPLE END", 0, 1, 1, { u: "pc1" }),
+      N("pit", "PITCH", "SAMPLE PITCH", -24, 24, 0, { int: 1, u: "st", bi: 1 }),
+      BO("rev", "REVERSE", "PLAY REVERSED"),
+      N("lvl", "LEVEL", "PAD LEVEL", 0, 1, 0.8, { u: "gain" }),
+      N("pan", "PAN", "PAD PAN", -1, 1, 0, { u: "pan", bi: 1 }),
+      N("chk", "CHOKE", "CHOKE GROUP · PADS IN ONE GROUP CUT EACH OTHER · 0 = NONE", 0, 3, 0, { int: 1 }),
+    ]),
+    fx: dict([
+      EN("dtime", "TIME", "DELAY TIME (TEMPO SYNC)", ["1/32", "1/16T", "1/16", "1/8T", "1/16D", "1/8", "1/4T", "1/8D", "1/4", "1/2"], 7),
+      N("dfb", "FEEDBACK", "DELAY FEEDBACK", 0, 0.95, 0.4, { u: "pc" }),
+      N("dtone", "TONE", "DELAY FEEDBACK LOW-PASS", 200, 16000, 4500, { c: "exp", u: "hz" }),
+      N("dwid", "WIDTH", "DELAY PING-PONG WIDTH", 0, 1, 0.7, { u: "pc" }),
+      N("rsize", "DECAY", "REVERB DECAY TIME", 0.2, 10, 2.2, { c: "exp", u: "t" }),
+      N("rdamp", "DAMP", "REVERB HIGH DAMPING", 0, 1, 0.5, { u: "pc" }),
+      N("low", "LOW", "MASTER EQ · LOW SHELF 120 Hz", -12, 12, 0, { u: "db", bi: 1 }),
+      N("mid", "MID", "MASTER EQ · MID 1 kHz", -12, 12, 0, { u: "db", bi: 1 }),
+      N("high", "HIGH", "MASTER EQ · HIGH SHELF 6.5 kHz", -12, 12, 0, { u: "db", bi: 1 }),
+      N("comp", "COMP", "MASTER COMPRESSION AMOUNT", 0, 1, 0.2, { u: "pc" }),
+      N("vol", "VOLUME", "MASTER VOLUME", 0, 1, 0.9, { u: "gain" }),
+    ]),
+  };
+  const defs = (d) => Object.fromEntries(Object.values(d).map((x) => [x.k, x.def]));
+
+  /* ── project ──────────────────────────────────────────────────── */
+  // Init sounds only. No notes ship with a new project.
+  const KIT = [
+    { name: "KICK", wave: 0, tune: 50, sweep: 30, swt: 0.05, dec: 0.45, tone: 1, nz: 0.14, col: 1800, ndec: 0.014 },
+    { name: "SNARE", wave: 1, tune: 185, sweep: 9, swt: 0.03, dec: 0.14, tone: 0.55, nz: 0.8, col: 1700, ndec: 0.2 },
+    { name: "CLAP", tone: 0, nz: 0.9, col: 1000, ndec: 0.28, burst: 3 },
+    { name: "HAT", tone: 0, nz: 0.6, col: 8000, ndec: 0.05, chk: 1 },
+    { name: "OPEN", tone: 0, nz: 0.55, col: 7000, ndec: 0.4, chk: 1 },
+    { name: "TOM", wave: 0, tune: 105, sweep: 10, swt: 0.08, dec: 0.34, tone: 0.9, nz: 0.04, col: 1500, ndec: 0.03 },
+    { name: "RIM", wave: 1, tune: 420, sweep: 4, swt: 0.01, dec: 0.05, tone: 0.7, nz: 0.3, col: 3500, ndec: 0.02 },
+    { name: "BLIP", wave: 3, tune: 587, sweep: 0, dec: 0.25, tone: 0.9, nz: 0 },
+  ];
+  const INIT = [
+    ["DRUMS", "kit", 48, {}, {}],
+    ["BASS", "syn", 36, { sub: 0.25, cut: 600, res: 4, fenv: 2.2, fd: 0.22, fs: 0.35, fr: 0.1, aa: 0.002, ad: 0.25, ar: 0.06, mode: 1, ftrk: 0.5 }, {}],
+    ["LEAD", "syn", 60, { w2: 3, lv2: 0.5, fine2: 9, cut: 3400, res: 3, fenv: 1.2, fd: 0.3, fs: 0.4, aa: 0.004, ad: 0.3, as: 0.6, ar: 0.18, mode: 1, glide: 0.04, ftrk: 0.5 }, { dly: 0.3 }],
+    ["KEYS", "syn", 48, { w1: 1, w2: 0, semi2: 12, lv2: 0.25, cut: 3800, res: 0.5, fenv: 1.5, fd: 0.5, fs: 0.2, aa: 0.002, ad: 0.9, as: 0.25, ar: 0.35, ftrk: 0.5 }, { rev: 0.25 }],
+    ["PAD", "syn", 48, { lv2: 0.8, fine2: 12, cut: 1100, fenv: 1, fa: 0.6, fd: 1.5, fs: 0.6, fr: 1.2, aa: 0.45, ad: 1, as: 0.85, ar: 1.1, lrate: 0.25, ldest: 2, ldep: 0.2 }, { rev: 0.45 }],
+    ["SYNTH", "syn", 48, {}, {}],
+    ["SAMPLE A", "smp", 48, {}, {}],
+    ["SAMPLE B", "smp", 48, {}, {}],
+  ];
+
+  const newKit = () => ({ pads: KIT.map((p) => ({ ...defs(DEF.pad), ...p, id: null })) });
+  const newProject = () => ({
+    app: "MUSICLAB", v: 3, name: "UNTITLED",
+    bpm: 120, swing: 0, sig: 2, key: 0, scale: 2, click: 0, song: 0, fold: 0,
+    chain: [],
+    pats: Array.from({ length: 8 }, () => ({ bars: 1 })),
+    tracks: INIT.map(([name, kind, lo, syn, trk]) => ({
+      name, kind, ...defs(DEF.trk), ...trk, lo,
+      arp: defs(DEF.arp),
+      syn: { ...defs(DEF.syn), ...syn },
+      smp: { ...defs(DEF.smp), id: null },
+      kit: newKit(),
+      clips: Array.from({ length: 8 }, () => []),
+    })),
+    fx: defs(DEF.fx),
+    sel: { t: 0, p: 0, pad: 0 },
+  });
+
+  /* ── load / sanitize ──────────────────────────────────────────── */
+  const num = (v, a, b, d, int) => {
+    if (typeof v === "boolean") v = +v;
+    if (typeof v !== "number" || !isFinite(v)) return d;
+    v = clamp(v, a, b);
+    return int ? Math.round(v) : v;
+  };
+  const str = (v, d, n) => (typeof v === "string" && v.trim() ? v.trim().toUpperCase().slice(0, n) : d);
+  const sid = (v) => (typeof v === "string" && /^[a-z0-9]{6,24}$/.test(v) ? v : null);
+  const fit = (dc, src, base) => {
+    const o = {};
+    for (const k in dc) o[k] = num(src?.[k], dc[k].min, dc[k].max, base ? base[k] : dc[k].def, dc[k].int || dc[k].opts || dc[k].bool);
+    return o;
+  };
+  const notes = (a) =>
+    Array.isArray(a)
+      ? a.filter((n) => n && Number.isInteger(n.s) && Number.isInteger(n.n)).slice(0, 4000)
+          .map((n) => ({ s: clamp(n.s, 0, 63), n: clamp(n.n, 0, 127), l: num(n.l, 1, 64, 1, 1), v: num(n.v, 0.02, 1, 0.8), p: num(n.p, 0, 1, 1) }))
+      : [];
+
+  const sanitize = (src) => {
+    const P = newProject();
+    if (!src || typeof src !== "object" || !Array.isArray(src.tracks)) return null;
+    P.name = str(src.name, P.name, 28);
+    Object.assign(P, fit(DEF.top, src));
+    for (const k of ["click", "song", "fold"]) P[k] = num(src[k], 0, 1, 0, 1);
+    P.chain = Array.isArray(src.chain) ? src.chain.filter((x) => Number.isInteger(x) && x >= 0 && x < 8).slice(0, 32) : [];
+    P.pats = P.pats.map((_, i) => ({ bars: num(src.pats?.[i]?.bars, 1, 4, 1, 1) }));
+    P.tracks = P.tracks.map((d, i) => {
+      const s = src.tracks[i];
+      if (!s || typeof s !== "object") return d;
+      return {
+        name: str(s.name, d.name, 10), kind: ["syn", "kit", "smp"].includes(s.kind) ? s.kind : d.kind,
+        ...fit(DEF.trk, s), lo: num(s.lo, 0, 104, d.lo, 1),
+        arp: fit(DEF.arp, s.arp), syn: fit(DEF.syn, s.syn, d.syn),
+        smp: { ...fit(DEF.smp, s.smp), id: sid(s.smp?.id) },
+        kit: { pads: d.kit.pads.map((pd, k) => ({ ...fit(DEF.pad, s.kit?.pads?.[k], pd), name: str(s.kit?.pads?.[k]?.name, pd.name, 8), id: sid(s.kit?.pads?.[k]?.id) })) },
+        clips: d.clips.map((_, k) => notes(s.clips?.[k])),
+      };
+    });
+    P.fx = fit(DEF.fx, src.fx);
+    P.sel = { t: num(src.sel?.t, 0, 7, 0, 1), p: num(src.sel?.p, 0, 7, 0, 1), pad: num(src.sel?.pad, 0, 7, 0, 1) };
+    return P;
+  };
+
+  /* ── history + local storage ──────────────────────────────────── */
+  const KEY = "musiclab.v3";
+  const hist = { st: [], i: -1 };
+  let saveT = 0;
+  const save = (s) => {
+    try { localStorage.setItem(KEY, s); } catch (e) { App.UI?.msg("LOCAL SAVE FAILED · USE FILE > SAVE"); }
+  };
+  // Checkpoint: one undo step per finished gesture.
+  App.commit = () => {
+    const s = JSON.stringify(App.P);
+    if (s === hist.st[hist.i]) return;
+    hist.st.length = hist.i + 1;
+    hist.st.push(s);
+    if (hist.st.length > 160) hist.st.shift();
+    hist.i = hist.st.length - 1;
+    clearTimeout(saveT);
+    save(s);
+  };
+  // Save without a checkpoint (selection, view position, mid-drag values).
+  App.touch = () => {
+    clearTimeout(saveT);
+    saveT = setTimeout(() => save(JSON.stringify(App.P)), 400);
+  };
+  App.flush = () => { clearTimeout(saveT); save(JSON.stringify(App.P)); };
+  const step = (d) => {
+    const i = hist.i + d;
+    if (i < 0 || i >= hist.st.length) return false;
+    const sel = App.P.sel;
+    hist.i = i;
+    App.P = JSON.parse(hist.st[i]);
+    App.P.sel = sel;
+    clearTimeout(saveT);
+    save(JSON.stringify(App.P));
+    return true;
+  };
+  App.undo = () => step(-1);
+  App.redo = () => step(1);
+  App.stored = () => {
+    try { return sanitize(JSON.parse(localStorage.getItem(KEY))); } catch (e) { return null; }
+  };
+
+  /* ── sample store (decoded buffers in memory, encoded bytes in IndexedDB) ── */
+  const idb = (() => {
+    let db;
+    const open = () =>
+      db || (db = new Promise((res, rej) => {
+        const r = indexedDB.open("musiclab3", 1);
+        r.onupgradeneeded = () => r.result.createObjectStore("smp", { keyPath: "id" });
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => rej(r.error);
+      }));
+    const tx = async (mode, fn) => {
+      const d = await open();
+      return new Promise((res, rej) => {
+        const t = d.transaction("smp", mode), q = fn(t.objectStore("smp"));
+        t.oncomplete = () => res(q.result);
+        t.onerror = t.onabort = () => rej(t.error);
+      });
+    };
+    return {
+      put: (o) => tx("readwrite", (s) => s.put(o)),
+      get: (id) => tx("readonly", (s) => s.get(id)),
+      del: (id) => tx("readwrite", (s) => s.delete(id)),
+      keys: () => tx("readonly", (s) => s.getAllKeys()),
+    };
+  })();
+
+  const peaks = (buf, n = 1200) => {
+    const d = buf.getChannelData(0), out = new Float32Array(n * 2), w = d.length / n;
+    for (let i = 0; i < n; i++) {
+      const a = Math.floor(i * w), b = Math.max(a + 1, Math.min(d.length, Math.ceil((i + 1) * w))), q = Math.max(1, (b - a) >> 8);
+      let lo = 1, hi = -1;
+      for (let j = a; j < b; j += q) { const x = d[j]; if (x < lo) lo = x; if (x > hi) hi = x; }
+      out[i * 2] = lo; out[i * 2 + 1] = hi;
+    }
+    return out;
+  };
+
+  const wav = (buf) => {
+    const ch = Math.min(2, buf.numberOfChannels), n = buf.length, size = n * ch * 3;
+    const ab = new ArrayBuffer(44 + size), dv = new DataView(ab), u8 = new Uint8Array(ab);
+    const tag = (o, s) => { for (let i = 0; i < 4; i++) u8[o + i] = s.charCodeAt(i); };
+    tag(0, "RIFF"); dv.setUint32(4, 36 + size, true); tag(8, "WAVE"); tag(12, "fmt ");
+    dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, ch, true);
+    dv.setUint32(24, buf.sampleRate, true); dv.setUint32(28, buf.sampleRate * ch * 3, true);
+    dv.setUint16(32, ch * 3, true); dv.setUint16(34, 24, true); tag(36, "data"); dv.setUint32(40, size, true);
+    const c = []; for (let k = 0; k < ch; k++) c.push(buf.getChannelData(k));
+    let o = 44;
+    for (let i = 0; i < n; i++) for (let k = 0; k < ch; k++) {
+      const x = Math.round(clamp(c[k][i], -1, 1) * 8388607);
+      u8[o++] = x & 255; u8[o++] = (x >> 8) & 255; u8[o++] = (x >> 16) & 255;
+    }
+    return new Blob([ab], { type: "audio/wav" });
+  };
+
+  App.samples = new Map();
+  const decode = (bytes) => {
+    const ctx = App.E ? App.E.ctx : new OfflineAudioContext(2, 1, 48000);
+    return ctx.decodeAudioData(bytes.slice(0));
+  };
+  const register = (id, name, buffer) => {
+    const pk = peaks(buffer);
+    let peak = 0;
+    for (let i = 0; i < pk.length; i++) { const a = Math.abs(pk[i]); if (a > peak) peak = a; }
+    const s = { id, name, buffer, peaks: pk, peak, rev: null };
+    App.samples.set(id, s);
+    return s;
+  };
+  // Encoded file → sample. Keeps the original bytes so saved projects stay small.
+  App.addSample = async (name, blob) => {
+    const buffer = await decode(await blob.arrayBuffer());
+    const id = uid();
+    register(id, name, buffer);
+    idb.put({ id, name, blob }).catch(() => App.UI.msg("SAMPLE NOT STORED LOCALLY · USE FILE > SAVE"));
+    return id;
+  };
+  App.addBuffer = (name, buffer) => {
+    const id = uid();
+    register(id, name, buffer);
+    idb.put({ id, name, blob: wav(buffer) }).catch(() => App.UI.msg("SAMPLE NOT STORED LOCALLY · USE FILE > SAVE"));
+    return id;
+  };
+  App.sampleIds = (P) => {
+    const ids = new Set();
+    for (const T of P.tracks) { if (T.smp.id) ids.add(T.smp.id); for (const p of T.kit.pads) if (p.id) ids.add(p.id); }
+    return ids;
+  };
+  App.restoreSamples = async () => {
+    let n = 0;
+    for (const id of App.sampleIds(App.P)) {
+      if (App.samples.has(id)) continue;
+      try {
+        const r = await idb.get(id);
+        if (r) { register(id, r.name, await decode(await r.blob.arrayBuffer())); n++; }
+      } catch (e) { /* missing audio shows as an empty sampler */ }
+    }
+    return n;
+  };
+  App.sampleBlob = async (id) => (await idb.get(id))?.blob || (App.samples.has(id) ? wav(App.samples.get(id).buffer) : null);
+  App.importSample = async (id, name, blob) => {
+    register(id, name, await decode(await blob.arrayBuffer()));
+    idb.put({ id, name, blob }).catch(() => {});
+  };
+
+  Object.assign(App, {
+    clamp, NOTES, PATS, SCALES, SIGS, DEF, pc, noteName, mtof, uid, pad2, spb, beatSteps, maxBars, patSteps, inScale,
+    chordNotes, chordName, fmt, parse, toN, fromN, UNIT, fHz, fTime, fDb, defs, newProject, newKit, sanitize, wav, peaks, N,
+  });
+})();

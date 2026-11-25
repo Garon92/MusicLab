@@ -1,158 +1,34 @@
 <!doctype html>
-<html lang="cs">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="theme-color" content="#0b100d" />
-    <meta
-      name="description"
-      content="Hudební pracovní stanice v prohlížeči. Sekvencer, aranžér, sampler, harmonická syntéza, mixáž, analýza a MIDI."
-    />
-    <title>MusicLab · Signálová centrála</title>
+    <meta name="theme-color" content="#020403" />
+    <meta name="description" content="Single-screen music console: sequencer, synth, drums, sampler, mixer, signal analysis." />
+    <title>MUSICLAB</title>
     <link rel="icon" href="./assets/mark.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./assets/fonts/fonts.css" />
-    <link rel="stylesheet" href="./styles.css" />
-    <link rel="stylesheet" href="./patterns.css" />
-    <link rel="stylesheet" href="./signal.css" />
-    <link rel="stylesheet" href="./harmony.css" />
-    <link rel="stylesheet" href="./sampler.css" />
-    <script defer src="./engine.js"></script>
-    <script defer src="./patterns.js"></script>
-    <script defer src="./signal.js"></script>
-    <script defer src="./harmony.js"></script>
-    <script defer src="./sampler.js"></script>
-    <link rel="stylesheet" href="./arranger.css" />
-    <link rel="stylesheet" href="./mixer.css" />
-    <link rel="stylesheet" href="./performance.css" />
-    <script defer src="./arranger.js"></script>
-    <script defer src="./mixer.js"></script>
-    <script defer src="./performance.js"></script>
-    <link rel="stylesheet" href="./generator.css" />
-    <link rel="stylesheet" href="./modulation.css" />
-    <script defer src="./generator.js"></script>
-    <script defer src="./modulation.js"></script>
-    <link rel="stylesheet" href="./capture.css" />
-    <script defer src="./capture.js"></script>
-    <script defer src="./devices.js"></script>
-    <script defer src="./radar.js"></script>
-    <script defer src="./app.js"></script>
+    <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <a href="#main" class="skip">Přejít na pracovní plochu</a>
-    <header class="global">
-      <a class="brand" href="#centrala" aria-label="MusicLab – centrála"
-        ><img src="./assets/mark.svg" width="36" height="36" alt="" /><span>MUSIC<b>LAB</b></span></a
-      >
-      <div class="app-name">AUDIO WORKSTATION</div>
-      <div class="top-actions">
-        <span class="saved" id="saved" role="status">Lokální projekt</span>
-        <div class="project-wrap">
-          <button id="project-menu" class="btn" aria-expanded="false">
-            <i data-i="folder"></i> Projekt <i data-i="chev"></i>
-          </button>
-          <div class="dropdown" id="project-actions" hidden>
-            <button data-action="rename"><i data-i="pen"></i> Přejmenovat</button
-            ><button data-action="export"><i data-i="download"></i> Export projektu (.json)</button
-            ><button data-action="import"><i data-i="upload"></i> Import projektu (.json)</button>
-          </div>
-        </div>
-        <button id="fullscreen" class="icon-btn" title="Celá obrazovka" aria-label="Celá obrazovka">
-          <i data-i="expand"></i>
-        </button>
-      </div>
-    </header>
-    <div class="shell">
-      <aside class="sidebar">
-        <nav id="navigation" aria-label="Pracovní plochy"></nav>
-        <div class="side-monitor">
-          <div class="micro"><span class="status-led"></span> AUDIO ENGINE</div>
-          <div class="engine-state" id="engine-state">Čeká na vstup</div>
-          <div id="side-meter" class="led-meter"></div>
-          <div class="side-output"><span>MASTER OUT</span><span id="out-db">−∞ dB</span></div>
-        </div>
-      </aside>
-      <main id="main" tabindex="-1">
-        <div class="view-title">
-          <div>
-            <div class="project-line">
-              <i data-i="folder"></i><span>Projekt</span><span>/</span
-              ><button id="project-name" title="Přejmenovat projekt">Noční signál</button>
-            </div>
-            <h1 id="view-name">Signálová centrála</h1>
-          </div>
-          <span class="transport-state" id="run-state"><b></b> STANDBY</span>
-        </div>
-        <section class="transport panel" aria-label="Transport">
-          <div class="transport-buttons">
-            <button id="play" class="play"><i data-i="play"></i><span>Spustit</span></button
-            ><button
-              id="stop"
-              class="icon-btn"
-              aria-label="Stop a návrat na začátek"
-              title="Stop a návrat na začátek"
-            >
-              <i data-i="stop"></i></button
-            ><button id="rec" class="rec" aria-label="Spustit záznam WAV" title="Záznam výstupu do WAV">
-              <b></b><span>REC</span>
-            </button>
-          </div>
-          <div class="param tempo">
-            <label for="tempo">TEMPO</label>
-            <div>
-              <input
-                id="tempo"
-                type="number"
-                min="35"
-                max="270"
-                value="112"
-                aria-label="Tempo v BPM"
-              /><small>BPM</small><button id="tap" title="Vyťukat tempo">TAP</button>
-            </div>
-          </div>
-          <div class="param swing">
-            <label for="swing">SWING</label>
-            <div>
-              <input
-                id="swing"
-                type="number"
-                min="0"
-                max="70"
-                value="0"
-                aria-label="Swing v procentech"
-              /><small>%</small>
-            </div>
-          </div>
-          <div class="param play-mode">
-            <label for="mode">REŽIM</label
-            ><select id="mode">
-              <option value="pattern">Pattern</option>
-              <option value="song">Aranžér</option>
-            </select>
-          </div>
-          <div class="transport-grid-info">
-            <span>TAKT <b>4/4</b></span
-            ><span>RASTR <b>1/16</b></span>
-          </div>
-          <div class="position">
-            <span>TAKT : DOBA : KROK</span><output id="position">001:01:01</output>
-          </div>
-        </section>
-        <div id="rack" class="rack"></div>
-      </main>
+    <div id="app">
+      <header id="top"></header>
+      <section id="mx" class="pn"></section>
+      <section id="sg"></section>
+      <section id="ed" class="pn"></section>
+      <section id="dv" class="pn"></section>
+      <section id="fx" class="pn"></section>
+      <footer id="st"><span class="st-h"></span><span class="st-m"></span><span class="st-s"></span></footer>
     </div>
-    <div id="parking" hidden></div>
-    <input type="file" id="project-file" accept=".json,application/json" hidden />
-    <dialog id="name-dialog">
-      <form method="dialog">
-        <h2>Název projektu</h2>
-        <input id="name-field" aria-label="Název projektu" maxlength="64" required />
-        <div>
-          <button class="btn" value="cancel" formnovalidate>Zrušit</button
-          ><button class="btn primary" value="ok">Uložit</button>
-        </div>
-      </form>
-    </dialog>
-    <div id="notice" role="status" aria-live="polite"></div>
-    <noscript>Hudební stanice vyžaduje JavaScript.</noscript>
+    <input type="file" id="file" hidden />
+    <noscript>MUSICLAB NEEDS JAVASCRIPT</noscript>
+    <script src="./js/core.js"></script>
+    <script src="./js/ui.js"></script>
+    <script src="./js/engine.js"></script>
+    <script src="./js/seq.js"></script>
+    <script src="./js/panels.js"></script>
+    <script src="./js/editor.js"></script>
+    <script src="./js/signal.js"></script>
+    <script src="./js/main.js"></script>
   </body>
 </html>

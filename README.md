@@ -1,33 +1,59 @@
-# MusicLab
+# MUSICLAB
 
-MusicLab je hudební pracovní stanice v češtině. V prohlížeči poskládáš pattern, seřadíš takty do aranže a k přehrávané skladbě můžeš živě přidávat akordy nebo zvukové vzorky. [Otevřít MusicLab](https://garon92.github.io/MusicLab/)
+A music workstation on one screen, in the browser. Eight tracks, eight patterns, a song chain, a synth, a drum machine, a sampler, send effects, a master chain and a signal analysis column. Nothing scrolls, nothing is decoration, and a new project contains no notes.
 
-## Od patternu ke skladbě
+[Open MUSICLAB](https://garon92.github.io/MusicLab/)
 
-1. V **Centrále** vyber u rytmického radaru banku A–D a v sekvenceru stopu **Drums**, **Bass** nebo **Lead**. Každá banka obsahuje jeden takt se 16 kroky. Kliknutím do mřížky přidáš úder či tón. Tlačítkem **Spustit** přehraješ všechny tři stopy společně.
-2. V **Aranžéru** přiřaď každé sekci banku a počet opakování. Sekce můžeš kopírovat, přesouvat a odebírat. Kliknutím na sekci v časové ose spustíš skladbu od daného místa.
-3. V transportu uprav tempo a swing. **Pauza** podrží pozici pro další přehrávání, **Stop** se vrátí na začátek.
+## Screen
 
-## Nástroje
-
-| Pracovní plocha | Co ovládá |
+| Area | What it holds |
 | --- | --- |
-| Algoritmy | Generátor pulzů rozdělí údery mezi 16 kroků eukleidovským algoritmem nebo pomocí opakovatelné 16bitové posloupnosti. Rytmus můžeš otočit, invertovat a zapsat do zvolené bicí stopy. Dvě modulační jednotky (LFO) umí v rytmu měnit filtr, hlasitost, panoramu nebo úroveň efektu delay. |
-| Harmonie | Výběr tóniny a stupnice, akordové stupně, obraty a septakordy. Vlastní progresi o 4–8 akordech lze přehrát s transportem jako akordy nebo arpeggio. |
-| Syntezátor | Tvar vlny, filtr, rezonanci, náběh a dozvuk. Klaviatura a bicí pady reagují na myš i klávesnici. |
-| Sampler | Import zvukového souboru, přímý odběr z mikrofonu nebo použití posledního vlastního záznamu WAV. Ořez, změna rychlosti a zpětné přehrávání. Osm řezů lze hrát z padů nebo přiřadit k šestnácti krokům. |
-| Mixáž a FX | Hlasitost a polohu stop ve stereu, sólo, ztlumení, delay a třípásmový ekvalizér hlavního výstupu. |
-| Analýza | Osciloskop, frekvenční spektrum, spektrogram a ladičku. Jako zdroj lze zvolit hlavní výstup nebo mikrofon. |
-| MIDI a vstupy | Připojení MIDI vstupu a výstupu, export aranže do souboru MIDI a načtení prvních čtyř taktů souboru MIDI do bank A–D. |
+| Top bar | Play, note record, tape, position, tempo, swing, signature, key and scale, metronome, output meter, MIDI, undo, file menu |
+| Matrix | 8 tracks × 8 patterns. Each row carries the track's mute, solo, level (with live meter) and pan. Each cell is a clip. The song chain sits below |
+| Edit | The note grid of the selected clip: piano keys for a synth or pitched sampler, pads for drums, slices for a sliced sample. Velocity or probability per step below |
+| Device | The selected track's instrument: SYNTH, DRUMS or SAMPLER, plus its drive and sends |
+| Signal | Scope, pitch readout, spectrum, spectrogram, phase and level of the output, the selected track or the input |
+| Master | Delay, reverb, EQ, compressor, limiter, volume |
+| Status line | Says in full what is under the cursor and how to use it |
 
-Pro MIDI zařízení potřebuje prohlížeč podporu Web MIDI a povolení přístupu. Pro mikrofon otevři web přes HTTPS a povol jeho použití.
+## Controls
 
-## Záznam a uložení
+Every value on the screen is the same control:
 
-- **Stereo WAV.** Stiskni **REC** před úsekem, který chceš nahrát. Záznam snímá hlavní výstup včetně živé hry. Dalším stiskem **REC** nahrávání ukončíš a stáhneš WAV. **Stop** ukončí současně přehrávání i rozběhnutý záznam.
-- **Rozpracovaný projekt.** Stanice průběžně ukládá patterny, aranž, nastavení nástrojů a mix v aktuálním profilu prohlížeče. Vlastní zvukový vzorek ukládá do místní databáze prohlížeče.
-- **Přenosná kopie.** Přes **Projekt → Export projektu (.json)** stáhneš projekt včetně vloženého vlastního samplu. Přes **Projekt → Import projektu (.json)** jej znovu otevřeš i na jiném počítači.
+- drag or wheel to change, Shift for fine steps
+- double-click to type an exact value (`1.5k`, `120ms`, `-6`, `C#3`)
+- right-click to reset
 
-## Spuštění bez internetu
+Grid: click to place a note, drag right for length, drag a note to move it, drag its end to resize, right-click to delete. Rows that are sounding light a lamp at the left edge.
 
-Stáhni a rozbal celý repozitář. Ve složce `docs` otevři dvojklikem [index.html](./docs/index.html). Syntezátor, bicí, výchozí vzorek i písma jsou součástí projektu. Online a místní verze mají oddělená úložiště. Rozpracovanou skladbu mezi nimi přeneseš exportem a importem projektu.
+Right-click a clip, a pattern letter or a track name for its menu (clear, copy to the next pattern, add to song, rename).
+
+Drag and drop:
+
+- a clip onto another cell copies it
+- a pattern letter onto another letter copies the whole pattern, onto the song row adds it to the chain
+- song slots drag to reorder
+- audio files from the desktop onto a track, a drum pad or a row of the drum grid load as samples (several files fill consecutive pads)
+- the tape take onto a track or pad turns the recorded output into a sample
+
+Keys: `Space` play, `A`–`K` play the selected track (`W E T Y U` are the black keys), `Z` `X` octave, `1`–`8` track, arrows track and pattern, `Ctrl/Cmd+Z` undo, `Ctrl/Cmd+S` save, `Esc` silence.
+
+## Files
+
+- The project saves itself in the browser. Samples are stored next to it.
+- **FILE › SAVE** downloads one `.json` with the samples inside. **OPEN** or dropping that file loads it.
+- **EXPORT WAV** renders the song (or the selected pattern when song mode is off) offline to 24-bit stereo.
+- **EXPORT MIDI** writes a standard MIDI file, one track per console track.
+- **TAPE** records whatever you hear in real time, including what you play live.
+
+## Run locally
+
+It is plain HTML, CSS and JavaScript with no build step. Serve the `docs` folder:
+
+```bash
+python3 -m http.server 8765 --directory docs
+```
+
+The console is drawn for a landscape window of 1100 × 620 or larger and scales as a whole with the window. In anything smaller it shows as a miniature with a notice.
+
+Microphone input and MIDI need the browser's permission and a secure origin (`https` or `localhost`). Developed and tested in Chromium.
