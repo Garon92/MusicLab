@@ -1,59 +1,62 @@
 # MUSICLAB
 
-A music workstation on one screen, in the browser. Eight tracks, eight patterns, a song chain, a synth, a drum machine, a sampler, send effects, a master chain and a signal analysis column. Nothing scrolls, nothing is decoration, and a new project contains no notes.
+A single-screen music workstation for a desktop browser. Start with an empty grid, draw or play notes, arrange patterns and record the result. Audio processing and project storage run in the browser.
 
 [Open MUSICLAB](https://garon92.github.io/MusicLab/)
 
-## Screen
+## First session
 
-| Area | What it holds |
+1. Click an empty square in **Edit** to add a note. Click **Play** or press Space to loop the selected pattern. The track name and pattern letter above the grid show what you are editing.
+2. Click a different cell in **Clip matrix** to edit another track or pattern. Click a track's **Type** to choose a synth, drum kit or sampler. Click **+** in the song row to append the current pattern to the arrangement.
+3. Click the expand control in any panel to give it the whole workspace. **Full console** brings the panels back. **Commands** at the bottom opens a searchable list of actions. Its shortcut is Ctrl/Cmd+K.
+4. Click **Reset** in the top right to start over. The confirmation shows what the current project contains. **Save a copy** downloads a portable project and keeps you working on it. **Reset project** stops playback and starts a blank project with the default instruments and mixer. **Undo** steps back immediately. **File → Restore last reset** also works after reloading the page in the same browser when local storage is available. The last tape take is recoverable with Restore in the same tab.
+
+## Workspace
+
+| Area | Controls |
 | --- | --- |
-| Top bar | Play, note record, tape, position, tempo, swing, signature, key and scale, metronome, output meter, MIDI, undo, file menu |
-| Matrix | 8 tracks × 8 patterns. Each row carries the track's mute, solo, level (with live meter) and pan. Each cell is a clip. The song chain sits below |
-| Edit | The note grid of the selected clip: piano keys for a synth or pitched sampler, pads for drums, slices for a sliced sample. Velocity or probability per step below |
-| Device | The selected track's instrument: SYNTH, DRUMS or SAMPLER, plus its drive and sends |
-| Signal | Scope, pitch readout, spectrum, spectrogram, phase and level of the output, the selected track or the input |
-| Master | Delay, reverb, EQ, compressor, limiter, volume |
-| Status line | Says in full what is under the cursor and how to use it |
+| Transport | Play, note record, tape, position, tempo, swing, signature, key and scale, metronome, output meter, MIDI input, undo/redo and project files |
+| Clip matrix | Eight tracks × eight patterns, with mute, solo, level, pan, clip and pattern menus and a 32-slot song chain |
+| Edit | Note grid, piano keys, drum pads or sample slices. Velocity, probability and repeat lanes, scale folding, chords and Euclidean rhythms |
+| Device | Synth, drum machine or sampler on the selected track, drive and effect sends |
+| Signal | Scope, pitch, spectrum, spectrogram, phase and levels of the output, selected track or input. Hold freezes the display |
+| Master | Delay, reverb, EQ, compressor, limiter and output gain |
+| Status line | The full name of the control under the pointer, its gestures and feedback for the last action |
 
-## Controls
+## Editing and playing
 
-Every value on the screen is the same control:
-
-- drag or wheel to change, Shift for fine steps
-- double-click to type an exact value (`1.5k`, `120ms`, `-6`, `C#3`)
-- right-click to reset
-
-Grid: click to place a note, drag right for length, drag a note to move it, drag its end to resize, right-click to delete. Rows that are sounding light a lamp at the left edge.
-
-Right-click a clip, a pattern letter or a track name for its menu (clear, copy to the next pattern, add to song, rename).
-
-Drag and drop:
-
-- a clip onto another cell copies it
-- a pattern letter onto another letter copies the whole pattern, onto the song row adds it to the chain
-- song slots drag to reorder
-- audio files from the desktop onto a track, a drum pad or a row of the drum grid load as samples (several files fill consecutive pads)
-- the tape take onto a track or pad turns the recorded output into a sample
-
-Keys: `Space` play, `A`–`K` play the selected track (`W E T Y U` are the black keys), `Z` `X` octave, `1`–`8` track, arrows track and pattern, `Ctrl/Cmd+Z` undo, `Ctrl/Cmd+S` save, `Esc` silence.
+- **Draw** places notes. Drag a note to move it or its end to change its length. Right-click deletes it. **Select** lets you drag a box around a phrase. Shift-click adds or removes individual notes.
+- Move a selection with the pointer or arrows. Shift+Up/Down transposes pitched notes by an octave. **Dup** or Ctrl/Cmd+D copies the phrase. **Del** removes it. Each finished gesture is one undo step.
+- **VEL** edits velocity, **PROB** the chance a note sounds and **RPT** the number of attacks across its length (1–8). With notes selected, Shift-drag in a lane to change the whole selection.
+- Click a numeric value to enter it directly. Drag or wheel to adjust it, hold Shift for finer changes, or right-click to restore its default. A focused control also accepts the arrow keys.
+- Play the selected instrument with A–K. W, E, T, Y and U play the black keys on pitched instruments. Z/X changes octave. Keys 1–8 choose a track. Enable **Rec**, then start playback to write your playing into a clip.
+- Drag a clip or pattern to copy it. Drag letters onto the song row to arrange a sequence and drag slots to reorder them. **Song** switches between the arrangement and the current pattern.
+- Drop audio onto a track to load a sample. On a drum track, several files fill successive pads. **Tape** captures the live output. Click the finished **Take** to download it or drag it onto a track or pad to play it as a sample.
 
 ## Files
 
-- The project saves itself in the browser. Samples are stored next to it.
-- **FILE › SAVE** downloads one `.json` with the samples inside. **OPEN** or dropping that file loads it.
-- **EXPORT WAV** renders the song (or the selected pattern when song mode is off) offline to 24-bit stereo.
-- **EXPORT MIDI** writes a standard MIDI file, one track per console track.
-- **TAPE** records whatever you hear in real time, including what you play live.
+The project autosaves locally, with sample audio in IndexedDB. **File → Save project** downloads a JSON file with the referenced samples embedded. Open it from the File menu or drop it on the console.
+
+**Import MIDI** accepts standard MIDI files of type 0 and 1. Its preview shows the track and pattern mapping, quantization and any limits reached before you replace the open project. **Export MIDI** writes the note performance with swing, arpeggios and repeats. MIDI uses instrument mappings, while a MusicLab JSON file keeps instrument settings, effects and samples.
+
+**Export audio** renders the active song or pattern to a 24-bit stereo WAV. Use Tape for a live performance.
 
 ## Run locally
 
-It is plain HTML, CSS and JavaScript with no build step. Serve the `docs` folder:
+Serve the static files in `docs`. The app has no build step.
 
-```bash
+```sh
 python3 -m http.server 8765 --directory docs
 ```
 
-The console is drawn for a landscape window of 1100 × 620 or larger and scales as a whole with the window. In anything smaller it shows as a miniature with a notice.
+Open [localhost:8765](http://localhost:8765/). The console fits desktop landscape windows from 1100 × 620. Microphone and hardware MIDI access depend on browser support, permission and a secure origin such as HTTPS or localhost.
 
-Microphone input and MIDI need the browser's permission and a secure origin (`https` or `localhost`). Developed and tested in Chromium.
+## Browser checks
+
+```sh
+npm ci
+npx playwright install chromium
+npm test
+```
+
+The self-test starts a local server and checks six desktop sizes, editing, playback, tape recording, audio and MIDI export, project files and reset recovery. To run the same suite in all three engines, install them with `npx playwright install chromium firefox webkit`, then run `MUSICLAB_BROWSERS=chromium,firefox,webkit npm test`.

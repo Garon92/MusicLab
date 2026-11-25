@@ -1,0 +1,83 @@
+/* Keep the complete rack usable at laptop resolutions. Canvas rems and the
+   panel dimensions are independent so smaller windows do not shrink every label. */
+@media (min-width: 1040px) and (max-width: 1450px) {
+  html { font-size: clamp(9px, .72vw, 10px); }
+  :root { --fs: clamp(10px, .78vw, 11px); --fm: clamp(10px, .85vw, 12px); }
+  body { letter-spacing: .015em; }
+
+  #app:not([data-focus]) {
+    grid-template-columns: minmax(0, 1fr) minmax(286px, 26%);
+    grid-template-rows: 34px clamp(215px, 32vh, 246px) minmax(0, 1fr) clamp(118px, 19vh, 155px) 24px;
+  }
+  #app[data-focus] { grid-template-rows: 34px minmax(0, 1fr) 24px; }
+  #app[data-focus] > section > .hd { min-height: 32px; }
+
+  #top .tc { gap: 3px; padding-inline: 5px; }
+  #top .logo { font-size: 12px; letter-spacing: .12em; }
+  #top .nm { min-width: 48px; max-width: 74px; flex-shrink: 1; }
+  #top .pos { min-width: 78px; font-size: clamp(13px, 1.15vw, 16px); letter-spacing: 0; }
+  #top .pm.in {
+    flex-direction: column; align-items: flex-start; justify-content: center;
+    gap: 2px; padding-inline: 6px;
+  }
+  #top .pm.in .l { font-size: 9px; }
+  #top .pm.in .v { font-size: 12px; }
+  #top .bt { min-height: 23px; padding-inline: 5px; font-size: 10px; letter-spacing: .015em; }
+  #top .ic { min-width: 45px; gap: 3px; }
+  #top .reset-project { margin-left: 4px; }
+  #top .omb { width: clamp(29px, 3.5vw, 51px); }
+  #top .omv { min-width: 29px; font-size: 9px; }
+  #top .tc.grp > .bt + .bt { margin-left: -2px; }
+
+  .hd { flex-basis: 25px; gap: 5px; padding-inline: 4px; }
+  .bt { min-width: 20px; height: 21px; padding-inline: 4px; letter-spacing: .025em; }
+  .hd .tg, .md-t, .pm .l { font-size: 9px; letter-spacing: .025em; }
+  .hd .view-toggle { min-width: 22px; }
+  .grp > .tg { margin-right: 3px; }
+  #ed .ed-tools, #ed .ed-actions { gap: 5px; }
+  #ed .ed-b { --pitch-row-height: 9.5px; }
+  #ed .ed-actions { flex-basis: 23px; }
+  #ed .bt { min-width: 19px; padding-inline: 4px; }
+  #ed .ed-actions .bt { height: 20px; }
+  #ed .ed-count { min-width: 16px; margin-right: 1px; }
+  #ed .rd { flex: 1 1 70px; font-size: 9px; }
+  .mx-g {
+    grid-template-columns: minmax(78px, 1.5fr) 31px 21px 21px minmax(42px, .75fr) 31px repeat(8, minmax(0, 1fr));
+    grid-template-rows: 21px repeat(8, minmax(0, 1fr));
+  }
+  .mx-h, .mx-k, .mx-p i { font-size: 9px; letter-spacing: .025em; }
+  .mx-n, .mx-p { padding-inline: 4px; gap: 4px; }
+  .mx-s { flex-basis: 21px; }
+  .mx-s .sgb { flex-basis: 78px; }
+  .mx-len { flex-basis: 47px; font-size: 9px; }
+
+  .md-t { flex-basis: 16px; gap: 3px; padding-inline: 3px; }
+  .md-t .bt { height: 15px; min-width: 19px; padding-inline: 3px; font-size: 9px; }
+  .md-t .bt + .bt { margin-left: 0; }
+  .md-g .pm { gap: 1px; padding-inline: 3px; }
+  .md-g .pm .v, .pd span { font-size: clamp(10px, .85vw, 12px); }
+  .pd { padding-inline: 4px; gap: 3px; }
+  .pd i, .pd u { font-size: 9px; }
+
+  #app[data-focus=dv] .dv-b {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    grid-auto-rows: minmax(0, 1fr);
+    grid-auto-flow: row;
+  }
+  #app[data-focus=dv] .dv-b > .fl { display: none; }
+  #app[data-focus=dv] .md-t { flex-basis: 26px; font-size: 11px; }
+  #app[data-focus=dv] .md-g .pm { gap: 5px; padding: 4px 6px; }
+  #app[data-focus=dv] .md-g .pm .v { font-size: clamp(13px, 1.15vw, 17px); }
+  #app[data-focus=dv] .md-g .pm .l { font-size: 10px; }
+
+  #app:not([data-focus]) #sg { grid-template-rows: 25px minmax(0, 1fr) 22px minmax(0, 1.3fr) minmax(0, 1fr) clamp(96px, 17vh, 128px); }
+  #sg .hd { gap: 3px; padding-inline: 3px; }
+  #sg .hd .bt { padding-inline: 3px; min-width: 19px; }
+  #sg .ov, #sg .pt .ph, #sg .pt .pc { font-size: 9px; }
+  .sg-bt { grid-template-columns: 36% minmax(0, 1fr); }
+  .pt { gap: 5px; padding-inline: 4px; }
+  #st { gap: 6px; padding-inline: 4px; }
+  #st .bt { height: 21px; }
+  .st-h, .st-s { font-size: 9px; letter-spacing: .025em; }
+  .mn-i { min-height: 25px; font-size: 11px; }
+}

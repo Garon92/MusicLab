@@ -5,6 +5,17 @@
   const $ = (id) => document.getElementById(id);
   const P = () => App.P;
   const KIND = { syn: "SYN", kit: "DRM", smp: "SMP" };
+  const instruments = {syn:"Synth", kit:"Drums", smp:"Sampler"};
+  function changeKind(ti, kind) {
+    const track = P().tracks[ti];
+    if (track.kind === kind) return;
+    App.releaseAll();
+    App.E?.panic();
+    track.kind = kind;
+    App.commit();
+    App.E?.syncTrack(ti);
+    App.Dv.build(); App.Mx.sync(); App.Ed.sync();
+  }
   const dbN = (x, floor) => (x < 0.0005 ? 0 : clamp((20 * Math.log10(x) + floor) / floor, 0, 1));
   const mmss = (s) => pad2(Math.floor(s / 60)) + ":" + pad2(Math.floor(s % 60));
   const span = (e, key) => { const m = new RegExp(key + ":span (\\d+)").exec(e.getAttribute("style") || ""); return m ? +m[1] : 1; };
@@ -21,7 +32,7 @@
   App.Top = (() => {
     const ICON = { play: '<svg viewBox="0 0 10 10"><path d="M2 1v8l7-4z"/></svg>', stop: '<svg viewBox="0 0 10 10"><path d="M2 2h6v6H2z"/></svg>' };
     const buf = new Float32Array(1024), pk = [0, 0];
-    let nameEl, playB, recB, tapeB, posEl, clickB, takeEl, midiB, om, omL, omR, omT, pms = [], lastPos = "", hold = 0, taps = [];
+    let undoB, redoB, nameEl, playB, recB, tapeB, posEl, clickB, takeEl, midiB, om, omL, omR, omT, pms = [], lastPos = "", hold = 0, taps = [];
 
     const tempo = () => { App.E && App.E.syncAll(); App.touch(); };
     const tap = () => {
@@ -37,10 +48,10 @@
     function build() {
       const el = $("top");
       el.innerHTML = "";
-      nameEl = h("div.tc.nm", { tip: "PROJECT NAME · DOUBLE-CLICK = RENAME" });
-      nameEl.ondblclick = () => UI.edit(nameEl, P().name, (s) => { P().name = s.toUpperCase().slice(0, 28); App.commit(); sync(); }, 28);
+      nameEl = h("button.tc.nm", { type: "button", tip: "PROJECT NAME · CLICK TO RENAME", "aria-label": "Rename project" });
+      nameEl.onclick = () => UI.edit(nameEl, P().name, (s) => { P().name = s.toUpperCase().slice(0, 28); App.commit(); sync(); }, 28);
       playB = h("button.bt.ic", { html: ICON.play, tip: "PLAY / STOP · SPACE", type: "button" });
-      playB.onclick = () => App.Seq.toggle();
+      playB.onclick = () => App.playToggle();
       recB = btn("REC", "NOTE RECORD · WHILE PLAYING, KEYS AND MIDI ARE WRITTEN INTO THE PATTERN", () => { App.recArm = !App.recArm; sync(); }, "rec");
       tapeB = btn("TAPE", "AUDIO RECORD · CAPTURES THE OUTPUT · STOP = TAKE", () => App.tape(), "rec");
       posEl = h("div.tc.pos", { tip: "POSITION · PATTERN  BAR . BEAT . STEP" });
@@ -59,24 +70,38 @@
       omL = h("i"); omR = h("i"); omT = h("span.omv", { text: "-INF" });
       om = h("div.tc.om", { tip: "OUTPUT PEAK dBFS · LEFT OVER RIGHT · RED = LIMITER IS HOLDING THE MIX DOWN, LOWER SOMETHING" }, h("span.l", { text: "OUT" }), h("span.omb", null, omL, omR), omT);
       midiB = btn("MIDI", "MIDI INPUT · CLICK = CONNECT · PLAYS THE SELECTED TRACK", () => App.midi());
-      const fileB = btn("FILE", "PROJECT + EXPORT", () =>
+      const fileB = btn("FILE ▾", "OPEN, SAVE, IMPORT AND EXPORT", () =>
         UI.menu(fileB, [
-          { label: "NEW", value: "new" }, { label: "OPEN", value: "open", key: ".JSON" }, { label: "SAVE", value: "save", key: "CTRL S" }, "-",
-          { label: "EXPORT WAV", value: "wav", key: P().song && P().chain.length ? "SONG" : "PATTERN " + PATS[P().sel.p] },
-          { label: "EXPORT MIDI", value: "mid", key: ".MID" },
-        ], (v) => App.file(v)));
+          { label: "Open project…", value: "open", key: ".JSON" }, { label: "Save project", value: "save", key: "⌘/CTRL S" },
+          { label: "Rename project", value: "rename" }, "-",
+          { label: "Import MIDI…", value: "import-midi", key: ".MID" }, { label: "Export MIDI", value: "mid", key: ".MID" },
+          { label: "Export audio", value: "wav", key: "24-BIT WAV" }, "-",
+          { label: "Reset project…", value: "new" }, { label: "Restore last reset…", value: "restore", disabled: !App.hasRecovery() }
+        ], v => v === "rename" ? nameEl.click() : App.file(v)));
+      fileB.setAttribute("aria-label", "File"); fileB.setAttribute("aria-haspopup", "menu");
+      const resetB = btn("RESET", "START OVER · RESET THE WHOLE PROJECT", () => App.file("new"), "reset-project");
+      resetB.setAttribute("aria-label", "Reset project");
+      undoB = btn("UNDO", "UNDO · CTRL Z", () => App.doUndo(-1));
+      redoB = btn("REDO", "REDO · CTRL SHIFT Z", () => App.doUndo(1));
       el.append(
         h("div.tc.logo", { text: "MUSICLAB" }), nameEl,
         h("div.tc.grp", null, playB, recB, tapeB), posEl,
         pms[0], h("div.tc", null, btn("TAP", "TAP TEMPO", tap)), pms[1], pms[2], pms[3], pms[4], h("div.tc", null, clickB),
         h("div.sp"), takeEl, om,
-        h("div.tc.grp", null, midiB, btn("UNDO", "UNDO · CTRL Z", () => App.doUndo(-1)), btn("REDO", "REDO · CTRL SHIFT Z", () => App.doUndo(1)), fileB),
+        h("div.tc.grp", null, midiB, undoB, redoB, fileB, resetB),
       );
     }
 
+    function history() {
+      if (undoB) undoB.disabled = !App.canUndo();
+      if (redoB) redoB.disabled = !App.canRedo();
+    }
     function sync() {
+      history();
       nameEl.textContent = P().name;
-      playB.innerHTML = App.Seq.playing ? ICON.stop : ICON.play;
+      playB.innerHTML = (App.Seq.playing ? ICON.stop : ICON.play) + (App.Seq.playing ? "STOP" : "PLAY");
+      playB.setAttribute("aria-label", App.Seq.playing ? "Stop playback" : "Play pattern or song");
+      for (const [b,on] of [[recB, App.recArm],[tapeB, App.taping],[clickB, P().click]]) b.setAttribute("aria-pressed", String(!!on));
       playB.classList.toggle("on", App.Seq.playing);
       recB.classList.toggle("on", !!App.recArm);
       tapeB.classList.toggle("on", !!App.taping);
@@ -113,13 +138,13 @@
       if (App.taping) { const s = "TAPE " + mmss(App.taping.seconds()); if (tapeB.textContent !== s) tapeB.textContent = s; }
     }
 
-    return { build, sync, pos, frame };
+    return { build, sync, pos, frame, history, rename: () => nameEl.click() };
   })();
 
   /* ═════ MATRIX: tracks × patterns, mixer in the row header, song chain below ═════ */
   App.Mx = (() => {
     const heads = [], rows = [], cells = [], slots = [], lv = new Float32Array(8), shown = new Float32Array(8), mbuf = new Float32Array(512);
-    let grid, cv, cx, ph, songEl, songB, lenEl, phOn = false, runPat = -1, runSlot = -1;
+    let contextEl, grid, cv, cx, ph, songEl, songB, lenEl, phOn = false, runPat = -1, runSlot = -1;
 
     function build() {
       const el = $("mx");
@@ -127,7 +152,7 @@
       heads.length = rows.length = cells.length = slots.length = 0;
       grid = h("div.mx-g");
       for (const [t, tip] of [
-        ["TRACK", "TRACK · CLICK = SELECT · DOUBLE-CLICK = RENAME · DROP AUDIO = LOAD"], ["TYPE", "INSTRUMENT TYPE · CHANGE IT IN DEVICE"],
+        ["TRACK", "TRACK · CLICK = SELECT · DOUBLE-CLICK = RENAME · DROP AUDIO = LOAD"], ["TYPE", "CLICK A TRACK TYPE TO CHANGE ITS INSTRUMENT"],
         ["M", "MUTE"], ["S", "SOLO"], ["LEVEL", "TRACK LEVEL · BAR BEHIND = LIVE SIGNAL"], ["PAN", "TRACK PAN"],
       ]) grid.append(h("div.mx-h", { text: t, tip }));
       for (let p = 0; p < 8; p++) {
@@ -150,8 +175,11 @@
         nm.ondblclick = rename;
         nm.oncontextmenu = () => UI.menu(nm, [{ label: "RENAME", value: "name" }, "-", { label: "CLEAR ALL CLIPS", value: "clear" }], (v) => (v === "name" ? rename() : App.trackClear(t)));
         UI.drop(nm, drops);
-        const kd = h("div.mx-k", { tip: "INSTRUMENT TYPE · CHANGE IT IN DEVICE" });
-        kd.onclick = () => App.select(t);
+        const kd = h("button.mx-k", { type:"button", "aria-haspopup":"menu", tip:"CLICK TO CHOOSE SYNTH, DRUMS OR SAMPLER" });
+        kd.onclick = () => {
+          App.select(t);
+          UI.menu(kd, Object.entries(instruments).map(([value,label]) => ({value,label,on:T().kind===value})), k => changeKind(t,k));
+        };
         const mB = h("button.mx-b.m", { text: "M", tip: "MUTE", type: "button" }), sB = h("button.mx-b.s", { text: "S", tip: "SOLO", type: "button" });
         mB.onclick = () => { T().mute ^= 1; App.commit(); App.E && App.E.syncAll(); sync(); };
         sB.onclick = () => { T().solo ^= 1; App.commit(); App.E && App.E.syncAll(); sync(); };
@@ -177,7 +205,8 @@
       cx = cv.getContext("2d");
 
       songB = btn("SONG", "SONG MODE · ON = PLAY THE CHAIN · OFF = LOOP THE SELECTED PATTERN", () => {
-        P().song ^= 1;
+        if (!P().chain.length) App.songSet(0, P().sel.p);
+        else P().song ^= 1;
         App.commit();
         if (App.Seq.playing) App.Seq.play();
         sync(); App.Top.sync();
@@ -198,11 +227,23 @@
       }
       lenEl = h("div.mx-len", { tip: "SONG LENGTH" });
       songEl.append(lenEl);
-      el.append(grid, songEl);
+      contextEl = h("span.ti");
+      const sel = () => P().sel;
+      const clipB = btn("CLIP ▾", "ACTIONS FOR THE SELECTED CLIP", () => UI.menu(clipB, [
+        {label:"Copy to next pattern",value:"next"},{label:"Clear clip",value:"clear"}
+      ], v => App.clipDo(sel().t,sel().p,v)));
+      const patB = btn("PATTERN ▾", "ACTIONS FOR ALL TRACKS IN THIS PATTERN", () => UI.menu(patB, [
+        {label:"Add to song",value:"song"},{label:"Copy to next pattern",value:"next"},{label:"Clear pattern",value:"clear"}
+      ], v => App.patternDo(sel().p,v)));
+      const trackB = btn("TRACK ▾", "ACTIONS FOR THE SELECTED TRACK", () => UI.menu(trackB, [
+        {label:"Rename track",value:"name"},{label:"Load sample…",value:"load"},{label:"Clear track notes",value:"clear"}
+      ], v => { const t=sel().t; if(v==="name") rows[t].nm.ondblclick(); else if(v==="load") App.pickFile("audio/*", f=>App.dropFiles(f,{ti:t})); else App.trackClear(t); }));
+      el.append(h("div.hd.matrix-head",null,h("span.tg",{text:"CLIP MATRIX"}),contextEl,h("span.sp"),clipB,patB,trackB),grid,songEl);
     }
 
     function sync() {
       const p = P(), s = p.sel, mb = App.maxBars(p), any = p.tracks.some((x) => x.solo), cue = App.Seq.queued();
+      contextEl.textContent = p.tracks[s.t].name + " / " + PATS[s.p];
       heads.forEach((e, k) => {
         e.classList.toggle("sel", k === s.p);
         e.classList.toggle("cue", cue === k);
@@ -212,8 +253,11 @@
         const T = p.tracks[t], on = t === s.t;
         r.nm.lastChild.textContent = T.name;
         r.kd.textContent = KIND[T.kind];
+        r.kd.setAttribute("aria-label", "Change instrument on track " + (t + 1) + " (" + instruments[T.kind] + ")");
         r.nm.classList.toggle("sel", on); r.kd.classList.toggle("sel", on);
         r.nm.classList.toggle("off", !!T.mute || (any && !T.solo));
+        r.mB.setAttribute("aria-label", "Mute " + T.name); r.mB.setAttribute("aria-pressed", String(!!T.mute));
+        r.sB.setAttribute("aria-label", "Solo " + T.name); r.sB.setAttribute("aria-pressed", String(!!T.solo));
         r.mB.classList.toggle("on", !!T.mute); r.sB.classList.toggle("on", !!T.solo);
         r.vol.paint(); r.pan.paint();
         r.cl.forEach((c, k) => c.classList.toggle("sel", on && k === s.p));
@@ -223,7 +267,8 @@
       let bars = 0;
       slots.forEach((e, i) => {
         const has = i < p.chain.length;
-        e.textContent = has ? PATS[p.chain[i]] : "";
+        e.textContent = has ? PATS[p.chain[i]] : i === p.chain.length ? "+" : "";
+        e.classList.toggle("next-slot", i === p.chain.length);
         e.classList.toggle("e", !has);
         e.classList.toggle("at", has && !!p.song && i === App.Seq.start());
         if (has) bars += App.patSteps(p, p.chain[i]) / App.spb(p);
@@ -375,15 +420,9 @@
       el.innerHTML = "";
       waves = []; padEls = [];
       const push = () => { App.E && App.E.syncTrack(ti); App.touch(); };
-      const kinds = ["syn", "kit", "smp"].map((k, i) =>
-        btn(["SYNTH", "DRUMS", "SAMPLER"][i], "INSTRUMENT TYPE · NOTES STAY · EACH TYPE KEEPS ITS OWN SETTINGS", () => {
-          if (T.kind === k) return;
-          App.E && App.E.panic();
-          T.kind = k;
-          App.commit();
-          App.E && App.E.syncTrack(ti);
-          build(); App.Mx.sync(); App.Ed.sync();
-        }, T.kind === k ? "on" : ""));
+      const kinds = Object.entries(instruments).map(([k,name]) =>
+        btn(name.toUpperCase(), "INSTRUMENT TYPE · NOTES STAY · EACH TYPE KEEPS ITS OWN SETTINGS",
+          () => changeKind(ti, k), T.kind === k ? "on" : ""));
       const init = btn("INIT", "RESET THIS INSTRUMENT TO ITS DEFAULT SOUND", () => {
         if (T.kind === "syn") T.syn = App.defs(DEF.syn);
         else if (T.kind === "smp") T.smp = { ...App.defs(DEF.smp), id: T.smp.id };

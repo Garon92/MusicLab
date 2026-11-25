@@ -2,6 +2,7 @@
 (() => {
   "use strict";
   const { clamp, pad2 } = App, UI = App.UI, Seq = App.Seq;
+  let session = 0;
   const clone = (x) => JSON.parse(JSON.stringify(x));
   const clock = () => { const d = new Date(); return pad2(d.getHours()) + pad2(d.getMinutes()) + pad2(d.getSeconds()); };
 
@@ -17,7 +18,7 @@
 
   /* ── audio starts on the first gesture; browsers refuse sound before one ── */
   App.audio = () => {
-    if (App.E) { if (App.E.ctx.state !== "running") App.E.ctx.resume(); return App.E; }
+    if (App.E) { if (App.E.ctx.state !== "running") App.E.ctx.resume().catch(() => UI.msg("AUDIO SUSPENDED · CLICK PLAY TO RESUME")); return App.E; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) { UI.msg("THIS BROWSER HAS NO WEB AUDIO"); return null; }
     try { App.E = App.Engine(new AC({ latencyHint: "interactive" }), () => App.P); } catch (e) { UI.msg("AUDIO OUTPUT FAILED TO START"); return null; }
@@ -31,7 +32,13 @@
     App.Top.sync(); App.Mx.sync(); App.Ed.sync(); App.Dv.build(); App.Fx.sync(); App.Sg.source();
     App.restoreSamples().then((n) => { if (n) App.Dv.build(); }); // the sample name and waveform appear once decoded
   };
-  App.doUndo = (d) => { if (d < 0 ? App.undo() : App.redo()) App.refresh(); else UI.msg(d < 0 ? "NOTHING TO UNDO" : "NOTHING TO REDO"); };
+  App.doUndo = d => {
+    App.releaseAll();
+    if (d < 0 ? App.undo() : App.redo()) {
+      session++; App.E?.panic(true); App.refresh();
+      UI.msg(d < 0 ? "UNDONE" : "REDONE");
+    } else UI.msg(d < 0 ? "NOTHING TO UNDO" : "NOTHING TO REDO");
+  };
 
   /* ── selection ── */
   const held = new Map(); // key or MIDI id → sounding note
@@ -88,7 +95,12 @@
     P.chain.splice(Math.min(i, P.chain.length), 0, p);
     App.commit(); App.Mx.sync(); App.Top.sync();
   };
-  App.songDel = (i) => { App.P.chain.splice(i, 1); App.commit(); App.Mx.sync(); };
+  App.songDel = i => {
+    App.P.chain.splice(i,1);
+    if (!App.P.chain.length) { App.P.song = 0; Seq.startAt(0); }
+    else if (Seq.start() >= App.P.chain.length) Seq.startAt(App.P.chain.length-1);
+    App.commit(); App.Mx.sync(); App.Top.sync();
+  };
   App.songMove = (j, i) => {
     const ch = App.P.chain;
     if (j === i || j >= ch.length) return;
@@ -122,7 +134,10 @@
   };
   App.dropFiles = async (files, tg) => {
     const proj = files.find((f) => /\.json$/i.test(f.name));
-    if (proj) { openProject(proj); return; }
+    if (proj) { await openFile(proj,false); return; }
+    const midi = files.find(f => /\.midi?$/i.test(f.name) || /^(audio\/(x-)?midi)$/i.test(f.type));
+    if (midi) { await openFile(midi,true); return; }
+    const generation = session;
     const audio = files.filter((f) => f.type.startsWith("audio/") || AUDIO.test(f.name));
     if (!audio.length) { UI.msg("NOT AN AUDIO FILE"); return; }
     tg = resolve(tg);
@@ -131,6 +146,7 @@
       if (tg.pad != null && tg.pad + n > 7) break;
       try {
         const id = await App.addSample(f.name.replace(/\.[^.]+$/, "").toUpperCase().slice(0, 40), f);
+        if (generation !== session) return;
         last = { ti: tg.ti, pad: tg.pad != null ? tg.pad + n : undefined };
         assign(last, id);
         n++;
@@ -146,14 +162,21 @@
     const E = App.audio();
     if (!E || tapeBusy) return;
     tapeBusy = true;
+    const generation = session;
     try {
       if (App.taping) {
         const r = App.taping;
         App.taping = null;
-        App.take = await r.stop();
+        const take = await r.stop();
+        if (generation !== session) return;
+        App.take = take;
         UI.msg("TAKE READY · CLICK IT = SAVE WAV · DRAG IT ONTO A TRACK OR PAD = SAMPLE");
-      } else App.taping = await E.record(E.out);
-    } finally { tapeBusy = false; App.Top.sync(); }
+      } else {
+        const rec = await E.record(E.out);
+        if (generation !== session) await rec.stop();
+        else App.taping = rec;
+      }
+    } catch { UI.msg("TAPE RECORDING FAILED"); } finally { tapeBusy = false; App.Top.sync(); }
   };
   const download = (blob, name) => {
     const a = document.createElement("a"), url = URL.createObjectURL(blob);
@@ -180,81 +203,216 @@
     for (let c = 0; c < buf.numberOfChannels; c++) out.getChannelData(c).set(buf.getChannelData(c).subarray(i));
     return out;
   };
-  App.recStart = async (tg, src) => {
-    const E = App.audio();
-    if (!E || App.recTo) return;
-    let node = E.out;
-    if (src === "in") {
-      try { node = await E.openInput(); } catch (e) { UI.msg("INPUT REFUSED · ALLOW THE MICROPHONE FOR THIS PAGE"); return; }
-    }
-    App.recTo = { ti: tg.ti, pad: tg.pad, src, rec: await E.record(node) };
-    App.Dv.build();
+  let recPending = false;
+  App.recStart = async (tg,src) => {
+    const E = App.audio(), generation = session;
+    if (!E || App.recTo || recPending) return;
+    recPending = true;
+    try {
+      const node = src === "in" ? await E.openInput() : E.out;
+      if (generation !== session) return;
+      const capture = await E.record(node);
+      if (generation !== session) { await capture.stop(); return; }
+      App.recTo = {ti:tg.ti,pad:tg.pad,src,rec:capture};
+      App.Dv.build();
+    } catch { if (generation === session) UI.msg("RECORDING UNAVAILABLE · CHECK INPUT AND PERMISSIONS"); }
+    finally { recPending = false; }
   };
   App.recStop = async () => {
-    const r = App.recTo;
+    const r = App.recTo, generation = session;
     if (!r) return;
     App.recTo = null;
-    const buf = trim(await r.rec.stop());
-    if (buf.length < 64) { UI.msg("NOTHING RECORDED"); App.Dv.build(); return; }
-    assign(r, App.addBuffer((r.src === "in" ? "INPUT " : "RESAMPLE ") + clock(), buf));
-    landed(r);
+    try {
+      const buf = trim(await r.rec.stop());
+      if (generation !== session) return;
+      if (buf.length < 64) { UI.msg("NOTHING RECORDED"); return; }
+      assign(r,App.addBuffer((r.src === "in" ? "INPUT " : "RESAMPLE ") + clock(),buf)); landed(r);
+    } catch { UI.msg("RECORDING COULD NOT BE SAVED"); }
+    finally { App.Dv.build(); }
   };
 
-  /* ── project files ── */
-  const b64 = (blob) => new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result.slice(r.result.indexOf(",") + 1));
-    r.onerror = rej;
-    r.readAsDataURL(blob);
+  /* ── projects, recovery and interchange ─────────────────────── */
+  const backupKey = "musiclab.v3.before-reset";
+  let backup = null, backupTake = null, backupStored = true, fileRequest = 0;
+  const b64 = blob => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.slice(reader.result.indexOf(",") + 1));
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
   });
-  const unb64 = (s, type) => {
-    const bin = atob(s), u = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-    return new Blob([u], { type });
+  const unb64 = (data, type) => {
+    const binary = atob(data), bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: type || "audio/wav" });
   };
-  async function saveProject() {
-    const P = App.P, out = { ...P, samples: [] };
-    for (const id of App.sampleIds(P)) {
-      const blob = await App.sampleBlob(id);
-      if (blob) out.samples.push({ id, name: App.samples.get(id)?.name || id, type: blob.type || "audio/wav", data: await b64(blob) });
+  const noteCount = p => p.tracks.reduce((n,t) => n+t.clips.reduce((k,c)=>k+c.length,0),0);
+  const projectStats = p => [[noteCount(p),"note"],[App.sampleIds(p).size,"sample"],[p.chain.length,"song slot"]]
+    .map(([n,label]) => n + " " + label + (n === 1 ? "" : "s")).join(" · ");
+
+  function lastReset() {
+    if (!backup) {
+      try { backup = App.sanitize(JSON.parse(localStorage.getItem(backupKey))); } catch { /* Storage is optional. */ }
     }
-    download(new Blob([JSON.stringify(out)], { type: "application/json" }), P.name + ".musiclab.json");
+    return backup;
   }
-  async function openProject(file) {
-    try {
-      const raw = JSON.parse(await file.text()), P = raw && raw.app === "MUSICLAB" ? App.sanitize(raw) : null;
-      if (!P) throw 0;
-      for (const s of Array.isArray(raw.samples) ? raw.samples : []) {
-        if (typeof s.id !== "string" || typeof s.data !== "string" || App.samples.has(s.id)) continue;
-        try { await App.importSample(s.id, String(s.name || "SAMPLE").slice(0, 40), unb64(s.data, s.type || "audio/wav")); } catch (e) { /* that sampler stays empty */ }
+  App.hasRecovery = () => !!lastReset();
+
+  function rememberReset() {
+    const previous = clone(App.P);
+    const blank = App.sanitize(App.newProject());
+    blank.sel = previous.sel;
+    if (JSON.stringify(App.sanitize(previous)) === JSON.stringify(blank) && lastReset() && !App.take) return false;
+    backup = previous; backupTake = App.take || null;
+    return true;
+  }
+  function persistRecovery() {
+    try { localStorage.setItem(backupKey,JSON.stringify(backup)); backupStored = true; }
+    catch {
+      backupStored = false;
+      try { localStorage.removeItem(backupKey); } catch { /* Storage is unavailable. */ }
+    }
+  }
+
+  async function saveProject() {
+    const out = clone(App.P);
+    out.samples = [];
+    for (const id of App.sampleIds(out)) {
+      const blob = await App.sampleBlob(id);
+      if (!blob) throw Error("SAMPLE MISSING · RELOAD IT BEFORE SAVING");
+      out.samples.push({id, name:App.samples.get(id)?.name || id, type:blob.type || "audio/wav", data:await b64(blob)});
+    }
+    download(new Blob([JSON.stringify(out)],{type:"application/json"}),out.name + ".musiclab.json");
+    UI.msg("PROJECT SAVED · " + out.samples.length + " SAMPLES INCLUDED");
+  }
+
+  async function finishRecordings() {
+    if (App.recTo) await App.recStop();
+    if (App.taping) await App.tape();
+  }
+
+  function installProject(project, take = null) {
+    session++;
+    App.releaseAll(); Seq.stop(); Seq.startAt(0);
+    App.E?.panic(true); App.Sg.reset(); App.E?.closeInput();
+    App.recArm = false; App.take = take; octave = 4;
+    App.Ed.reset?.();
+    App.P = project;
+    App.commit(true); App.refresh(); App.Workspace.focus("");
+  }
+
+  async function resetProject() {
+    const response = await App.Workspace.decide({
+      title:"Reset project?", rows:[
+        ["Project",App.P.name],["Current contents",projectStats(App.P)],
+        ["Reset to","Empty clips · default instruments, mixer and transport"],
+        ["Recovery","Undo · File › Restore last reset"],
+        ...(App.taping || App.recTo || App.take ? [["Tape / input","Recordings stop · last tape kept in this tab"]] : [])
+      ], actions:[{label:"Save a copy",id:"save"},{label:"Reset project",id:"reset",primary:true}]
+    });
+    if (response === "save") return saveProject();
+    if (response !== "reset") return;
+    ++fileRequest;
+    await finishRecordings();
+    App.commit();
+    const changed = rememberReset();
+    installProject(App.newProject());
+    if (changed) persistRecovery();
+    UI.msg(backupStored ? "BLANK PROJECT · UNDO OR FILE › RESTORE LAST RESET" : "BLANK PROJECT · RECOVERY AVAILABLE IN THIS TAB ONLY");
+  }
+
+  async function restoreReset() {
+    const prev = lastReset();
+    if (!prev) { UI.msg("NO RESET TO RESTORE"); return; }
+    const choice = await App.Workspace.decide({title:"Restore last reset?",rows:[
+      ["Restore",prev.name],["Contents",projectStats(prev)],["Replaces",App.P.name],
+      ["Recovery","Undo returns to the current project"]
+    ],actions:[{id:"restore",label:"Restore project",primary:true}]});
+    if (choice !== "restore") return;
+    ++fileRequest;
+    await finishRecordings(); App.commit(); installProject(clone(prev),backupTake);
+    UI.msg("RESTORED " + prev.name);
+  }
+
+  async function importSamples(project, entries) {
+    const packed = new Map();
+    let stored = true;
+    for (const item of Array.isArray(entries) ? entries : []) {
+      if (item && typeof item.id === "string" && typeof item.data === "string") packed.set(item.id,item);
+    }
+    for (const id of App.sampleIds(project)) {
+      const item = packed.get(id);
+      const existing = await App.sampleBlob(id).catch(()=>null);
+      if (!item) {
+        if (!existing) throw Error("PROJECT REFERENCES A MISSING SAMPLE");
+        continue;
       }
-      Seq.stop();
-      App.P = P;
-      App.commit();
-      App.refresh();
-      UI.msg("OPENED " + P.name + " · UNDO RETURNS TO THE PREVIOUS PROJECT");
-    } catch (e) { UI.msg("NOT A MUSICLAB PROJECT FILE"); }
+      let blob;
+      try { blob = unb64(item.data,item.type); } catch { throw Error("INVALID SAMPLE DATA"); }
+      if (existing && existing.size === blob.size && (await b64(existing)) === item.data) continue;
+      const dest = existing ? App.uid() : id;
+      try { if (!await App.importSample(dest,String(item.name || "SAMPLE").slice(0,40),blob)) stored = false; }
+      catch { throw Error("CANNOT DECODE THE EMBEDDED SAMPLE"); }
+      if (dest !== id) for (const t of project.tracks) {
+        if (t.smp.id === id) t.smp.id = dest;
+        for (const pad of t.kit.pads) if (pad.id === id) pad.id = dest;
+      }
+    }
+    return stored;
   }
-  App.pickFile = (accept, cb) => {
+
+  async function openFile(file, isMidi) {
+    const request = ++fileRequest;
+    const current = () => request === fileRequest;
+    try {
+      let project, entries, summary;
+      if (isMidi) {
+        const result = App.MidiImport.read(await file.arrayBuffer(),file.name);
+        project = result.project; summary = result.summary;
+      } else {
+        const raw = JSON.parse(await file.text());
+        project = raw?.app === "MUSICLAB" && raw.v === 3 ? App.sanitize(raw) : null;
+        if (!project) throw Error("UNSUPPORTED PROJECT FORMAT");
+        entries = raw.samples;
+      }
+      if (!current()) return;
+      const rows = [["File",file.name],["Project",project.name],["Contents",projectStats(project)]];
+      if (summary) rows.push(["MIDI mapping",summary]);
+      rows.push(["Replaces",App.P.name+" · Undo available"]);
+      const choice = await App.Workspace.decide({title:isMidi?"Import MIDI?":"Open project?",rows,
+        actions:[{id:"open",label:isMidi?"Import MIDI":"Open project",primary:true}]});
+      if (!current() || choice !== "open") return;
+      const samplesStored = isMidi || await importSamples(project,entries);
+      if (!current()) return;
+      await finishRecordings();
+      if (!current()) return;
+      App.commit();installProject(project);
+      UI.msg((isMidi?"MIDI IMPORTED · ":"OPENED ") + project.name + (samplesStored ? "" : " · SAMPLES IN THIS TAB ONLY · SAVE A PROJECT COPY"));
+    } catch (e) {
+      if (current()) UI.msg(e instanceof SyntaxError ? "INVALID PROJECT JSON" : e.message || "IMPORT FAILED");
+    }
+  }
+  App.pickFile = (accept, cb, multiple = true) => {
     const inp = document.getElementById("file");
-    inp.accept = accept; inp.multiple = true; inp.value = "";
+    inp.accept = accept; inp.multiple = multiple; inp.value = "";
     inp.onchange = () => { if (inp.files.length) cb([...inp.files]); };
     inp.click();
   };
   App.file = async (v) => {
     const name = App.P.name;
-    if (v === "new") { Seq.stop(); App.P = App.newProject(); App.commit(); App.refresh(); UI.msg("NEW PROJECT · UNDO RETURNS TO THE PREVIOUS ONE"); }
-    else if (v === "open") App.pickFile(".json,application/json", (f) => openProject(f[0]));
-    else if (v === "save") saveProject();
-    else if (v === "mid") download(Seq.midi(), name + ".mid");
-    else if (v === "wav") {
-      UI.msg("RENDERING");
-      try {
+    try {
+      if (v === "new") return await resetProject();
+      if (v === "restore") return await restoreReset();
+      if (v === "open") App.pickFile(".json,application/json", f=>openFile(f[0],false),false);
+      else if (v === "import-midi") App.pickFile(".mid,.midi,audio/midi", f=>openFile(f[0],true),false);
+      else if (v === "save") await saveProject();
+      else if (v === "mid") download(Seq.midi(),name + ".mid");
+      else if (v === "wav") {
+        UI.msg("RENDERING");
         const buf = await Seq.bounce();
-        download(App.wav(buf), name + ".wav");
-        UI.msg("WAV EXPORTED · " + buf.duration.toFixed(1) + " S · 24 BIT " + buf.sampleRate / 1000 + " KHZ");
-      } catch (e) { UI.msg("EXPORT FAILED · " + (e.message || "")); }
-    }
+        download(App.wav(buf),name + ".wav");
+        UI.msg("WAV EXPORTED · " + buf.duration.toFixed(1) + " S · 24 BIT " + buf.sampleRate/1000 + " KHZ");
+      }
+    } catch (e) { UI.msg(e.message || "FILE OPERATION FAILED"); }
   };
 
   /* ── playing notes: computer keys + MIDI, optionally written into the running pattern ── */
@@ -284,6 +442,8 @@
     const E = App.audio();
     if (!E || held.has(id)) return;
     const P = App.P, ti = P.sel.t, T = P.tracks[ti];
+    const same = [...held.values()].find(key => key.ti === ti && key.note === note);
+    if (same) { held.set(id, same); return; }
     if (T.kind === "kit" && note >= 36 && note < 44 && P.sel.pad !== note - 36) { P.sel.pad = note - 36; App.Dv.build(); App.Ed.draw(); }
     E.noteOn(ti, note, vel);
     App.Ed.key(note, true);
@@ -293,6 +453,7 @@
     const d = held.get(id);
     if (!d) return;
     held.delete(id);
+    if ([...held.values()].includes(d)) return;
     App.Ed.key(d.note, false);
     App.E && App.E.noteOff(d.ti, d.note);
     if (d.rec) {
@@ -303,8 +464,26 @@
     }
   };
 
+  App.silence = () => { releaseAll(); Seq.stop(); App.E?.panic(true); UI.msg("TRANSPORT STOPPED · ALL SOUND OFF"); };
+  App.playToggle = () => {
+    if (!Seq.playing) {
+      const P = App.P, bank = Seq.songOn() ? P.chain : [P.sel.p];
+      if (!bank.some(p => P.tracks.some(t => t.clips[p].length)) && !P.click)
+        UI.msg("EMPTY " + (Seq.songOn() ? "SONG" : "PATTERN") + " · CLICK THE NOTE GRID OR ARM REC AND PLAY");
+    }
+    Seq.toggle();
+  };
   window.addEventListener("keydown", (e) => {
-    if (e.target.closest && e.target.closest("input")) return;
+    if (e.defaultPrevented || document.querySelector("dialog[open],[role=dialog]") ||
+        e.target.closest?.("input,textarea,select,[contenteditable=true]")) return;
+    if (UI.menuOpen() || document.querySelector(".pop,.mn")) {
+      if (e.key === "Escape") { e.preventDefault(); UI.closeMenu(true); }
+      return;
+    }
+    if (((e.ctrlKey || e.metaKey) && e.code === "KeyK") || e.key === "?") {
+      e.preventDefault(); if (!e.repeat) App.Workspace.commands(); return;
+    }
+    if (e.target.closest?.("button,[role=slider],[role=switch]") && ["Enter"," "].includes(e.key)) return;
     if (e.ctrlKey || e.metaKey) {
       const k = e.key.toLowerCase();
       if (k === "z") { e.preventDefault(); App.doUndo(e.shiftKey ? 1 : -1); }
@@ -315,8 +494,8 @@
     if (e.altKey) return;
     const s = App.P.sel;
     switch (e.code) {
-      case "Space": e.preventDefault(); if (!e.repeat) Seq.toggle(); return;
-      case "Escape": UI.closeMenu(); held.clear(); App.E && App.E.panic(); return;
+      case "Space": e.preventDefault(); if (!e.repeat) App.playToggle(); return;
+      case "Escape": if (App.Workspace.focused()) App.Workspace.focus(""); else App.silence(); return;
       case "ArrowLeft": e.preventDefault(); App.select(s.t, (s.p + 7) % 8); return;
       case "ArrowRight": e.preventDefault(); App.select(s.t, (s.p + 1) % 8); return;
       case "ArrowUp": e.preventDefault(); App.select(Math.max(0, s.t - 1)); return;
@@ -338,8 +517,9 @@
   App.midiN = 0;
   const onMidi = (e) => {
     const [st, d1, d2] = e.data, c = st & 0xf0;
-    if (c === 0x90 && d2 > 0) App.noteOn(d1, d2 / 127, "m" + d1);
-    else if (c === 0x80 || c === 0x90) App.noteOff("m" + d1);
+    const key = "m:" + e.currentTarget.id + ":" + (st & 15) + ":" + d1;
+    if (c === 0x90 && d2 > 0 && !document.querySelector("dialog[open]")) App.noteOn(d1, d2 / 127, key);
+    else if (c === 0x80 || c === 0x90) App.noteOff(key);
   };
   App.midi = async () => {
     if (!navigator.requestMIDIAccess) { UI.msg("THIS BROWSER HAS NO WEB MIDI"); return; }
@@ -348,6 +528,10 @@
       const hook = () => {
         let n = 0;
         for (const inp of acc.inputs.values()) { inp.onmidimessage = onMidi; n++; }
+        const ports = [...acc.inputs.keys()].map(id => "m:" + id + ":");
+        for (const key of [...held.keys()]) {
+          if (key.startsWith("m:") && !ports.some(prefix => key.startsWith(prefix))) App.noteOff(key);
+        }
         App.midiN = n;
         App.Top.sync();
         UI.msg(n ? n + " MIDI INPUT" + (n > 1 ? "S" : "") + " · PLAYS THE SELECTED TRACK" : "NO MIDI DEVICE FOUND");
@@ -379,6 +563,7 @@
     App.P = App.stored() || App.newProject();
     UI.init();
     App.Top.build(); App.Mx.build(); App.Ed.build(); App.Dv.build(); App.Fx.build(); App.Sg.build();
+    App.Workspace.init();
     App.commit();
     App.refresh();
     const relayout = () => { theme(); App.Mx.draw(); App.Ed.draw(); App.Dv.paint(); App.Sg.resize(); };

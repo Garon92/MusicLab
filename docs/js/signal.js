@@ -8,6 +8,7 @@
     const L = new Float32Array(N), Rr = new Float32Array(N), mono = new Float32Array(N);
     let spec = null, peakHold = null, ysF = null, col = null, lut = null;
     let cvS, cvF, cvG, cvP, cvM, xS, xF, xG, xP, xM, srcB = {}, monB, holdB, ptN, ptC, ptH, ptM, fRd;
+    let frozen = null, inputRequest = 0;
     let mode = "out", hold = false, mon = false, tick = 0, cur = null, D = 1, binOf = null, lastHz = 0;
     const lvl = { pk: [0, 0], rms: [0, 0], hold: [0, 0], holdT: [0, 0] };
 
@@ -21,7 +22,16 @@
       for (const [k, t, tip] of [["out", "OUT", "ANALYSE THE MASTER OUTPUT"], ["trk", "TRACK", "ANALYSE THE SELECTED TRACK ALONE"], ["in", "INPUT", "ANALYSE MIC / LINE INPUT · ASKS FOR PERMISSION"]])
         srcB[k] = btn(t, tip, () => setMode(k));
       monB = btn("MON", "MONITOR · HEAR THE INPUT THROUGH THE MASTER · USE HEADPHONES", () => { mon = !mon; App.E && App.E.monitor(mon && mode === "in"); sync(); });
-      holdB = btn("HOLD", "FREEZE ALL DISPLAYS", () => { hold = !hold; sync(); });
+      holdB = btn("HOLD", "FREEZE ALL DISPLAYS", () => {
+        hold = !hold;
+        frozen = hold ? [cvS, cvF, cvG, cvP, cvM].map(canvas => {
+          const copy = document.createElement("canvas");
+          copy.width = canvas.width; copy.height = canvas.height;
+          copy.getContext("2d").drawImage(canvas, 0, 0);
+          return copy;
+        }) : null;
+        sync();
+      });
       const pane = (cls, tip) => { const c = h("canvas"), w = h("div.sp-p" + (cls ? "." + cls : ""), { tip }, c); return [w, c, c.getContext("2d")]; };
       let wS, wF, wG, wP, wM;
       [wS, cvS, xS] = pane("", "SCOPE · WAVEFORM OVER TIME · TRIGGERED SO A STEADY TONE STANDS STILL");
@@ -57,11 +67,13 @@
     }
 
     async function setMode(k) {
+      const request = ++inputRequest;
       const E = App.audio();
       if (!E) return;
       if (k === "in" && !E.input) {
-        try { await E.openInput(); } catch (e) { UI.msg("INPUT REFUSED · ALLOW THE MICROPHONE FOR THIS PAGE"); return; }
+        try { await E.openInput(); } catch (e) { if (request !== inputRequest) return; UI.msg("INPUT REFUSED · ALLOW THE MICROPHONE FOR THIS PAGE"); return; }
       }
+      if (request !== inputRequest) return;
       mode = k;
       source();
       sync();
@@ -80,16 +92,27 @@
     }
 
     function resize() {
-      if (!cvS) return;
+      if (!cvS || !cvS.clientWidth) return;
       for (const c of [cvS, cvF, cvG, cvP, cvM]) D = UI.fit(c);
       binOf = null; col = null;
+      if (hold && frozen) { redrawStatic(); return; }
       xG.fillStyle = "#000"; xG.fillRect(0, 0, cvG.width, cvG.height);
       xP.fillStyle = App.C.pn; xP.fillRect(0, 0, cvP.width, cvP.height);
       redrawStatic();
     }
     // What the displays look like with no signal: graticules only.
-    function redrawStatic() {
-      if (App.E && !hold) return;
+    function redrawStatic(force = false) {
+      if (hold && frozen) {
+        [xS, xF, xG, xP, xM].forEach((g, i) => g.drawImage(frozen[i], 0, 0, g.canvas.width, g.canvas.height));
+        if (cur?.kind === "f") {
+          const w = cvF.width, hh = cvF.height, x = cur.x * w, y = cur.y * hh;
+          xF.fillStyle = App.C.am; xF.fillRect(x, 0, Math.max(1,D), hh); xF.fillRect(0, y, w, Math.max(1,D));
+          const hz = xf(x, w), bin = spec && Math.min(spec.length - 1, Math.round(hz * 2 / App.E.ctx.sampleRate * spec.length));
+          UI.hint("SPECTRUM    " + App.fHz(hz) + " HZ" + (spec ? "    SIGNAL HERE " + Math.round(clamp(spec[bin], -200, 0)) + " DB" : ""));
+        }
+        return;
+      }
+      if (!force && App.E && !hold) return;
       if (App.E && spec) { drawSpectrum(App.E.ctx.sampleRate); return; }
       const C = App.C;
       xS.fillStyle = C.pn; xS.fillRect(0, 0, cvS.width, cvS.height);
@@ -257,7 +280,7 @@
 
     function frame() {
       const E = App.E;
-      if (!E || hold || !cvS) return;
+      if (!E || hold || !cvS || !cvS.clientWidth) return;
       tick++;
       const sr = E.ctx.sampleRate, C = App.C, l = Math.max(1, Math.round(D));
       E.anL.getFloatTimeDomainData(L); E.anR.getFloatTimeDomainData(Rr);
@@ -335,6 +358,19 @@
       drawLevel();
     }
 
-    return { build, frame, resize, source, sync, mode: () => mode };
+    function reset() {
+      inputRequest++;
+      mode = "out"; hold = mon = false; frozen = cur = spec = peakHold = binOf = null;
+      tick = lastHz = 0;
+      for (const pair of Object.values(lvl)) pair.fill(0);
+      if (App.E) source();
+      if (!cvS) return;
+      ptN.textContent = "--"; ptC.textContent = ptH.textContent = fRd.textContent = "";
+      ptM.style.display = "none";
+      xG.fillStyle = "#000"; xG.fillRect(0, 0, cvG.width, cvG.height);
+      redrawStatic(true); sync();
+    }
+
+    return { build, frame, resize, source, sync, reset, mode: () => mode };
   })();
 })();

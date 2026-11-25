@@ -306,7 +306,7 @@
   const notes = (a) =>
     Array.isArray(a)
       ? a.filter((n) => n && Number.isInteger(n.s) && Number.isInteger(n.n)).slice(0, 4000)
-          .map((n) => ({ s: clamp(n.s, 0, 63), n: clamp(n.n, 0, 127), l: num(n.l, 1, 64, 1, 1), v: num(n.v, 0.02, 1, 0.8), p: num(n.p, 0, 1, 1) }))
+          .map((n) => ({ s: clamp(n.s, 0, 63), n: clamp(n.n, 0, 127), l: num(n.l, 1, 64, 1, 1), v: num(n.v, 0.02, 1, 0.8), p: num(n.p, 0, 1, 1), ...(n.r > 1 ? { r: num(n.r, 1, 8, 1, 1) } : {}) }))
       : [];
 
   const sanitize = (src) => {
@@ -322,7 +322,7 @@
       if (!s || typeof s !== "object") return d;
       return {
         name: str(s.name, d.name, 10), kind: ["syn", "kit", "smp"].includes(s.kind) ? s.kind : d.kind,
-        ...fit(DEF.trk, s), lo: num(s.lo, 0, 104, d.lo, 1),
+        ...fit(DEF.trk, s), lo: num(s.lo, 0, 116, d.lo, 1),
         arp: fit(DEF.arp, s.arp), syn: fit(DEF.syn, s.syn, d.syn),
         smp: { ...fit(DEF.smp, s.smp), id: sid(s.smp?.id) },
         kit: { pads: d.kit.pads.map((pd, k) => ({ ...fit(DEF.pad, s.kit?.pads?.[k], pd), name: str(s.kit?.pads?.[k]?.name, pd.name, 8), id: sid(s.kit?.pads?.[k]?.id) })) },
@@ -342,15 +342,16 @@
     try { localStorage.setItem(KEY, s); } catch (e) { App.UI?.msg("LOCAL SAVE FAILED · USE FILE > SAVE"); }
   };
   // Checkpoint: one undo step per finished gesture.
-  App.commit = () => {
+  App.commit = (projectChange = false) => {
     const s = JSON.stringify(App.P);
-    if (s === hist.st[hist.i]) return;
+    if (s === hist.st[hist.i]?.data) return;
     hist.st.length = hist.i + 1;
-    hist.st.push(s);
+    hist.st.push({ data: s, projectChange });
     if (hist.st.length > 160) hist.st.shift();
     hist.i = hist.st.length - 1;
     clearTimeout(saveT);
     save(s);
+    App.Top?.history?.();
   };
   // Save without a checkpoint (selection, view position, mid-drag values).
   App.touch = () => {
@@ -362,13 +363,17 @@
     const i = hist.i + d;
     if (i < 0 || i >= hist.st.length) return false;
     const sel = App.P.sel;
+    const crossesProject = hist.st[d < 0 ? hist.i : i].projectChange;
     hist.i = i;
-    App.P = JSON.parse(hist.st[i]);
-    App.P.sel = sel;
+    App.P = JSON.parse(hist.st[i].data);
+    if (!crossesProject) App.P.sel = sel;
     clearTimeout(saveT);
     save(JSON.stringify(App.P));
+    App.Top?.history?.();
     return true;
   };
+  App.canUndo = () => hist.i > 0;
+  App.canRedo = () => hist.i < hist.st.length - 1;
   App.undo = () => step(-1);
   App.redo = () => step(1);
   App.stored = () => {
@@ -434,11 +439,11 @@
     const ctx = App.E ? App.E.ctx : new OfflineAudioContext(2, 1, 48000);
     return ctx.decodeAudioData(bytes.slice(0));
   };
-  const register = (id, name, buffer) => {
+  const register = (id, name, buffer, blob = null) => {
     const pk = peaks(buffer);
     let peak = 0;
     for (let i = 0; i < pk.length; i++) { const a = Math.abs(pk[i]); if (a > peak) peak = a; }
-    const s = { id, name, buffer, peaks: pk, peak, rev: null };
+    const s = { id, name, buffer, blob, peaks: pk, peak, rev: null };
     App.samples.set(id, s);
     return s;
   };
@@ -446,7 +451,7 @@
   App.addSample = async (name, blob) => {
     const buffer = await decode(await blob.arrayBuffer());
     const id = uid();
-    register(id, name, buffer);
+    register(id, name, buffer, blob);
     idb.put({ id, name, blob }).catch(() => App.UI.msg("SAMPLE NOT STORED LOCALLY · USE FILE > SAVE"));
     return id;
   };
@@ -467,15 +472,20 @@
       if (App.samples.has(id)) continue;
       try {
         const r = await idb.get(id);
-        if (r) { register(id, r.name, await decode(await r.blob.arrayBuffer())); n++; }
+        if (r) { register(id, r.name, await decode(await r.blob.arrayBuffer()), r.blob); n++; }
       } catch (e) { /* missing audio shows as an empty sampler */ }
     }
     return n;
   };
-  App.sampleBlob = async (id) => (await idb.get(id))?.blob || (App.samples.has(id) ? wav(App.samples.get(id).buffer) : null);
+  App.sampleBlob = async (id) => {
+    const sample = App.samples.get(id);
+    if (sample?.blob) return sample.blob;
+    if (sample) return wav(sample.buffer);
+    return (await idb.get(id))?.blob || null;
+  };
   App.importSample = async (id, name, blob) => {
-    register(id, name, await decode(await blob.arrayBuffer()));
-    idb.put({ id, name, blob }).catch(() => {});
+    register(id, name, await decode(await blob.arrayBuffer()), blob);
+    try { await idb.put({ id, name, blob }); return true; } catch { return false; }
   };
 
   Object.assign(App, {

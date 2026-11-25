@@ -1,0 +1,7 @@
+#ed .ed-tools, #ed .ed-actions { gap: .9rem; }
+#ed .ed-actions { flex-basis: 2.25rem; background: var(--pn2); }
+#ed .ed-actions .bt { height: 1.65rem; }
+#ed .ed-count { display: inline-flex; justify-content: center; align-items: center; min-width: 2.5rem; font-variant-numeric: tabular-nums; margin-right: .4rem; color: var(--am); }
+#ed .ed-b canvas { touch-action: none; }
+#ed .ed-b canvas[data-tool="select"] { cursor: default; }
+#ed .ed-b canvas:focus-visible { outline-offset: -1px; }

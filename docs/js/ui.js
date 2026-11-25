@@ -59,7 +59,14 @@
 
   /* ── popups ───────────────────────────────────────────────────── */
   let open = null;
-  UI.closeMenu = () => { if (open) { open.remove(); open = null; } };
+  let opener = null;
+  UI.closeMenu = (restore = false) => {
+    if (!open) return;
+    open.remove(); open = null;
+    if (restore && opener?.isConnected) opener.focus?.({preventScroll:true});
+    opener = null;
+  };
+  UI.menuOpen = () => !!open;
   const place = (m, anchor) => {
     document.body.append(m);
     const r = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor, b = m.getBoundingClientRect();
@@ -68,37 +75,60 @@
     if (y < 0) y = Math.max(0, innerHeight - b.height);
     m.style.left = clamp(x, 0, Math.max(0, innerWidth - b.width)) + "px";
     m.style.top = y + "px";
-    open = m;
+    open = m; opener = anchor;
   };
   UI.menu = (anchor, items, pick) => {
     UI.closeMenu();
-    const m = h("div.mn");
+    const m = h("div.mn", {role:"menu", "aria-label":anchor.getAttribute?.("aria-label") || anchor.textContent || "Actions"});
     for (const it of items) {
       if (it === "-") { m.append(h("div.mn-s")); continue; }
-      const b = h("div.mn-i" + (it.on ? ".on" : ""), { tip: it.tip }, h("span", { text: it.label }), it.key ? h("span.k", { text: it.key }) : null);
-      b.onclick = () => { UI.closeMenu(); pick(it.value ?? it.label); };
+      const b = h("button.mn-i" + (it.on ? ".on" : ""), { type:"button", role:"menuitem", disabled:it.disabled, tip: it.tip }, h("span", { text: it.label }), it.key ? h("span.k", { text: it.key }) : null);
+      b.onclick = e => { UI.closeMenu(e.detail === 0); pick(it.value ?? it.label); };
       m.append(b);
     }
     place(m, anchor);
+    const choices = [...m.querySelectorAll("button:enabled")];
+    choices.find(b => b.classList.contains("on"))?.focus();
+    if (!m.contains(document.activeElement)) choices[0]?.focus();
+    m.onkeydown = e => {
+      const i = choices.indexOf(document.activeElement);
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); UI.closeMenu(true); return; }
+      if (e.key === "Tab") { UI.closeMenu(true); return; }
+      if (!["ArrowDown","ArrowUp","Home","End"].includes(e.key)) return;
+      e.preventDefault(); e.stopPropagation();
+      const next = e.key === "Home" ? 0 : e.key === "End" ? choices.length - 1 : (i + (e.key === "ArrowDown" ? 1 : -1) + choices.length) % choices.length;
+      choices[next]?.focus();
+    };
   };
   UI.pop = (anchor, content) => {
     UI.closeMenu();
     place(h("div.pop", null, content), anchor);
   };
   document.addEventListener("pointerdown", (e) => { if (open && !open.contains(e.target)) UI.closeMenu(); }, true);
+  document.addEventListener("click", e => {
+    const button = e.target.closest?.("button");
+    if (e.detail > 0 && button === document.activeElement && !button?.closest("dialog,.mn,.pop")) button.blur();
+  });
 
   // Inline text entry placed exactly over the thing being edited.
   UI.edit = (target, text, done, max = 24) => {
     const r = target.getBoundingClientRect ? target.getBoundingClientRect() : target;
-    const inp = h("input.ed", { maxlength: max, spellcheck: "false", autocomplete: "off" });
+    const inp = h("input.ed", { "aria-label": target.getAttribute?.("aria-label") || target.dataset?.tip || "Edit value", maxlength: max, spellcheck: "false", autocomplete: "off" });
     inp.value = text;
     inp.style.cssText = `left:${r.left}px;top:${r.top}px;width:${Math.max(r.width, 70)}px;height:${r.height}px`;
     document.body.append(inp);
     App.releaseAll && App.releaseAll(); // a note key held while the entry opens would otherwise never get its key-up
     inp.focus(); inp.select();
     let fin = false;
-    const close = (ok) => { if (fin) return; fin = true; const v = inp.value.trim(); inp.remove(); if (ok && v) done(v); };
-    inp.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") close(true); else if (e.key === "Escape") close(false); };
+    const close = (ok, restore = false) => {
+      if (fin) return;
+      fin = true;
+      const v = inp.value.trim();
+      inp.remove();
+      if (ok && v) done(v);
+      if (restore && target.isConnected) target.focus?.({preventScroll:true});
+    };
+    inp.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") close(true, true); else if (e.key === "Escape") close(false, true); };
     inp.onblur = () => close(true);
   };
 
@@ -173,11 +203,21 @@
     const el = h("div.pm" + (o.cls ? "." + o.cls : "") + (d.bi ? ".bi" : "") + (d.opts ? ".en" : "") + (d.bool ? ".bo" : ""));
     const val = h("span.v"), bar = h("i"), mt = o.meter ? h("u.mt") : null;
     el.append(mt || "", h("span.l", { text: o.label ?? d.l }), val, h("span.b", null, bar));
+    el.tabIndex = 0;
+    el.setAttribute("role", d.bool ? "switch" : d.opts ? "button" : "slider");
+    el.setAttribute("aria-label", d.name || d.l);
+    if (d.opts) el.setAttribute("aria-haspopup", "menu");
+    if (!d.bool && !d.opts) {
+      el.setAttribute("aria-valuemin", d.min); el.setAttribute("aria-valuemax", d.max);
+    }
     const get = () => O()[d.k];
     const done = () => { App.commit(); o.done && o.done(); };
     const paint = (el.paint = () => {
       const v = get(), n = App.toN(d, v);
       val.textContent = App.fmt(d, v);
+      if (d.bool) el.setAttribute("aria-checked", String(!!v));
+      else if (!d.opts) { el.setAttribute("aria-valuenow", v); el.setAttribute("aria-valuetext", val.textContent); }
+      else el.setAttribute("aria-label", (d.name || d.l) + " · " + val.textContent);
       if (d.bool) el.classList.toggle("on", !!v);
       if (d.bi) { bar.style.left = Math.min(n, 0.5) * 100 + "%"; bar.style.width = Math.abs(n - 0.5) * 100 + "%"; }
       else if (d.opts || d.bool) { const k = d.max + 1; bar.style.left = (v / k) * 100 + "%"; bar.style.width = 100 / k + "%"; }
@@ -192,10 +232,11 @@
       if (UI.tipEl === el) UI.tip();
       return true;
     };
+    el.addEventListener("focus", () => { UI.tipEl = el; UI.tip(); });
     el.dataset.tip = d.name;
     el._tip = () =>
       d.name + "  " + App.fmt(d, get()) + (App.UNIT[d.u] || "") + "    " +
-      (d.bool ? "CLICK = TOGGLE" : d.opts ? "CLICK = LIST · DRAG / WHEEL = STEP" : "DRAG / WHEEL · SHIFT = FINE · DOUBLE-CLICK = TYPE") + " · RIGHT-CLICK = RESET";
+      (d.bool ? "CLICK = TOGGLE" : d.opts ? "CLICK = LIST · DRAG / WHEEL = STEP" : "CLICK = TYPE · DRAG / WHEEL = ADJUST · SHIFT = FINE") + " · RIGHT-CLICK = RESET";
     el.meter = mt;
 
     el.addEventListener("pointerdown", (e) => {
@@ -214,14 +255,13 @@
           : App.fromN(d, n0 + dist / (ev.shiftKey ? 8 : 1) / (d.sens || 170), ev.shiftKey);
         if (put(v)) changed = true;
       };
-      const up = () => {
+      const up = (ev) => {
         el.removeEventListener("pointermove", mv);
         el.removeEventListener("pointerup", up);
         el.removeEventListener("pointercancel", up);
         el.classList.remove("dr");
         if (moved) { if (changed) done(); return; }
-        if (d.bool) { put(get() ? 0 : 1); done(); }
-        else if (d.opts) UI.menu(el, d.opts.map((t, i) => ({ label: t, value: i, on: i === get() })), (i) => { if (put(i)) done(); });
+        if (ev.type !== "pointercancel") activate();
       };
       el.addEventListener("pointermove", mv);
       el.addEventListener("pointerup", up);
@@ -243,14 +283,28 @@
       if (put(d.step ? +v.toFixed(3) : v)) { clearTimeout(wt); wt = setTimeout(done, 350); }
     }, { passive: false });
 
-    el.addEventListener("dblclick", () => {
-      if (d.opts || d.bool) return;
+    function activate() {
+      if (d.bool) { put(get() ? 0 : 1); done(); return; }
+      if (d.opts) {
+        UI.menu(el, d.opts.map((t,i)=>({label:t,value:i,on:i===get()})),i=>{if(put(i)) done();});
+        return;
+      }
       UI.edit(el, App.fmt(d, get()), (s) => {
         let v = App.parse(d, s);
         if (!isFinite(v)) return;
         if (d.int) v = Math.round(v);
         if (put(v)) done();
       });
+    }
+    el.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); activate(); return; }
+      if (!["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Home","End"].includes(e.key)) return;
+      e.preventDefault(); e.stopPropagation();
+      const dir = e.key === "ArrowUp" || e.key === "ArrowRight" ? 1 : -1;
+      const v = e.key === "Home" ? d.min : e.key === "End" ? d.max :
+        (d.bool || d.opts || d.int) ? get() + dir : d.step ? get()+dir*(e.shiftKey && d.fine ? d.fine : d.step) :
+        App.fromN(d,App.toN(d,get())+dir*(e.shiftKey ? 0.002 : 0.012),e.shiftKey);
+      if (put(v)) done();
     });
     el.addEventListener("contextmenu", (e) => { e.preventDefault(); if (put(d.def)) done(); });
 
@@ -264,7 +318,6 @@
     return b;
   };
 
-  // A clicked button must not keep focus, or SPACE would press it again instead of toggling play.
-  document.addEventListener("click", (e) => { if (e.target.closest && e.target.closest("button")) document.activeElement && document.activeElement.blur(); });
+
   document.addEventListener("contextmenu", (e) => { if (!e.target.closest || !e.target.closest("input")) e.preventDefault(); });
 })();

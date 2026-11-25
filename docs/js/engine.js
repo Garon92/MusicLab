@@ -46,12 +46,17 @@
     E.out = out;
 
     /* ── sends: ping-pong delay, convolution reverb ── */
-    const dIn = G(), dL = ctx.createDelay(2.5), dR = ctx.createDelay(2.5), dTone = BQ("lowpass", 4500, -3), dFb = G(0.4); // -3 dB = no resonant peak, so the loop gain never exceeds FEEDBACK
-    const pL = ctx.createStereoPanner(), pR = ctx.createStereoPanner();
-    dIn.connect(dL).connect(dR).connect(dTone).connect(dFb).connect(dL);
-    dL.connect(pL).connect(mix); dR.connect(pR).connect(mix);
-    const rIn = G(), conv = ctx.createConvolver();
-    rIn.connect(conv).connect(mix);
+    const dIn = G(), rIn = G(), pL = ctx.createStereoPanner(), pR = ctx.createStereoPanner();
+    let dL, dR, dTone, dFb, conv;
+    pL.connect(mix); pR.connect(mix);
+    const buildReturns = () => {
+      dL = ctx.createDelay(2.5); dR = ctx.createDelay(2.5);
+      dTone = BQ("lowpass", 4500, -3); dFb = G(0.4);
+      dIn.connect(dL).connect(dR).connect(dTone).connect(dFb).connect(dL);
+      dL.connect(pL); dR.connect(pR);
+      conv = ctx.createConvolver(); rIn.connect(conv).connect(mix);
+    };
+    buildReturns();
     let irSig = "", irT = 0;
     const makeIR = (sec, damp) => {
       const n = Math.floor(sr * clamp(sec, 0.1, 10)), pre = Math.floor(sr * 0.012);
@@ -388,10 +393,26 @@
       for (const f of v.f) { f.detune.cancelScheduledValues(t); f.detune.setTargetAtTime(0, t, v.frel / 4); }
       finish(v, t + v.rel * 1.5 + 0.03);
     };
-    E.panic = () => {
+    const clicks = new Set();
+    E.panic = (clearReturns = false) => {
       const t = ctx.currentTime;
       held.clear();
-      for (const v of E.voices.slice()) cut(v, t, 0.008);
+      for (const [o, g] of clicks) { o.stop(); g.disconnect(); }
+      clicks.clear();
+      for (const v of E.voices.slice()) {
+        if (clearReturns) { finish(v, t); kill(v); }
+        else cut(v, t, 0.008);
+      }
+      if (clearReturns) {
+        const impulse = conv.buffer;
+        for (const node of [dIn, dL, dR, dTone, dFb, rIn, conv]) node.disconnect();
+        buildReturns();
+        conv.buffer = impulse;
+        const fx = getP().fx;
+        dL.delayTime.value = dR.delayTime.value = clamp(DELAY_BEATS[fx.dtime] * 60 / getP().bpm, 0.01, 2.4);
+        dFb.gain.value = fx.dfb; dTone.frequency.value = fx.dtone;
+        tr.forEach(t => { t.lastHz = 0; });
+      }
     };
 
     // Metronome goes straight to the speakers: never through the master, never onto tape.
@@ -402,7 +423,8 @@
       g.gain.setTargetAtTime(0, t + 0.004, 0.012);
       o.connect(g).connect(ctx.destination);
       o.start(t); o.stop(t + 0.1);
-      o.onended = () => g.disconnect();
+      const pair = [o, g]; clicks.add(pair);
+      o.onended = () => { clicks.delete(pair); o.disconnect(); g.disconnect(); };
     };
 
     if (!live) return E;
@@ -434,15 +456,31 @@
     };
     E.source("out");
 
-    let mon = null;
-    E.openInput = async () => {
-      if (E.input) return E.input;
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
-      E.input = G();
-      ctx.createMediaStreamSource(stream).connect(E.input);
-      mon = G(0);
-      E.input.connect(mon).connect(mix);
-      return E.input;
+    let mon = null, inputStream = null, inputNode = null, opening = null, inputVersion = 0;
+    E.openInput = () => {
+      if (E.input) return Promise.resolve(E.input);
+      if (opening) return opening;
+      const version = inputVersion;
+      opening = navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } })
+        .then(stream => {
+          if (version !== inputVersion) {
+            stream.getTracks().forEach(t => t.stop());
+            throw new Error("INPUT CLOSED");
+          }
+          inputStream = stream;
+          E.input = G(); inputNode = ctx.createMediaStreamSource(stream);
+          inputNode.connect(E.input); mon = G(0);
+          E.input.connect(mon).connect(mix);
+          return E.input;
+        }).finally(() => { if (version === inputVersion) opening = null; });
+      return opening;
+    };
+    E.closeInput = () => {
+      inputVersion++; opening = null;
+      if (srcNode && srcNode === E.input) E.source("out");
+      if (inputStream) inputStream.getTracks().forEach(t => t.stop());
+      for (const node of [inputNode, E.input, mon]) if (node) node.disconnect();
+      inputStream = inputNode = E.input = mon = null;
     };
     E.monitor = (on) => mon && set(mon.gain, on ? 1 : 0);
 
@@ -453,7 +491,7 @@
         // A page opened straight from disk cannot load a blob: module, a data: URL works there.
         const file = location.protocol === "file:";
         const url = file ? "data:text/javascript;charset=utf-8," + encodeURIComponent(REC_SRC) : URL.createObjectURL(new Blob([REC_SRC], { type: "text/javascript" }));
-        worklet = ctx.audioWorklet.addModule(url).then(() => true, () => false);
+        worklet = ctx.audioWorklet.addModule(url).then(() => true, () => false).finally(() => { if (!file) URL.revokeObjectURL(url); });
       }
       return worklet;
     };
