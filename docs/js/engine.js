@@ -10,10 +10,10 @@
   const LFO_UNITS = [8, 4, 2, 1, 2, 1, 0.5, 0.25]; // first four in bars, rest in beats
 
   const REC_SRC =
-    'class R extends AudioWorkletProcessor{constructor(){super();this.a=new Float32Array(4096);this.b=new Float32Array(4096);this.n=0;this.on=true;' +
+    'class R extends AudioWorkletProcessor{constructor(){super();this.a=new Float32Array(4096);this.b=new Float32Array(4096);this.n=0;this.on=true;this.first=-1;' +
     "this.port.onmessage=()=>{this.on=false;this.flush();this.port.postMessage(0)}}" +
-    "flush(){if(!this.n)return;this.port.postMessage([this.a.slice(0,this.n),this.b.slice(0,this.n)]);this.n=0}" +
-    "process(i){if(!this.on)return false;const c=i[0],l=c&&c[0],r=c&&c[1]||l,m=l?l.length:128;" +
+    "flush(){if(!this.n)return;this.port.postMessage([this.a.slice(0,this.n),this.b.slice(0,this.n),this.first]);this.n=0}" +
+    "process(i){if(!this.on)return false;if(this.first<0)this.first=currentFrame;const c=i[0],l=c&&c[0],r=c&&c[1]||l,m=l?l.length:128;" +
     "for(let k=0;k<m;k++){this.a[this.n]=l?l[k]:0;this.b[this.n]=r?r[k]:0;if(++this.n===4096)this.flush()}return true}}" +
     'registerProcessor("ml-rec",R)';
 
@@ -32,7 +32,8 @@
     const set = (p, v, tc = 0.015) => { if (hard || !live) p.value = v; else p.setTargetAtTime(v, ctx.currentTime, tc); };
 
     /* ── master: EQ → compressor → limiter → hard ceiling → volume ── */
-    const mix = G();
+    const mix = G(), returns = G();
+    returns.connect(mix);
     const sub = BQ("highpass", 20, -3); // nothing below hearing reaches the compressor or eats headroom
     const low = BQ("lowshelf", 120), mid = BQ("peaking", 1000, 0.8), high = BQ("highshelf", 6500);
     const comp = ctx.createDynamicsCompressor();
@@ -42,19 +43,20 @@
     const ceil = ctx.createWaveShaper();
     ceil.curve = new Float32Array([-1, 1]);
     const out = G(0.64);
-    mix.connect(sub).connect(low).connect(mid).connect(high).connect(comp).connect(lim).connect(ceil).connect(out).connect(ctx.destination);
+    mix.connect(sub).connect(low).connect(mid).connect(high).connect(comp).connect(lim).connect(ceil).connect(out);
+    if (!opt.stems?.length) out.connect(ctx.destination);
     E.out = out;
 
     /* ── sends: ping-pong delay, convolution reverb ── */
     const dIn = G(), rIn = G(), pL = ctx.createStereoPanner(), pR = ctx.createStereoPanner();
     let dL, dR, dTone, dFb, conv;
-    pL.connect(mix); pR.connect(mix);
+    pL.connect(returns); pR.connect(returns);
     const buildReturns = () => {
       dL = ctx.createDelay(2.5); dR = ctx.createDelay(2.5);
       dTone = BQ("lowpass", 4500, -3); dFb = G(0.4);
       dIn.connect(dL).connect(dR).connect(dTone).connect(dFb).connect(dL);
       dL.connect(pL); dR.connect(pR);
-      conv = ctx.createConvolver(); rIn.connect(conv).connect(mix);
+      conv = ctx.createConvolver(); rIn.connect(conv).connect(returns);
     };
     buildReturns();
     let irSig = "", irT = 0;
@@ -80,41 +82,48 @@
     const tr = [];
     for (let i = 0; i < 8; i++) {
       const t = {
-        tin: G(), sh: ctx.createWaveShaper(), post: G(), gate: G(), filter: BQ("lowpass", sr / 2, -3),
+        instrument: G(), tin: G(), kick: G(), sh: ctx.createWaveShaper(), post: G(), gate: G(), filter: BQ("lowpass", sr / 2, -3),
         trem: G(), vol: G(0), pan: ctx.createStereoPanner(), sd: G(0), sr: G(0),
         pitch: G(), cut: G(), // modulation buses in cents, summed into every voice of the track
         lfo: null, lg: G(0), ldest: 0, drive: -1, lastHz: 0, an: null, lv: 0,
       };
-      t.tin.connect(t.sh).connect(t.post).connect(t.filter).connect(t.trem).connect(t.gate).connect(t.vol).connect(t.pan).connect(mix);
-      t.pan.connect(t.sd).connect(dIn);
-      t.pan.connect(t.sr).connect(rIn);
-      if (live) { t.an = ctx.createAnalyser(); t.an.fftSize = 512; t.pan.connect(t.an); }
-      t.params = {vol:t.vol.gain, pan:t.pan.pan, filter:t.filter.frequency, dly:t.sd.gain, rev:t.sr.gain};
+      t.instrument.connect(t.tin);
+      t.tin.connect(t.sh).connect(t.post).connect(t.filter);
+      t.trem.connect(t.gate).connect(t.vol).connect(t.pan);
+      t.sd.connect(dIn);
+      t.sr.connect(rIn);
+      if (live) { t.an = ctx.createAnalyser(); t.an.fftSize = 512; }
+      t.cutHz = ctx.createConstantSource(); t.cutHz.offset.value = 20000; t.cutHz.start();
+      t.params = {cutoff:t.cutHz.offset, vol:t.vol.gain, pan:t.pan.pan, filter:t.filter.frequency, dly:t.sd.gain, rev:t.sr.gain};
       t.written = new Set();
       t.releaseAt = {};
       tr.push(t);
     }
     E.tracks = tr;
+    const rack = E.rack = App.makeRackGraph(ctx, getP, tr, mix, returns, opt.stems);
 
     const devOf = (T) => (T.kind === "syn" ? T.syn : T.kind === "smp" ? T.smp : null);
     const qOf = (d) => (d.ftype === 3 ? 0.7 + d.res * 0.6 : d.res); // LP/HP take resonance in dB, BP takes Q
 
     const audioValue = (key, v) => {
       if (key === "pan") return 2 * v - 1;
+      if (key === "cutoff") return App.fromN(App.DEF.syn.cut,v);
       if (key === "filter") return 20 * (sr / 40) ** v;
       return v * v;
     };
+    const baseValue = (T,key) => key === "cutoff" ? (devOf(T)?.cut ?? 20000) : audioValue(key, App.curveBase(T,key));
     E.automate = (ti, T, lanes, step, start, end) => {
       const t = tr[ti];
       // Adjacent scheduler windows must agree on the sample at a loop boundary.
       start = Math.round(start * sr) / sr;
       end = Math.round(end * sr) / sr;
-      for (const key of App.automationKeys) {
+      rack.automate(ti, lanes, step, start, end);
+      for (const key of Object.keys(t.params)) {
         const lane = lanes?.[key], param = t.params[key];
         if (!lane?.points.length) {
           if (t.written.delete(key)) {
             t.releaseAt[key] = start;
-            param.setValueAtTime(audioValue(key, App.curveBase(T, key)), start);
+            param.setValueAtTime(baseValue(T,key), start);
           }
           continue;
         }
@@ -122,7 +131,7 @@
         const from = App.curveValue(lane, step), to = App.curveValue(lane, step + 1, from, "left");
         param.setValueAtTime(audioValue(key, from), start);
         if (to !== from && App.curveShape(lane, step) === "linear") {
-          if (key === "filter") param.exponentialRampToValueAtTime(audioValue(key, to), end);
+          if (key === "filter" || key === "cutoff") param.exponentialRampToValueAtTime(audioValue(key, to), end);
           else {
             // Volume and sends use the squared fader law. Sample that curvature
             // between step boundaries; pan is already linear in its audio unit.
@@ -140,11 +149,13 @@
       }
     };
     E.stopAutomation = () => {
+      rack.stop();
       const now = ctx.currentTime;
       tr.forEach((t, i) => {
         const keys = new Set([...t.written, ...Object.keys(t.releaseAt)]);
         for (const key of keys) {
-          const param = t.params[key], base = audioValue(key, App.curveBase(getP().tracks[i], key));
+          const T = getP().tracks[i], param = t.params[key];
+          const base = baseValue(T,key);
           if (param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(now);
           else param.cancelScheduledValues(now);
           param.setTargetAtTime(base, now, .007);
@@ -179,9 +190,9 @@
       const P = getP(), T = P.tracks[i], t = tr[i], d = devOf(T);
       const solo = P.tracks.some((x) => x.solo);
       set(t.gate.gain, !T.mute && (!solo || T.solo) ? 1 : 0);
-      for (const key of App.automationKeys) {
+      for (const key of Object.keys(t.params)) {
         if (t.written.has(key)) continue;
-        const base = audioValue(key, App.curveBase(T, key));
+        const base = baseValue(T,key);
         if (t.releaseAt[key] > ctx.currentTime) t.params[key].setValueAtTime(base, t.releaseAt[key]);
         else set(t.params[key], base);
       }
@@ -198,7 +209,7 @@
       syncLfo(t, d, P);
       // cutoff and resonance follow the control while notes are sounding
       if (d) for (const v of E.voices) if (v.ti === i && v.f.length) {
-        for (const f of v.f) set(f.frequency, clamp(d.cut * v.kt, 20, 20000));
+        set(v.cutScale.gain, clamp(d.cut * v.kt, 20, 20000) / d.cut);
         set(v.f[0].Q, qOf(d));
       }
     };
@@ -220,10 +231,11 @@
       set(out.gain, f.vol * f.vol);
     };
 
-    E.syncAll = () => { for (let i = 0; i < 8; i++) E.syncTrack(i); E.syncFx(); hard = false; };
+    E.syncAll = () => { rack.sync(); for (let i = 0; i < 8; i++) E.syncTrack(i); E.syncFx(); hard = false; };
 
     // Tempo-synced LFOs restart with the transport so a loop always modulates the same way.
     E.restartLfos = (t) => {
+      rack.restart(t);
       for (const x of tr) if (x.lfo) {
         const old = x.lfo, o = ctx.createOscillator();
         o.type = old.type; o.frequency.value = old.frequency.value;
@@ -282,18 +294,23 @@
       if (!mono && n >= 14 && old) cut(old, t, 0.01);
     };
 
-    const pitched = (i, d, note, vel, t, dur, smp) => {
+    const pitched = (i, d, note, vel, t, dur, smp, poly) => {
       const t_ = tr[i];
       let S = null;
       if (smp) { S = App.samples.get(d.id); if (!S) return null; }
-      limit(i, t, !smp && d.mode === 1);
+      limit(i, t, !poly && !smp && d.mode === 1);
       const v = { ti: i, note, t0: t, tEnd: Infinity, src: [], nodes: [], mods: [], f: [], live: dur == null, kt: 2 ** ((d.ftrk * (note - 60)) / 12) };
       const outG = (v.out = G()), amp = (v.amp = G(0));
-      amp.connect(outG).connect(t_.tin);
+      amp.connect(outG).connect(t_.instrument);
       v.nodes.push(outG, amp);
       let head = amp;
+      // All active voices follow the absolute cutoff lane on the audio clock; each
+      // retains its own key tracking, envelope and independent matrix modulation.
+      v.cutScale = G(clamp(d.cut * v.kt, 20, 20000) / d.cut);
+      t_.cutHz.connect(v.cutScale); v.mods.push([t_.cutHz,v.cutScale]); v.nodes.push(v.cutScale);
       for (let k = d.ftype === 1 ? 1 : 0; k >= 0; k--) {
-        const f = BQ(FTYPE[d.ftype], clamp(d.cut * v.kt, 20, 20000), k === 0 ? qOf(d) : -3);
+        const f = BQ(FTYPE[d.ftype], 0, k === 0 ? qOf(d) : -3);
+        v.cutScale.connect(f.frequency);
         f.connect(head); head = f;
         v.f.unshift(f); v.nodes.push(f);
         t_.cut.connect(f.detune); v.mods.push([t_.cut, f.detune]);
@@ -304,9 +321,10 @@
         const buf = d.rev ? S.rev || (S.rev = reverse(S.buffer)) : S.buffer;
         let a = Math.min(d.st, d.en), b = Math.max(d.st, d.en);
         if (d.mode === 1) {
-          const k = note - 36, w = (b - a) / d.slices;
+          const k = note - 36;
           if (k < 0 || k >= d.slices) { kill(v); return null; }
-          a += k * w; b = a + w;
+          const edges = App.AudioDSP.sliceEdges(d);
+          a = edges[k]; b = edges[k + 1];
         }
         if (b - a < 1e-5) { kill(v); return null; }
         if (d.rev) [a, b] = [1 - b, 1 - a];
@@ -321,7 +339,7 @@
         if (!loop && d.shot) { tOff = t + Math.max(0.004, len / rate - 0.006); rel = 0.008; v.live = false; }
         peak = (0.25 + 0.75 * vel) * 0.7;
       } else {
-        const hz = mtof(note), from = d.mode === 1 && d.glide > 0.001 && t_.lastHz ? t_.lastHz : 0;
+        const hz = mtof(note), from = !poly && d.mode === 1 && d.glide > 0.001 && t_.lastHz ? t_.lastHz : 0;
         t_.lastHz = hz;
         const osc = (wave, ratio, level) => {
           const o = ctx.createOscillator(), g = G(level * TRIM[wave]);
@@ -350,6 +368,13 @@
         peak = (0.25 + 0.75 * vel) * 0.5;
       }
 
+      v.releaseCurve = rack.releaseVoice(i,v,amp,outG,rel);
+      if (v.releaseCurve) {
+        // The slow envelope remains continuous at note-off. The variable-speed
+        // exponential multiplies it; at zero modulation their product is the original release.
+        rel *= 4;
+        if (tOff != null) v.releaseCurve(tOff);
+      }
       adsr(amp.gain, t, peak, d.aa, d.ad, d.as, tOff, rel);
       if (Math.abs(d.fenv) > 0.01) for (const f of v.f) adsr(f.detune, t, d.fenv * 1200, d.fa, d.fd, d.fs, tOff, d.fr);
       v.rel = rel; v.frel = d.fr;
@@ -358,6 +383,7 @@
       return v;
     };
 
+    const padCurves = new WeakMap();
     const drum = (i, T, k, vel, t) => {
       const p = T.kit.pads[k];
       if (!p) return null;
@@ -366,7 +392,19 @@
       const v = { ti: i, note: 36 + k, pad: k, chk: p.chk, t0: t, tEnd: 0, src: [], nodes: [], mods: [], f: [], live: false };
       const outG = (v.out = G()), pn = ctx.createStereoPanner();
       pn.pan.value = p.pan;
-      outG.connect(pn).connect(t_.tin);
+      if (p.drive > 0) {
+        const sh = ctx.createWaveShaper();
+        let cached = padCurves.get(p);
+        if (cached?.drive !== p.drive) {
+          const strength = 1 + 16*p.drive, norm = Math.tanh(strength);
+          cached = {drive:p.drive,curve:Float32Array.from({length:513},(_,j) => Math.tanh(strength*(j/256-1))/norm)};
+          padCurves.set(p,cached);
+        }
+        sh.curve = cached.curve;
+        outG.connect(sh).connect(pn); v.nodes.push(sh);
+      } else outG.connect(pn);
+      pn.connect(t_.instrument);
+      if (k === 0) pn.connect(t_.kick);
       v.nodes.push(outG, pn);
       const lv = p.lvl * p.lvl * (0.3 + 0.7 * vel);
       let end = t;
@@ -379,6 +417,7 @@
         if (p.rev) [a, b] = [1 - b, 1 - a];
         const rate = 2 ** (p.pit / 12), s = ctx.createBufferSource(), g = G(0), len = (b - a) * buf.duration;
         s.buffer = buf; s.playbackRate.value = rate;
+        t_.pitch.connect(s.detune); v.mods.push([t_.pitch, s.detune]);
         g.gain.setValueAtTime(lv, t);
         if (p.dec < 3.9) g.gain.setTargetAtTime(0, t + 0.002, p.dec / 6.9);
         end = t + Math.min(len / rate, p.dec < 3.9 ? p.dec * 1.3 : 1e9);
@@ -390,6 +429,7 @@
         if (p.tone > 0.001) {
           const o = ctx.createOscillator(), g = G(0);
           o.type = WAVE[p.wave];
+          t_.pitch.connect(o.detune); v.mods.push([t_.pitch, o.detune]);
           if (p.sweep > 0) { o.frequency.setValueAtTime(p.tune * 2 ** (p.sweep / 12), t); o.frequency.exponentialRampToValueAtTime(p.tune, t + p.swt); }
           else o.frequency.value = p.tune;
           g.gain.setValueAtTime(p.tone * TRIM[p.wave] * lv * 0.8, t);
@@ -424,17 +464,25 @@
       return v;
     };
 
-    const start = (i, note, vel, t, dur) => {
+    const start = (i, note, vel, t, dur, poly=false) => {
       const T = getP().tracks[i];
+      rack.velocity(i, vel, t);
       if (T.kind === "kit") return drum(i, T, note - 36, vel, t);
-      return pitched(i, T.kind === "smp" ? T.smp : T.syn, note, vel, t, dur, T.kind === "smp");
+      return pitched(i, T.kind === "smp" ? T.smp : T.syn, note, vel, t, dur, T.kind === "smp",poly);
     };
     // The browser's compressor fades in over its first ~150 ms of life (measured), which would soften
     // the first sound of a session. Nothing is allowed to start before it has settled.
     const WARM = 0.15;
     const soon = (t) => Math.max(t || 0, ctx.currentTime, live ? WARM : 0);
     // Sequenced note with a known length.
-    E.play = (i, note, vel, t, dur) => start(i, note, clamp(vel, 0, 1), soon(t), dur);
+    E.play = (i, note, vel, t, dur, poly=false) => {
+      const voice=start(i,note,clamp(vel,0,1),soon(t),dur,poly);
+      if(voice)voice.sequenced=true;
+      return voice;
+    };
+    E.releaseClip = (i,time) => {
+      for(const voice of E.voices) if(voice.ti===i && voice.sequenced)cut(voice,time,.004);
+    };
 
     // Played note: sounds until noteOff.
     const held = new Map();
@@ -452,6 +500,7 @@
       // never release before the note has begun, or cancelling would erase its attack and a quick tap would be silent
       const t = Math.max(ctx.currentTime, v.t0 + 0.012);
       v.live = false;
+      v.releaseCurve?.(t);
       v.amp.gain.cancelScheduledValues(t);
       v.amp.gain.setTargetAtTime(0, t, v.rel / 4);
       for (const f of v.f) { f.detune.cancelScheduledValues(t); f.detune.setTargetAtTime(0, t, v.frel / 4); }
@@ -459,6 +508,7 @@
     };
     const clicks = new Set();
     E.panic = (clearReturns = false) => {
+      App.AudioStudio?.stopSources(E);
       const t = ctx.currentTime;
       held.clear();
       for (const [o, g] of clicks) { o.stop(); g.disconnect(); }
@@ -516,7 +566,7 @@
     let srcNode = null;
     E.source = (mode, ti) => {
       if (srcNode) { try { srcNode.disconnect(tap); } catch (e) {} }
-      srcNode = mode === "trk" ? tr[ti].pan : mode === "in" ? E.input : out;
+      srcNode = mode === "trk" ? rack.tap(ti) : mode === "in" ? E.input : out;
       if (srcNode) srcNode.connect(tap);
     };
     E.source("out");
@@ -534,7 +584,7 @@
           }
           inputStream = stream;
           E.input = G(); inputNode = ctx.createMediaStreamSource(stream);
-          inputNode.connect(E.input); mon = G(0);
+          inputNode.connect(E.input); E.input.connect(rack.mic); mon = G(0);
           E.input.connect(mon).connect(mix);
           return E.input;
         }).finally(() => { if (version === inputVersion) opening = null; });
@@ -563,19 +613,20 @@
     // Capture any node to an AudioBuffer. Returns { stop(), seconds() }.
     E.record = async (node) => {
       const L = [], R = [];
-      let frames = 0, end, sink;
+      let frames = 0, firstTime = null, end, sink;
       const done = new Promise((r) => (end = r));
       if (await loadWorklet()) {
         sink = new AudioWorkletNode(ctx, "ml-rec", { channelCount: 2, channelCountMode: "explicit" });
-        sink.port.onmessage = (e) => { if (!e.data) return end(); L.push(e.data[0]); R.push(e.data[1]); frames += e.data[0].length; };
+        sink.port.onmessage = (e) => { if (!e.data) return end(); firstTime ??= e.data[2] / sr; L.push(e.data[0]); R.push(e.data[1]); frames += e.data[0].length; };
       } else {
         sink = ctx.createScriptProcessor(4096, 2, 2);
-        sink.onaudioprocess = (e) => { L.push(e.inputBuffer.getChannelData(0).slice()); R.push(e.inputBuffer.getChannelData(1).slice()); frames += 4096; };
+        sink.onaudioprocess = (e) => { firstTime ??= Math.max(0, e.playbackTime - 4096 / sr); L.push(e.inputBuffer.getChannelData(0).slice()); R.push(e.inputBuffer.getChannelData(1).slice()); frames += 4096; };
       }
       node.connect(sink);
       sink.connect(ctx.destination); // outputs silence; the connection only keeps the node running
       return {
         seconds: () => frames / sr,
+        firstTime: () => firstTime,
         stop: async () => {
           if (sink.port) { sink.port.postMessage(0); await Promise.race([done, new Promise((r) => setTimeout(r, 1500))]); }
           else sink.onaudioprocess = null;

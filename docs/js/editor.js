@@ -78,7 +78,7 @@
       h("div.hd.ed-actions", null,
         h("span.grp", null, h("span.tg", { text: "NOTES" }), hd.count, hd.nudge, hd.dup, hd.remove),
         h("span.grp", null, h("span.tg", { text: "CLIP" }),
-          btn("<", "SHIFT CLIP ONE STEP EARLIER", () => rotate(-1)), btn(">", "SHIFT CLIP ONE STEP LATER", () => rotate(1)), hd.dn, hd.up, hd.euc)));
+          btn("<", "SHIFT CLIP ONE STEP EARLIER", () => rotate(-1)), btn(">", "SHIFT CLIP ONE STEP LATER", () => rotate(1)), hd.dn, hd.up, hd.euc,btn("GROOVE","GROOVE TEMPLATE · NOTE TIMING · RECORD QUANTIZATION",()=>App.Groove.open()))));
       cv = h("canvas", { tabindex: "0", "aria-label": "Note editor. In Select mode drag a box or Shift-click notes. Use arrow keys to move a selection.", role: "application" }); ph = h("div.ed-ph");
       el.addEventListener("keydown", shortcuts);
       el.addEventListener("click", e => {
@@ -121,7 +121,7 @@
       T.lo = clamp(visible[visible.length - 1].n + d, 0, 128 - (G.rows || ROWS));
       hov = null; App.touch(); draw();
     };
-    const rotate = (d) => edit((c) => { const n = App.patSteps(c.P, c.pi); for (const nt of c.clip) if (nt.s < n) nt.s = (nt.s + d + n) % n; });
+    const rotate = (d) => edit((c) => { const n = App.Live.length(c.P,c.ti,c.pi); for (const nt of c.clip) if (nt.s < n) nt.s = (nt.s + d + n) % n; });
     const transpose = (d) => {
       const c = ctx();
       if (!isKeys(c.T) || !c.clip.length) return;
@@ -130,7 +130,7 @@
       if (!c.clip.every((nt) => nt.n >= c.T.lo && nt.n < c.T.lo + ROWS)) view(d);
     };
     function range() {
-      const {P, pi} = ctx(), total = App.patSteps(P, pi), width = 4 * App.spb(P);
+      const {P, pi} = ctx(), total = App.Live.length(P,P.sel.t,pi), width = 4 * App.spb(P);
       if (pagePattern !== pi) { pagePattern = pi; page = 0; }
       page = clamp(page, 0, Math.ceil(total / width) - 1);
       const start = page * width;
@@ -149,7 +149,7 @@
         UI.closeMenu();
         const o = row();
         edit((c) => {
-          const n = App.patSteps(c.P, c.pi), N = Math.max(1, eu.n), K = Math.min(eu.k, N);
+          const n = App.Live.length(c.P,c.ti,c.pi), N = Math.max(1, eu.n), K = Math.min(eu.k, N);
           for (let i = c.clip.length - 1; i >= 0; i--) if (c.clip[i].n === o.n && c.clip[i].s < n) c.clip.splice(i, 1);
           for (let s = 0; s < n; s++) if ((((s % N) + eu.r) % N * K) % N < K) c.clip.push({ s, n: o.n, l: 1, v: lastVel, p: 1 });
         });
@@ -181,7 +181,7 @@
         for (const nt of selection) if (!available.has(nt)) selection.delete(nt);
         if (previous !== selection.size) updateSelection();
       }
-      const steps = App.patSteps(P, pi), SPB = App.spb(P), BS = App.beatSteps(P);
+      const steps = App.Live.length(P,P.sel.t,pi), SPB = App.spb(P), BS = App.beatSteps(P);
       const { start, end } = range();
       R = rowList();
       const nr = R.length, cw = (G.cw = G.gw / (end - start)), rh = (G.rh = G.gh / nr), keys = isKeys(T);
@@ -280,23 +280,24 @@
     const later = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); }); };
 
     function sync() {
-      const { P, ti, pi, T } = ctx(), mb = App.maxBars(P), bars = Math.min(P.pats[pi].bars, mb), keys = isKeys(T);
+      const { P, ti, pi, T } = ctx(), total=App.Live.length(P,ti,pi), bars=Math.ceil(total/App.spb(P)), keys=isKeys(T);
       const shape = T.kind + ":" + (T.kind === "smp" ? [T.smp.mode, T.smp.slices].join(":") : "");
       if (selectionClip !== T.clips[pi] || selectionShape !== shape) {
         if (act) cancelGesture(false);
         selection.clear(); hov = null; rowNote = null;
         selectionClip = T.clips[pi]; selectionShape = shape;
       } else {
-        const existing = new Set(selectionClip), steps = App.patSteps(P, pi);
+        const existing = new Set(selectionClip), steps = App.Live.length(P,P.sel.t,pi);
         selection = new Set([...selection].filter(nt => existing.has(nt) && nt.s < steps));
       }
       updateSelection();
       hd.title.textContent = pad2(ti + 1) + " " + T.name + " / " + PATS[pi];
       const {start, end} = range(), barSteps = App.spb(P);
-      hd.bars.textContent = bars <= 4 ? String(bars) : (1 + start / barSteps) + "–" + (end / barSteps) + "/" + bars;
+      hd.bars.textContent = bars <= 4 ? String(bars) : (1 + start / barSteps) + "–" + Math.ceil(end / barSteps) + "/" + bars;
+      hd.bars.title=total+" steps · "+barSteps+" steps per bar";
       hd.prev.hidden = hd.next.hidden = bars <= 4;
       hd.prev.disabled = start === 0;
-      hd.next.disabled = end === App.patSteps(P, pi);
+      hd.next.disabled = end === App.Live.length(P,P.sel.t,pi);
       hd.ch.forEach((b, i) => { b.classList.toggle("on", [1, 3, 4][i] === chord); b.disabled = !keys; });
       hd.fold.classList.toggle("on", !!P.fold);
       for (const b of [hd.fold, hd.od, hd.ou, hd.dn, hd.up]) b.disabled = !keys;
@@ -385,7 +386,7 @@
       const c = ctx(), group = [...selection];
       const start = Math.min(...group.map(nt => nt.s)), end = Math.max(...group.map(nt => nt.s + nt.l));
       const span = end - start, last = end + span, bars = Math.ceil(last / App.spb(c.P));
-      if (bars > App.maxBars(c.P)) { UI.msg("NO ROOM AFTER SELECTION · MOVE NOTES EARLIER"); return; }
+      if (last > (c.P.performance.loops[c.ti][c.pi] ? App.MAX_STEPS : App.maxBars(c.P)*App.spb(c.P))) { UI.msg("NO ROOM AFTER SELECTION · MOVE NOTES EARLIER"); return; }
       const copies = group.map(nt => ({ ...nt, s: nt.s + span }));
       if (c.clip.length + copies.length > 4000) { UI.msg("CLIP LIMIT · 4,000 NOTES"); return; }
       const overlaps = c.clip.filter(nt => copies.some(copy =>
@@ -397,7 +398,8 @@
         if (answer !== "replace" || c.clip !== ctx().clip) return;
       }
       edit(({ clip, P, pi }) => {
-        P.pats[pi].bars = Math.max(P.pats[pi].bars, bars);
+        if(P.performance.loops[c.ti][pi])P.performance.loops[c.ti][pi]=Math.max(P.performance.loops[c.ti][pi],last);
+        else P.pats[pi].bars = Math.max(P.pats[pi].bars, bars);
         carve(clip, copies); clip.push(...copies);
         selection = new Set(copies);
         revealSelection();
@@ -410,7 +412,7 @@
     }
     const originals = group => new Map([...group].map(nt => [nt, { ...nt }]));
     function shiftGroup(before, ds, dr, octave = false) {
-      const order = pitchRows(), steps = App.patSteps(App.P, App.P.sel.p);
+      const order = pitchRows(), steps = App.Live.length(App.P,App.P.sel.t,App.P.sel.p);
       const source = [...before.values()];
       const stepMin = -Math.min(...source.map(nt => nt.s));
       const stepMax = Math.max(0, steps - Math.max(...source.map(nt => nt.s + nt.l)));
@@ -452,7 +454,7 @@
       if (!act && mod && e.code === "KeyA") command = () => {
         const { clip, P, pi } = ctx();
         const eligible = new Set(pitchRows());
-        selection = new Set(clip.filter(nt => nt.s < App.patSteps(P, pi) && eligible.has(nt.n)));
+        selection = new Set(clip.filter(nt => nt.s < App.Live.length(P,P.sel.t,pi) && eligible.has(nt.n)));
         chooseTool("select");
       };
       if (!act && mod && e.code === "KeyD" && selection.size) command = duplicate;
@@ -654,6 +656,10 @@
     const key = (n, on) => { if (on) live.add(n); else live.delete(n); lamps(); };
 
     function frame(c) {
+      if (c?.lanes) {
+        const lane = c.lanes[App.P.sel.t];
+        c = lane ? {...c, pat:lane.p, step:lane.s} : null;
+      }
       const { P, pi, clip } = ctx(), step = c && c.pat === pi ? c.step : -1;
       if (!c) followTransport = true;
       if (followTransport && !act && !App.Automation.active() && step >= 0 && (step < G.start || step >= G.end)) {

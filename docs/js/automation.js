@@ -2,7 +2,8 @@
 (() => {
   "use strict";
   const { UI, clamp, curveBase, curveValue } = App, { h, btn } = UI;
-  const names = {vol:"Level", pan:"Pan", filter:"Low-pass", dly:"Delay send", rev:"Reverb send"};
+  const names = {vol:"Level", pan:"Pan", filter:"Low-pass", dly:"Delay send", rev:"Reverb send", cutoff:"Voice cutoff", macro1:"Macro 1", macro2:"Macro 2", macro3:"Macro 3", macro4:"Macro 4"};
+  const nameOf = k => k.startsWith("macro") ? (App.Rack.macroLabel?.(App.P.sel.t,Number(k.slice(5))-1) || names[k]) : names[k];
   let host, panel, graph, target, modeButton, deleteButton, readout, playhead;
   let key = "vol", defaultMode = "linear", active = false, selected = -1, lastBank, gesture;
   let geometry = null;
@@ -10,9 +11,10 @@
   const track = () => App.P.tracks[App.P.sel.t];
   const bank = () => track().automation[App.P.sel.p];
   const lane = () => bank()[key];
-  const range = () => App.Ed.range?.() || {start:0, end:App.patSteps(App.P, App.P.sel.p)};
+  const range = () => App.Ed.range?.() || {start:0, end:App.Live.length(App.P,App.P.sel.t,App.P.sel.p)};
 
   function valueText(v) {
+    if (key === "cutoff") return App.fHz(App.fromN(App.DEF.syn.cut,v)) + " HZ";
     if (key === "filter") return v >= 1 ? "OPEN" : App.fHz(20 * ((App.E?.ctx.sampleRate || 48000) / 40) ** v) + " HZ";
     if (key === "vol") return App.fDb(v * v) + " dB";
     if (key === "pan") return App.fmt(App.DEF.trk.pan, 2 * v - 1);
@@ -78,7 +80,7 @@
     const q = range();
     if (selected < q.start || selected > q.end) selected = -1;
     const mixed = curve?.points.some(p => p.shape && p.shape !== curve.mode);
-    target.textContent = names[key] + " ▾"; modeButton.textContent = (mixed ? "Mixed" : curve?.mode || defaultMode) + " ▾";
+    target.textContent = nameOf(key) + " ▾"; modeButton.textContent = (mixed ? "Mixed" : curve?.mode || defaultMode) + " ▾";
     deleteButton.disabled = selected < 0;
     readout.textContent = selected >= 0 ? stepText(selected) + "  " + valueText(pt.v)
       : curve ? curve.points.length + (curve.points.length === 1 ? " POINT" : " POINTS") : "STATIC  " + valueText(curveBase(track(),key));
@@ -139,7 +141,7 @@
     if (gesture && e.pointerId === gesture.id && Math.abs(gesture.x-at.x)+Math.abs(gesture.y-at.y)>2) {
       movePoint(gesture.pt,at.s,at.v); sync();
     }
-    UI.hint(names[key].toUpperCase() + "   " + stepText(at.s) + "   " + valueText(at.v) +
+    UI.hint(nameOf(key).toUpperCase() + "   " + stepText(at.s) + "   " + valueText(at.v) +
       "    CLICK = ADD · DRAG = MOVE · RIGHT-CLICK = DELETE");
   }
   function finish(e) {
@@ -184,7 +186,11 @@
     shape.value = settings.shape;
     const number = (name,value,min,max) => h("input", {type:"number", "aria-label":name, value, min, max, step:1, required:true});
     const low = number("Minimum percent",settings.low,0,100), high = number("Maximum percent",settings.high,0,100);
-    const steps = App.patSteps(App.P,App.P.sel.p), maxCycles = Math.min(16,Math.floor(steps/2));
+    const steps = App.Live.length(App.P,App.P.sel.t,App.P.sel.p), maxCycles = Math.max(1,Math.min(16,Math.floor(steps/2)));
+    if(steps===1){
+      for(const option of shape.options)option.disabled=!["rise","fall"].includes(option.value);
+      if(shape.selectedOptions[0]?.disabled)shape.value="rise";
+    }
     const cycles = number("Cycles",Math.min(settings.cycles,maxCycles),1,maxCycles);
     const field = (label, input) => h("label", null, h("span",{text:label}),input);
     form.append(field("Shape",shape),field("Low %",low),field("High %",high),field("Cycles",cycles),
@@ -221,7 +227,7 @@
   function mount(el) {
     host = el;
     target = btn("", "CHOOSE THE TRACK PARAMETER TO AUTOMATE", () => {
-      UI.menu(target,App.automationKeys.map(k => ({value:k,label:names[k],on:k===key,key:bank()[k] ? "●" : ""})), k => {
+      UI.menu(target,App.automationKeys.filter(k=>k!=="cutoff" || track().kind!=="kit" || bank().cutoff).map(k => ({value:k,label:nameOf(k),on:k===key,key:bank()[k] ? "●" : ""})), k => {
         key = k; selected = -1; sync();
       });
     });

@@ -80,6 +80,7 @@
       const chain = draft.map(s => s.p);
       for (const [to,from] of forks) if (chain.includes(to)) {
         P.pats[to] = copy(P.pats[from]);
+        for (const loops of P.performance?.loops || []) loops[to] = loops[from];
         for (const t of P.tracks) { t.clips[to] = copy(t.clips[from]); t.automation[to] = copy(t.automation[from]); }
       }
       const start = draft.indexOf(originalStart);

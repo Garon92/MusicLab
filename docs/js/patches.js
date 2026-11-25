@@ -30,7 +30,7 @@
   function saveable(t) {
     if (t.kind === "syn") return {syn:clone(t.syn), arp:clone(t.arp)};
     if (t.kind === "smp") {
-      const {id,st,en,root,...smp} = t.smp;
+      const {id,st,en,root,markers,warpSource,warpSpec,...smp} = t.smp;
       return {smp};
     }
     return {kit:{pads:t.kit.pads.map(p => {
@@ -117,8 +117,9 @@
             Object.assign(pad,sound.kit.pads[i],{name,id,src,st,en});
           });
         } else if (kind === "smp") {
-          const {id,st,en,root} = T.smp;
-          Object.assign(T.smp,sound.smp,{id,st,en,root});
+          const {id,st,en,root,warpSource,warpSpec,markers,slices} = T.smp;
+          Object.assign(T.smp,sound.smp,{id,st,en,root,warpSource,warpSpec});
+          T.smp.markers = T.smp.slices === slices ? markers : [];
         } else {
           Object.assign(T.syn,sound.syn); Object.assign(T.arp,sound.arp);
         }

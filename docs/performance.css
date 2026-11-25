@@ -1,0 +1,21 @@
+.pf-dialog {width:min(700px,95vw)}
+.pf-body,.pf-stage {display:grid;gap:.78em}
+.pf-line {display:flex;flex-wrap:wrap;align-items:center;gap:.55em .85em}
+.pf-field {display:inline-flex;align-items:center;gap:.5em;color:var(--t3);font-size:.92em}
+.pf-dialog select,.pf-dialog input:not([type=range],[type=checkbox]) {color:var(--t1);background:var(--pn2);border:1px solid var(--ln3);padding:.38em .5em;border-radius:0;text-transform:uppercase;font:inherit;min-width:0;color-scheme:dark}
+.pf-dialog input[type=number] {width:5.3em}
+.pf-dialog input {accent-color:var(--am)}
+.pf-grid {display:grid;grid-template-columns:minmax(6.4em,2fr) repeat(9,minmax(1.8em,1fr));gap:3px;align-items:center}
+.pf-grid .bt {height:2em;padding:0;color:var(--t3)}
+.pf-grid .bt.pf-filled {color:var(--t1);background:var(--pn2)}
+.pf-grid .bt[aria-pressed=true] {border-color:var(--am)}
+.pf-grid .bt.pf-playing {background:var(--am);color:#080c08}
+.pf-grid .bt.pf-queued {border-style:dashed;border-color:var(--am)}
+.pf-track {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pf-dialog .pf-record {color:var(--rd,#ff645d);border-color:currentColor}
+.pf-take-list {width:100%;min-height:8em}
+.pf-follow {display:grid;grid-template-columns:1fr 1fr;gap:.45em 1em}
+.pf-follow .pf-field {justify-content:space-between}
+.pf-groove {display:grid;grid-template-columns:repeat(8, minmax(2.5em,1fr));gap:2px}
+.pf-groove span {text-align:center;color:var(--t1);border:1px solid var(--ln2)}
+.pf-dialog output {color:var(--am)}

@@ -214,7 +214,7 @@
     const barIds = onsets.map((list, bar) => {
       const offset = bar * spb;
       const fragments = list.concat(carries[bar]).map(nt => [
-        nt.t, nt.n, nt.v, nt.r, Math.max(-1, nt.s - offset), Math.min(spb + 1, nt.end - offset)
+        nt.t, nt.n, nt.v, nt.r, nt.off, Math.max(-1, nt.s - offset), Math.min(spb + 1, nt.end - offset)
       ].join(",")).sort();
       const key = fragments.join(";") + "|" + controllerBars[bar];
       if (!dictionary.has(key)) dictionary.set(key, dictionary.size);
@@ -418,15 +418,16 @@
         byPitch.get(nt.n).push(nt);
       }
       for (const hits of byPitch.values()) for (let i = 0; i < hits.length; i++) {
-        const first = hits[i], pos = unSwing(first.tick * stepPerTick), start = Math.round(pos);
+        const first=hits[i], raw=first.tick*stepPerTick, start=nearestStep(raw), shift=raw-gridTime(start);
+        const pos=start, shifted=tick=>unSwing(tick*stepPerTick-shift);
         let count = 1, length = 0;
-        if (i + 1 < hits.length && Math.abs(pos - start) < .025) {
-          const width = unSwing(hits[i + 1].tick * stepPerTick) - pos;
+        if (i + 1 < hits.length && Math.abs(shift)<=.491) {
+          const width = shifted(hits[i + 1].tick) - pos;
           if (width > .105 && Math.abs(width - Math.round(width)) > .035) {
             for (let j = 0; j < 8 && i + j < hits.length; j++) {
               const hit = hits[i + j], expected = pos + (j + 1) * width;
-              if (hit.v !== first.v || Math.abs(unSwing(hit.tick * stepPerTick) - (expected - width)) > .028 ||
-                  Math.abs(unSwing(hit.end * stepPerTick) - expected) > Math.min(width * .25, tolerance / (1 - swing) + .02)) break;
+              if (hit.v !== first.v || Math.abs(shifted(hit.tick) - (expected - width)) > .028 ||
+                  Math.abs(shifted(hit.end) - expected) > Math.min(width * .25, tolerance / (1 - swing) + .02)) break;
               const len = Math.round(expected - start);
               if (j && len > 0 && Math.abs(expected - start - len) < .028 && Math.floor(start / spb) === Math.floor((start + len - 1) / spb)) {
                 count = j + 1; length = len;
@@ -435,7 +436,7 @@
           }
         }
         if (count === 1) yield first;
-        else { yield { ...first, end: gridTime(start + length) / stepPerTick, r: count }; i += count - 1; }
+        else { yield { ...first, end: (gridTime(start + length)+shift) / stepPerTick, r: count }; i += count - 1; }
       }
     }
     let quantized = 0, soft = 0, truncatedClips = 0;
@@ -451,15 +452,16 @@
       const histogram = Array(128).fill(0);
       for (const source of track.parts) for (const nt of performances(source)) {
         const rawStart = nt.tick * stepPerTick, rawEnd = nt.end * stepPerTick;
-        const s = nearestStep(rawStart), end = Math.max(s + 1, nearestStep(rawEnd));
-        if (Math.abs(rawStart - gridTime(s)) > tolerance || Math.abs(rawEnd - gridTime(end)) > tolerance) quantized++;
+        const s=nearestStep(rawStart), drift=rawStart-gridTime(s), off=App.clamp(drift,-.49,.49);
+        const end=Math.max(s+1,nearestStep(rawEnd-off));
+        if(Math.abs(drift-off)>tolerance || Math.abs(rawEnd-off-gridTime(end))>tolerance)quantized++;
         if (nt.v < 3) soft++;
         maxEnd = Math.max(maxEnd, end);
         if (s >= maxTimeline) continue;
         const n = track.kit ? drumPad(nt.n) : nt.n;
         if (track.kit && !exactDrums.includes(nt.n)) pitched.add(nt.n);
         histogram[n]++;
-        notes.push({ t: track.index, s, end, n, v: nt.v, r: nt.r || 1 });
+        notes.push({ t: track.index, s, end, n, v: nt.v, r: nt.r || 1, off:Math.abs(off)>.001 ? Math.round(off*1000)/1000 : 0 });
       }
       if (!track.kit) {
         let best = -1;
@@ -503,7 +505,7 @@
           const clip = P.tracks[note.t].clips[index];
           if (clip.length === 4000) { truncatedClips++; continue; }
           const s = Math.max(from, note.s);
-          clip.push({ s: s - from, n: note.n, l: Math.min(note.end, to) - s, v: note.v / 127, p: 1, ...(note.r > 1 ? { r: note.r } : {}) });
+          clip.push({ s: s - from, n: note.n, l: Math.min(note.end, to) - s, v: note.v / 127, p: 1, ...(note.off && s===note.s ? {off:note.off} : {}), ...(note.r > 1 ? { r: note.r } : {}) });
         }
       }
       P.chain.push(seen.get(item.id));
@@ -512,7 +514,7 @@
     P.sel.p = P.chain[0];
     if (file.parts.length > parts.length) warnings.push(file.parts.length + " MIDI parts share " + parts.length + " console tracks.");
     if (pitched.size) warnings.push(pitched.size + " non-kit drum pitch" + (pitched.size === 1 ? "" : "es") + " mapped to the closest pads.");
-    if (quantized) warnings.push(quantized + " note" + (quantized === 1 ? "" : "s") + " quantized to sixteenth notes.");
+    if (quantized) warnings.push(quantized + " note" + (quantized === 1 ? "" : "s") + " adjusted to the available note length or microtiming range.");
     if (soft) warnings.push("Very soft velocities raised to the minimum playable level.");
     if (file.usedPrograms) warnings.push("MIDI instrument programs use MusicLab synth and kit sounds.");
     if (lanes.length) warnings.push(lanes.length + " controller lane" + (lanes.length === 1 ? "" : "s") + " mapped to the sixteenth-note automation grid.");

@@ -24,7 +24,16 @@
       const s = Math.min(mapStep(p, start), mapStep(p, p.to) - 1);
       const until = Math.max(s + 1, mapStep(p, end));
       if (p.scale !== 1 && (!Number.isInteger((start-p.from)*p.scale) || !Number.isInteger((end-p.from)*p.scale))) stats.rounded++;
-      result.push({...n, s, l:until - s});
+      const out={...n,s,l:until-s};
+      if (n.off && start!==n.s) delete out.off;
+      else if (n.off && p.scale!==1) {
+        const timed=p.at+(start+n.off-p.from)*p.scale;
+        out.s=App.clamp(Math.round(timed),Math.round(p.at),mapStep(p,p.to)-1);
+        out.off=App.clamp(timed-out.s,-.49,.49);
+        out.l=Math.max(1,until-out.s);
+        if (!out.off) delete out.off;
+      }
+      result.push(out);
     }
     return result;
   }
@@ -127,7 +136,7 @@
         // lanes present in the source take over, and only in the source interval.
         const targetWins = opt.priority === "target" && dest.curves[key];
         const segments = layer && (!source.curves[key] || targetWins) ? [piece(dest,0,total,0)] : pieces;
-        const lane = readCurve(segments,key,App.curveBase(P.tracks[ti],key),stats);
+        const lane = readCurve(segments,key,App.curveBase(P.tracks[ti],key,P),stats);
         if (lane) curves[key] = lane;
       }
       if (op !== "resize" || total <= current) stats.hidden += dest.notes.filter(n=>n.s >= current).length;

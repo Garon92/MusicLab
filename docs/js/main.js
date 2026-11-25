@@ -30,14 +30,19 @@
   App.refresh = () => {
     App.E && App.E.syncAll();
     App.Top.sync(); App.Mx.sync(); App.Ed.sync(); App.Dv.build(); App.Fx.sync(); App.Sg.source();
+    App.AudioStudio?.sync();
     App.restoreSamples().then((n) => { if (n) App.Dv.build(); }); // the sample name and waveform appear once decoded
   };
   App.doUndo = d => {
     App.releaseAll();
-    if (d < 0 ? App.undo() : App.redo()) {
-      session++; App.E?.panic(true); App.refresh();
+    if (!(d<0 ? App.canUndo() : App.canRedo())) { UI.msg(d<0 ? "NOTHING TO UNDO" : "NOTHING TO REDO");return; }
+    const running=Seq.playing, slot=Seq.frame()?.si;
+    if (running) Seq.stop();
+    if (d<0 ? App.undo() : App.redo()) {
+      session++; resetTools(); App.E?.panic(true); App.refresh();
+      if (running) Seq.play(slot);
       UI.msg(d < 0 ? "UNDONE" : "REDONE");
-    } else UI.msg(d < 0 ? "NOTHING TO UNDO" : "NOTHING TO REDO");
+    }
   };
 
   /* ── selection ── */
@@ -59,6 +64,8 @@
   /* ── clips, patterns, song ── */
   const redraw = () => { App.Mx.sync(); App.Ed.sync(); };
   function copyMaterial(source, from, target, to) {
+    const loops = App.P.performance?.loops;
+    if (loops) loops[App.P.tracks.indexOf(target)][to] = loops[App.P.tracks.indexOf(source)][from];
     target.clips[to] = clone(source.clips[from]);
     target.automation[to] = clone(source.automation[from]);
   }
@@ -97,7 +104,7 @@
     if (tg.pad != null) Object.assign(T.kit.pads[tg.pad], { src: 1, id, st: 0, en: 1, dec: 4, pit: 0, rev: 0, name: S.name.replace(/[^A-Z0-9 #+-]/g, "").trim().slice(0, 8) || "SAMPLE" });
     else {
       if (T.kind !== "smp") { T.kind = "smp"; UI.msg("TRACK " + pad2(tg.ti + 1) + " IS NOW A SAMPLER · UNDO REVERTS"); }
-      Object.assign(T.smp, { id, st: 0, en: 1 });
+      Object.assign(T.smp, { id, st:0, en:1, markers:[], warpSource:"", warpSpec:{from:App.P.bpm,to:App.P.bpm,anchors:[]} });
     }
   };
   const landed = (tg) => {
@@ -165,6 +172,7 @@
     document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   };
+  App.download = download;
   App.saveTake = () => { if (App.take) download(App.wav(App.take), App.P.name + " TAKE " + clock() + ".wav"); };
   App.dropTake = (tg) => {
     if (!App.take) return;
@@ -254,14 +262,18 @@
     }
   }
 
-  async function saveProject() {
-    const out = clone(App.P);
+  async function packProject(project) {
+    const out = clone(project);
     out.samples = [];
     for (const id of App.sampleIds(out)) {
       const blob = await App.sampleBlob(id);
       if (!blob) throw Error("SAMPLE MISSING · RELOAD IT BEFORE SAVING");
       out.samples.push({id, name:App.samples.get(id)?.name || id, type:blob.type || "audio/wav", data:await b64(blob)});
     }
+    return out;
+  }
+  async function saveProject() {
+    const out = await packProject(App.P);
     download(new Blob([JSON.stringify(out)],{type:"application/json"}),out.name + ".musiclab.json");
     UI.msg("PROJECT SAVED · " + out.samples.length + " SAMPLES INCLUDED");
   }
@@ -271,12 +283,15 @@
     if (App.taping) await App.tape();
   }
 
+  function resetTools() {
+    App.AudioStudio?.reset(); App.Live?.reset(); App.Groove?.reset(); App.MidiIO?.reset(); App.Library?.stop();
+  }
   function installProject(project, take = null) {
     session++;
     App.releaseAll(); Seq.stop(); Seq.startAt(0);
     App.E?.panic(true); App.Sg.reset(); App.E?.closeInput();
     App.recArm = false; App.take = take; octave = 4;
-    App.Ed.reset?.();
+    resetTools(); App.Ed.reset?.();
     App.P = project;
     App.commit(true); App.refresh(); App.Workspace.focus("");
   }
@@ -333,13 +348,12 @@
       const dest = existing ? App.uid() : id;
       try { if (!await App.importSample(dest,String(item.name || "SAMPLE").slice(0,40),blob)) stored = false; }
       catch { throw Error("CANNOT DECODE THE EMBEDDED SAMPLE"); }
-      if (dest !== id) for (const t of project.tracks) {
-        if (t.smp.id === id) t.smp.id = dest;
-        for (const pad of t.kit.pads) if (pad.id === id) pad.id = dest;
-      }
+      if (dest !== id) App.remapSample(project,id,dest);
     }
     return stored;
   }
+
+  App.ProjectFiles = {pack:packProject, importSamples};
 
   async function openFile(file, isMidi) {
     const request = ++fileRequest;
@@ -381,6 +395,8 @@
   App.file = async (v) => {
     const name = App.P.name;
     try {
+      if (v === "stems") return await App.Rack.stems();
+      if (v === "library") return await App.Library.open();
       if (v === "new") return await resetProject();
       if (v === "restore") return await restoreReset();
       if (v === "open") App.pickFile(".json,application/json", f=>openFile(f[0],false),false);
@@ -408,11 +424,13 @@
     return i < 0 ? null : clamp(12 * (octave + 1) + i, 0, 127);
   };
   const recNote = (ti, note, vel) => {
-    const c = App.recArm && Seq.playing ? Seq.now() : null;
+    const c = App.recArm && Seq.playing ? Seq.now(ti) : null;
     if (!c) return null;
-    const P = App.P, n = App.patSteps(P, c.pat), near = Math.round(c.step), s = near % n, clip = P.tracks[ti].clips[c.pat];
+    const P = App.P, n = App.Live.length(P,ti,c.pat), near = Math.round(c.step), s = near % n, clip = P.tracks[ti].clips[c.pat];
     for (let i = clip.length - 1; i >= 0; i--) if (clip[i].n === note && clip[i].s === s) clip.splice(i, 1);
     const nt = { s, n: note, l: 1, v: Math.round(vel * 100) / 100, p: 1 };
+    const offset = App.Groove.recordOffset(c);
+    if (offset) nt.off = offset;
     clip.push(nt);
     // Snapped forward, the playhead reaches this note in a moment: it was just heard, so skip that one trigger.
     if (near > c.step) Seq.skip.set(nt, App.E.ctx.currentTime + c.sd);
@@ -421,12 +439,15 @@
   };
   App.noteOn = (note, vel, id) => {
     const E = App.audio();
-    if (!E || held.has(id)) return;
+    if (held.has(id)) return;
+    App.Groove.tap(vel);
+    if (!E) return;
     const P = App.P, ti = P.sel.t, T = P.tracks[ti];
     const same = [...held.values()].find(key => key.ti === ti && key.note === note);
     if (same) { held.set(id, same); return; }
     if (T.kind === "kit" && note >= 36 && note < 44 && P.sel.pad !== note - 36) { P.sel.pad = note - 36; App.Dv.build(); App.Ed.draw(); }
     E.noteOn(ti, note, vel);
+    if (!id.startsWith("m:")) App.MidiIO.live(ti,note,vel);
     App.Ed.key(note, true);
     held.set(id, { ti, note, rec: recNote(ti, note, vel) });
   };
@@ -435,6 +456,7 @@
     if (!d) return;
     held.delete(id);
     if ([...held.values()].includes(d)) return;
+    if (!id.startsWith("m:")) App.MidiIO.live(d.ti,d.note,0);
     App.Ed.key(d.note, false);
     App.E && App.E.noteOff(d.ti, d.note);
     if (d.rec) {
@@ -449,12 +471,17 @@
   App.playToggle = () => {
     if (!Seq.playing) {
       const P = App.P, bank = Seq.songOn() ? P.chain : [P.sel.p];
-      if (!bank.some(p => P.tracks.some(t => t.clips[p].length)) && !P.click)
+      if (!bank.some(p => P.tracks.some(t => t.clips[p].length)) && !P.click && !App.AudioStudio.durationSteps(P) && P.performance.source === "arrangement")
         UI.msg("EMPTY " + (Seq.songOn() ? "SONG" : "PATTERN") + " · CLICK THE NOTE GRID OR ARM REC AND PLAY");
     }
     Seq.toggle();
   };
   window.addEventListener("keydown", (e) => {
+    if (!e.defaultPrevented && e.target.closest?.("dialog[data-instrument-keys]") && !e.target.closest?.("input,textarea,select,[contenteditable=true]") && !(e.ctrlKey || e.metaKey || e.altKey)) {
+      const n=noteFor(e.code);
+      if (n!=null) {e.preventDefault();if(!e.repeat)App.noteOn(n,.8,e.code);}
+      return;
+    }
     if (e.defaultPrevented || document.querySelector("dialog[open],[role=dialog]") ||
         e.target.closest?.("input,textarea,select,[contenteditable=true]")) return;
     if (UI.menuOpen() || document.querySelector(".pop,.mn")) {
@@ -493,30 +520,9 @@
   window.addEventListener("blur", releaseAll);
 
   App.midiN = 0;
-  const onMidi = (e) => {
-    const [st, d1, d2] = e.data, c = st & 0xf0;
-    const key = "m:" + e.currentTarget.id + ":" + (st & 15) + ":" + d1;
-    if (c === 0x90 && d2 > 0 && !document.querySelector("dialog[open]")) App.noteOn(d1, d2 / 127, key);
-    else if (c === 0x80 || c === 0x90) App.noteOff(key);
-  };
-  App.midi = async () => {
-    if (!navigator.requestMIDIAccess) { UI.msg("THIS BROWSER HAS NO WEB MIDI"); return; }
-    try {
-      const acc = await navigator.requestMIDIAccess();
-      const hook = () => {
-        let n = 0;
-        for (const inp of acc.inputs.values()) { inp.onmidimessage = onMidi; n++; }
-        const ports = [...acc.inputs.keys()].map(id => "m:" + id + ":");
-        for (const key of [...held.keys()]) {
-          if (key.startsWith("m:") && !ports.some(prefix => key.startsWith(prefix))) App.noteOff(key);
-        }
-        App.midiN = n;
-        App.Top.sync();
-        UI.msg(n ? n + " MIDI INPUT" + (n > 1 ? "S" : "") + " · PLAYS THE SELECTED TRACK" : "NO MIDI DEVICE FOUND");
-      };
-      acc.onstatechange = hook;
-      hook();
-    } catch (e) { UI.msg("MIDI ACCESS REFUSED"); }
+  App.midi = () => App.MidiIO.open();
+  App.releaseMidi = ids => {
+    for (const key of [...held.keys()]) if (key.startsWith("m:") && !ids.some(id => key.startsWith("m:"+id+":"))) App.noteOff(key);
   };
 
   /* ── frame loop ── */

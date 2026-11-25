@@ -47,7 +47,8 @@
     clear: { group:"Clean up", label:"Clear material", hint:"Erase the chosen material in the target.", fields:v => [
       list("material","Material", [["notes","Notes"],["curves","Automation"],["both","Notes + automation"]]),
       ...(v.material && v.material !== "notes" ? [list("lane","Automation lane",[
-        ["all","All parameters"],["vol","Level"],["pan","Pan"],["filter","Filter"],["dly","Delay send"],["rev","Reverb send"]
+        ["all","All parameters"],["vol","Level"],["pan","Pan"],["filter","Filter"],["dly","Delay send"],["rev","Reverb send"],["cutoff","Voice cutoff"],
+        ...[1,2,3,4].map(n=>["macro"+n,"Macro "+n])
       ])] : [])
     ] },
     setMix: { group:"Mix", label:"Set track control", kind:"tracks", hint:"Apply one mixer value to every targeted track.", fields:v => [
@@ -125,20 +126,20 @@
     const group = selected ? clip.filter(n => selected.has(n)) : clip;
     if (!group.length || (id === "clear" && v.material === "curves") ||
         (id === "scale" && (track.kind === "kit" || (track.kind === "smp" && track.smp.mode === 1)))) return;
-    const steps = App.patSteps(P,pi);
+    const steps = App.Live.length(P,trackIndex,pi);
     // A shorter visible pattern can contain dormant notes. They retain their stored phrase extent.
     const extent = Math.min(App.MAX_STEPS, clip.reduce((end,n) => Math.max(end,n.s + n.l),steps));
     const boundary = n => n.s < steps ? steps : Math.max(extent,n.s+1);
     const next = id === "overlaps" || id === "legato" ? following(clip,id === "overlaps" || v.voice === "same") : null;
     const removal = new Set();
     if (id === "duplicates") {
-      const winners = new Map();
+      const winners = new Map(), attack = n => n.s+"/"+n.n+"/"+(n.off||0);
       for (const note of clip) {
-        const key = note.s * 128 + note.n, keep = winners.get(key);
+        const key = attack(note), keep = winners.get(key);
         const protectedNote = selected && !selected.has(note), protectedKeep = selected && keep && !selected.has(keep);
         if (!keep || protectedNote && !protectedKeep || !!protectedNote === !!protectedKeep && note.v > keep.v) winners.set(key,note);
       }
-      for (const note of group) if (winners.get(note.s * 128 + note.n) !== note) removal.add(note);
+      for (const note of group) if (winners.get(attack(note)) !== note) removal.add(note);
     } else if (id === "silent" || id === "clear") {
       for (const note of group) if (id === "clear" ? v.material !== "curves" : note.p === 0) removal.add(note);
     }
@@ -159,9 +160,10 @@
         switch (id) {
           case "quantize": {
             const end = boundary(n);
-            const nearest = Math.min(Math.floor((end-1)/grid),Math.round(n.s/grid)) * grid;
+            const nearest = Math.min(Math.floor((end-1)/grid),Math.round((n.s+(n.off||0))/grid)) * grid;
             const s = Math.round(n.s + (nearest-n.s)*v.strength/100);
             patch = s === n.s ? {} : {s,l:Math.min(n.l,end-s)};
+            if (n.off && v.strength) patch.off=round(n.off*(1-v.strength/100));
             break;
           }
           case "scale": patch = {n:nearestPitch(P,n.n,v.tie === "up")}; break;
@@ -193,7 +195,8 @@
           result.example = track.name + " / " + App.PATS[pi] + " · " + format(prev) + " → " + format(patch[key]);
         }
         if (apply) for (const key of keys) {
-          if (key === "r" && patch[key] === 1) delete n.r;
+          if (key === "off" && !patch.off) delete n.off;
+          else if (key === "r" && patch[key] === 1) delete n.r;
           else n[key] = patch[key];
         }
       }
@@ -204,7 +207,10 @@
 
   function patchDefaults(track, factory) {
     if (track.kind === "syn") return {syn:factory.syn, arp:factory.arp};
-    if (track.kind === "smp") return {smp:{...factory.smp,id:track.smp.id}};
+    if (track.kind === "smp") {
+      const {id,warpSource,warpSpec,markers,slices}=track.smp;
+      return {smp:{...factory.smp,id,warpSource,warpSpec,...(markers?.length ? {markers,slices} : {})}};
+    }
     return {kit:{pads:factory.kit.pads.map((pad,i) => {
       const current = track.kit.pads[i];
       return current.id ? {...pad,id:current.id,src:current.src,name:current.name,dec:current.src ? App.DEF.pad.dec.max : pad.dec} : pad;

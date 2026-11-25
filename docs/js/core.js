@@ -229,6 +229,7 @@
       N("en", "END", "SAMPLE END", 0, 1, 1, { u: "pc1" }),
       N("pit", "PITCH", "SAMPLE PITCH", -24, 24, 0, { int: 1, u: "st", bi: 1 }),
       BO("rev", "REVERSE", "PLAY REVERSED"),
+      N("drive", "DRIVE", "PAD SATURATION", 0, 1, 0, { u: "pc" }),
       N("lvl", "LEVEL", "PAD LEVEL", 0, 1, 0.8, { u: "gain" }),
       N("pan", "PAN", "PAD PAN", -1, 1, 0, { u: "pan", bi: 1 }),
       N("chk", "CHOKE", "CHOKE GROUP · PADS IN ONE GROUP CUT EACH OTHER · 0 = NONE", 0, 3, 0, { int: 1 }),
@@ -251,8 +252,13 @@
 
   // A lane belongs to one clip. Values are normalized fader positions; points
   // include the end boundary so a fade can reach its target on the final beat.
-  const automationKeys = ["vol", "pan", "filter", "dly", "rev"];
-  const curveBase = (T, key) => key === "filter" ? 1 : key === "pan" ? (T.pan + 1) / 2 : T[key];
+  const automationKeys = ["vol", "pan", "filter", "dly", "rev", "cutoff", "macro1", "macro2", "macro3", "macro4"];
+  function curveBase(T,key,P=App.P) {
+    if (key.startsWith("macro")) return P?.rack?.strips[P.tracks.indexOf(T)]?.macros[Number(key.slice(5))-1] ?? 0;
+    if (key==="cutoff") return T.kind==="kit" ? 1 : toN(DEF[T.kind].cut,T[T.kind].cut);
+    if (key==="filter") return 1;
+    return key==="pan" ? (T.pan+1)/2 : T[key];
+  }
   const pointAt = (points, step) => {
     let lo = 0, hi = points.length;
     while (lo < hi) {
@@ -304,7 +310,14 @@
   ];
 
   const newKit = () => ({ pads: KIT.map((p) => ({ ...defs(DEF.pad), ...p, id: null })) });
-  const newProject = () => ({
+  const extensions = [];
+  App.extendProject = extension => extensions.push(extension);
+  function extend(P, raw) {
+    for (const extension of extensions) extension.load?.(P, raw);
+    return P;
+  }
+  const newProject = () => extend(baseProject(), {});
+  const baseProject = () => ({
     app: "MUSICLAB", v: 3, name: "UNTITLED",
     bpm: 120, swing: 0, sig: 2, key: 0, scale: 2, click: 0, song: 0, fold: 0,
     chain: [],
@@ -339,7 +352,7 @@
   const notes = (a) =>
     Array.isArray(a)
       ? a.filter((n) => n && Number.isInteger(n.s) && Number.isInteger(n.n)).slice(0, 4000)
-          .map((n) => ({ s: clamp(n.s, 0, MAX_STEPS - 1), n: clamp(n.n, 0, 127), l: num(n.l, 1, MAX_STEPS, 1, 1), v: num(n.v, 0.02, 1, 0.8), p: num(n.p, 0, 1, 1), ...(n.r > 1 ? { r: num(n.r, 1, 8, 1, 1) } : {}) }))
+          .map((n) => ({ s: clamp(n.s, 0, MAX_STEPS - 1), n: clamp(n.n, 0, 127), l: num(n.l, 1, MAX_STEPS, 1, 1), v: num(n.v, 0.02, 1, 0.8), p: num(n.p, 0, 1, 1), ...(Number.isFinite(n.off) && n.off ? {off:clamp(n.off,-0.49,0.49)} : {}), ...(n.r > 1 ? { r: num(n.r, 1, 8, 1, 1) } : {}) }))
       : [];
 
   function loadCurves(src) {
@@ -361,7 +374,7 @@
   }
 
   const sanitize = (src) => {
-    const P = newProject();
+    const P = baseProject();
     if (!src || typeof src !== "object" || !Array.isArray(src.tracks)) return null;
     P.name = str(src.name, P.name, 28);
     Object.assign(P, fit(DEF.top, src));
@@ -383,7 +396,7 @@
     });
     P.fx = fit(DEF.fx, src.fx);
     P.sel = { t: num(src.sel?.t, 0, 7, 0, 1), p: num(src.sel?.p, 0, 7, 0, 1), pad: num(src.sel?.pad, 0, 7, 0, 1) };
-    return P;
+    return extend(P,src);
   };
 
   /* ── history + local storage ──────────────────────────────────── */
@@ -516,11 +529,19 @@
   App.sampleIds = (P) => {
     const ids = new Set();
     for (const T of P.tracks) { if (T.smp.id) ids.add(T.smp.id); for (const p of T.kit.pads) if (p.id) ids.add(p.id); }
+    for (const extension of extensions) extension.sampleIds?.(P, ids);
     return ids;
   };
-  App.restoreSamples = async () => {
+  App.remapSample = (P, from, to) => {
+    for (const T of P.tracks) {
+      if (T.smp.id === from) T.smp.id = to;
+      for (const pad of T.kit.pads) if (pad.id === from) pad.id = to;
+    }
+    for (const extension of extensions) extension.remapSample?.(P, from, to);
+  };
+  App.restoreSamples = async (project = App.P) => {
     let n = 0;
-    for (const id of App.sampleIds(App.P)) {
+    for (const id of App.sampleIds(project)) {
       if (App.samples.has(id)) continue;
       try {
         const r = await idb.get(id);

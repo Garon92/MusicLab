@@ -148,6 +148,7 @@
       if (!on) {
         if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
         on = true;
+        o.start?.();
         ghost = h("div.gh", { text: o.label });
         document.body.append(ghost);
         document.body.classList.add("dragging");
@@ -209,6 +210,14 @@
     if (d.opts) el.setAttribute("aria-haspopup", "menu");
     if (!d.bool && !d.opts) {
       el.setAttribute("aria-valuemin", d.min); el.setAttribute("aria-valuemax", d.max);
+    }
+    if (["vol","pan","dly","rev"].includes(d.k) && App.DEF.trk[d.k] === d) {
+      const ti = App.P.tracks.indexOf(O());
+      if (ti >= 0) { el.dataset.midiTarget = d.k; el.dataset.midiTrack = ti; }
+    }
+    if (d === App.DEF.syn.cut || d === App.DEF.smp.cut) {
+      const ti=App.P.tracks.findIndex(t=>t[t.kind]===O());
+      if (ti>=0) { el.dataset.midiTarget="cutoff"; el.dataset.midiTrack=ti; }
     }
     const get = () => O()[d.k];
     const done = () => { App.commit(); o.done && o.done(); };

@@ -52,7 +52,7 @@
       nameEl.onclick = () => UI.edit(nameEl, P().name, (s) => { P().name = s.toUpperCase().slice(0, 28); App.commit(); sync(); }, 28);
       playB = h("button.bt.ic", { html: ICON.play, tip: "PLAY / STOP · SPACE", type: "button" });
       playB.onclick = () => App.playToggle();
-      recB = btn("REC", "NOTE RECORD · WHILE PLAYING, KEYS AND MIDI ARE WRITTEN INTO THE PATTERN", () => { App.recArm = !App.recArm; sync(); }, "rec");
+      recB = btn("REC", "RECORD NOTES AND MAPPED CONTROLLERS INTO PLAYING CLIPS", () => { App.recArm = !App.recArm; sync(); }, "rec");
       tapeB = btn("TAPE", "AUDIO RECORD · CAPTURES THE OUTPUT · STOP = TAKE", () => App.tape(), "rec");
       posEl = h("div.tc.pos", { tip: "POSITION · PATTERN  BAR . BEAT . STEP" });
       const redraw = () => { App.Ed.sync(); App.Mx.sync(); };
@@ -69,13 +69,13 @@
       takeEl.onpointerdown = (e) => { if (e.button === 0) UI.drag(e, { type: "take", data: 0, label: "TAKE", click: () => App.saveTake() }); };
       omL = h("i"); omR = h("i"); omT = h("span.omv", { text: "-INF" });
       om = h("div.tc.om", { tip: "OUTPUT PEAK dBFS · LEFT OVER RIGHT · RED = LIMITER IS HOLDING THE MIX DOWN, LOWER SOMETHING" }, h("span.l", { text: "OUT" }), h("span.omb", null, omL, omR), omT);
-      midiB = btn("MIDI", "MIDI INPUT · CLICK = CONNECT · PLAYS THE SELECTED TRACK", () => App.midi());
+      midiB = btn("MIDI", "MIDI DEVICES · CONTROLLER LEARN · CLOCK", () => App.midi());
       const fileB = btn("FILE ▾", "OPEN, SAVE, IMPORT AND EXPORT", () =>
         UI.menu(fileB, [
           { label: "Open project…", value: "open", key: ".JSON" }, { label: "Save project", value: "save", key: "⌘/CTRL S" },
           "-",
           { label: "Import MIDI…", value: "import-midi", key: ".MID" }, { label: "Export MIDI", value: "mid", key: ".MID" },
-          { label: "Export audio", value: "wav", key: "24-BIT WAV" }, "-",
+          { label: "Export audio", value: "wav", key: "24-BIT WAV" }, { label:"Export stems…", value:"stems", key:"WAV / ZIP" }, "-", {label:"Material library…",value:"library"}, "-",
           { label: "Reset project…", value: "new" }, { label: "Restore last reset…", value: "restore", disabled: !App.hasRecovery() }
         ], v => App.file(v)));
       fileB.setAttribute("aria-label", "File"); fileB.setAttribute("aria-haspopup", "menu");
@@ -158,7 +158,7 @@
         e.onpointerdown = (ev) => {
           if (ev.button === 0) UI.drag(ev, { type: "pat", data: p, label: "PATTERN " + PATS[p], click: () => App.select(P().sel.t, p) });
         };
-        UI.drop(e, { pat: (src) => App.copyPattern(src, p) });
+        UI.drop(e, { pat: (src) => App.copyPattern(src, p), material:data=>App.Library.drop(data,{p}) });
         heads.push(e);
         grid.append(e);
       }
@@ -170,7 +170,7 @@
         const rename = () => UI.edit(nm, T().name, (s) => { T().name = s.toUpperCase().slice(0, 10); App.commit(); sync(); App.Dv.build(); App.Ed.sync(); }, 10);
         nm.onclick = () => App.select(t);
         nm.ondblclick = rename;
-        UI.drop(nm, drops);
+        UI.drop(nm, {...drops,material:data=>App.Library.drop(data,{ti:t})});
         const kd = h("div.mx-k", {tip:"INSTRUMENT TYPE · CHANGE IN DEVICE"});
         kd.onclick = () => App.select(t);
         const mB = h("button.mx-b.m", { text: "M", tip: "MUTE", type: "button" }), sB = h("button.mx-b.s", { text: "S", tip: "SOLO", type: "button" });
@@ -186,7 +186,7 @@
             if (T().clips[p].length || Object.keys(T().automation[p]).length) UI.drag(ev, { type: "clip", data: { t, p }, label: "CLIP " + pad2(t + 1) + "/" + PATS[p], click: () => App.select(t, p) });
             else App.select(t, p);
           };
-          UI.drop(c, { clip: (src) => App.copyClip(src, { t, p }), ...drops });
+          UI.drop(c, { clip: (src) => App.copyClip(src, { t, p }), ...drops, material:data=>App.Library.drop(data,{ti:t,p}) });
           row.cl.push(c); cells.push(c);
           grid.append(c);
         }
@@ -204,7 +204,7 @@
         sync(); App.Top.sync();
       }, "sgb");
       const arrange = btn("ARRANGE…", "EDIT SONG ORDER, REPEAT SECTIONS OR MAKE AN INDEPENDENT VARIATION", () => App.Song.open());
-      songEl = h("div.mx-s", null, songB, arrange);
+      songEl = h("div.mx-s", null, songB, arrange, btn("CHORDS…","SONG CHORD TRACK", () => App.Harmony.open()), btn("AUDIO…","AUDIO TIMELINE, TAKES AND LOOPER", () => App.AudioStudio.open()));
       for (let i = 0; i < 32; i++) {
         const s = h("div.sl", { tip: "SONG SLOT · CLICK = START HERE · DRAG = MOVE · DROP A PATTERN TO INSERT" });
         s.onpointerdown = (ev) => {
@@ -222,7 +222,7 @@
       contextEl = h("span.ti");
       const process = btn("BATCH EDIT…", "BATCH EDIT NOTES, AUTOMATION, MIX OR INSTRUMENT SETTINGS", () => App.Operations.open());
       const phrase = btn("PHRASE…", "SET LENGTH, REPEAT, STRETCH OR COMBINE CLIPS AND PATTERNS", () => App.Phrases.open("clip"));
-      el.append(h("div.hd.matrix-head", null, h("span.tg", {text:"CLIP MATRIX"}), contextEl, h("span.sp"), process, phrase), grid, songEl);
+      el.append(h("div.hd.matrix-head", null, h("span.tg", {text:"CLIP MATRIX"}), contextEl, h("span.sp"), btn("LIVE…","LAUNCH CLIPS AND RECORD A PERFORMANCE",() => App.Live.open()), process, phrase), grid, songEl);
     }
 
     function sync() {
@@ -277,7 +277,7 @@
           const clip = T.clips[k];
           const curves = Object.values(T.automation[k]);
           if (!clip.length && !curves.length) continue;
-          const c = cells[t * 8 + k], n = App.patSteps(p, k);
+          const c = cells[t * 8 + k], n = App.Live.length(p,t,k);
           const x0 = (c.offsetLeft - left) * D + m, y0 = (c.offsetTop - top) * D + m, w = c.offsetWidth * D - 2 * m, hh = c.offsetHeight * D - 2 * m;
           if (curves.length) {
             const lane = curves[0], y = value => y0 + hh * (1-value);
@@ -317,10 +317,19 @@
         const w = dbN(lv[t], 54);
         if (w !== shown[t]) { shown[t] = w; rows[t].vol.meter.style.transform = "scaleX(" + w.toFixed(3) + ")"; }
       }
-      const pat = c ? c.pat : -1, slot = c && App.Seq.songOn() ? c.si : -1;
+      const independent = c && (P().performance.source !== "arrangement" || c.lanes?.some(l => l && l.n !== App.patSteps(P(),c.pat)));
+      for (let ti=0;ti<8;ti++) {
+        const row=rows[ti], lane=independent && c.lanes?.[ti];
+        if (row.playCell && (!lane || row.playCell!==row.cl[lane.p])) {row.playCell.classList.remove("running-clip");row.playCell=null;}
+        if (lane && lane.p>=0) {
+          row.playCell=row.cl[lane.p];row.playCell.classList.add("running-clip");
+          row.playCell.style.setProperty("--clip-phase",100*(lane.s+clamp((E.ctx.currentTime-c.t)/c.span,0,1))/lane.n+"%");
+        }
+      }
+      const pat = c && !independent ? c.pat : -1, slot = c && App.Seq.songOn() ? c.si : -1;
       if (pat !== runPat) { heads[runPat] && heads[runPat].classList.remove("run"); heads[pat] && heads[pat].classList.add("run"); runPat = pat; sync(); }
       if (slot !== runSlot) { slots[runSlot] && slots[runSlot].classList.remove("now"); slots[slot] && slots[slot].classList.add("now"); runSlot = slot; }
-      if (!c) { if (phOn) { ph.style.display = "none"; phOn = false; } return; }
+      if (!c || independent) { if (phOn) { ph.style.display = "none"; phOn = false; } return; }
       const cell = cells[c.pat], f = (c.step + clamp((E.ctx.currentTime - c.t) / c.sd, 0, 1)) / App.patSteps(P(), c.pat);
       const bottom = cells[56].offsetTop + cells[56].offsetHeight;
       if (!phOn) { ph.style.display = "block"; phOn = true; }
@@ -375,7 +384,7 @@
         }
         const k = o.slices ? o.slices() : 0;
         cx.fillStyle = C.t3;
-        for (let j = 1; j < k; j++) cx.fillRect(Math.round((lo + ((hi - lo) * j) / k) * W), 0, L, H);
+        if (k) for (const f of App.AudioDSP.sliceEdges(obj).slice(1,-1)) cx.fillRect(Math.round(f * W), 0, L, H);
         cx.fillStyle = C.am;
         for (const f of [obj.st, obj.en]) cx.fillRect(Math.min(W - L, Math.round(f * W)), 0, L, H);
       });
@@ -422,7 +431,7 @@
         btn(name.toUpperCase(), "INSTRUMENT TYPE · NOTES STAY · EACH TYPE KEEPS ITS OWN SETTINGS",
           () => changeKind(ti, k), T.kind === k ? "on" : ""));
       const patch = btn("PATCH…", "LOAD AN INSTRUMENT SOUND OR COPY THE SOUND OF ANOTHER TRACK", () => App.Patches.open());
-      el.append(h("div.hd", null, h("span.tg", {text:"DEVICE"}), h("span.ti", {text:pad2(ti+1) + " " + T.name}), h("span.grp", null, kinds), h("span.sp"), patch));
+      el.append(h("div.hd", null, h("span.tg", {text:"DEVICE"}), h("span.ti", {text:pad2(ti+1) + " " + T.name}), h("span.grp", null, kinds), h("span.sp"), btn("MOD…", "MODULATION ROUTING FOR THIS DEVICE", () => App.Rack.modulate()), patch));
 
       const body = h("div.dv-b");
       const tp = (k) => UI.param(DEF.trk[k], T, push);
@@ -458,11 +467,11 @@
           tg, slices: () => (d.mode === 1 ? d.slices : 0), change: () => { st.paint(); en.paint(); },
           audition: () => { const E = App.audio(); E && E.play(ti, d.mode === 1 ? 36 : d.root, 0.9, 0, 4); },
         });
-        const q = (k, o) => UI.param(DEF.smp[k], d, (key) => { push(); if (key === "st" || key === "en" || key === "slices") wv.paint(); if (key === "slices") App.Ed.sync(); }, o);
+        const q = (k, o) => UI.param(DEF.smp[k], d, (key) => { push(); if (key === "st" || key === "en" || key === "slices") wv.paint(); if (key === "slices") { d.markers = []; App.Ed.sync(); } }, o);
         st = q("st"); en = q("en");
         body.append(
           mod("SAMPLE", 4, [wv, st, en, q("root"), q("tune")], smpTools(tg, d.id)),
-          mod("PLAY", 2, [q("mode", { done: () => { build(); App.Ed.sync(); App.Mx.draw(); } }), q("slices"), q("shot"), q("loop"), q("rev")]),
+          mod("PLAY", 2, [q("mode", { done: () => { build(); App.Ed.sync(); App.Mx.draw(); } }), q("slices"), q("shot"), q("loop"), q("rev")], [btn("EDIT…", "TRANSIENT SLICES · WARP TEMPO · EDIT ANCHORS", () => App.AudioStudio.editSample(ti))]),
           ...shared(d, DEF.smp),
           filler(2), outMod(),
         );
@@ -494,7 +503,7 @@
             mod("NOISE", 2, [pp("nz"), pp("col"), pp("ndec"), pp("burst")]),
           );
         }
-        body.append(mod("PAD " + (k + 1) + " · " + pd.name, 2, [pp("src", null, { done: () => { build(); App.Ed.draw(); } }), pp("chk"), pp("pan")]), mod("KIT LEVELS", 4, levels, null, "pads"), filler(1), outMod());
+        body.append(mod("PAD " + (k + 1) + " · " + pd.name, 2, [pp("src", null, { done: () => { build(); App.Ed.draw(); } }), pp("chk"), pp("pan"), pp("drive")]), mod("KIT LEVELS", 4, levels, null, "pads"), filler(1), outMod());
       }
       el.append(body);
       requestAnimationFrame(paint);
@@ -515,7 +524,7 @@
       grV = h("span.v", { text: "0.0" }); grB = h("i");
       const gr = h("div.pm.ro", { tip: "GAIN REDUCTION · HOW MUCH COMPRESSOR + LIMITER PULL THE MIX DOWN (dB)" }, h("span.l", { text: "REDUCE" }), grV, h("span.b", null, grB));
       el.append(
-        h("div.hd", null, h("span.tg", { text: "MASTER" }), h("span.ti", { text: "SENDS + OUTPUT" })),
+        h("div.hd", null, h("span.tg", { text: "MASTER" }), h("span.ti", { text: "SENDS + OUTPUT" }), h("span.sp"), btn("ROUTING…","INSERTS, BUSES AND SIDECHAINS", () => App.Rack.mixer())),
         h("div.dv-b.f5", null,
           mod("DELAY", 2, [q("dtime"), q("dfb"), q("dtone"), q("dwid")]),
           mod("REVERB", 1, [q("rsize"), q("rdamp")]),

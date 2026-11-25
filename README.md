@@ -31,11 +31,25 @@ A single-screen music workstation for a desktop browser. Start with an empty gri
 | Combine performances | In **Phrase…**, choose the source clip or pattern. Insert, append, overlay or replace a range. Stretch or compress time to change the spacing and durations of notes along with their automation. |
 | Tighten several tracks together | In **Batch edit… → Notes**, choose a timing, pitch or dynamics operation such as backbeat or tresillo accents, then its scope. **Custom** lets you pick tracks and patterns independently. The preview counts the changes and **Undo** reverses the batch. |
 | Clean up or return to a starting point | **Batch edit… → Clean up** removes duplicates, silent notes, overlaps, notes or parameter curves in the chosen scope. **Defaults** restores expression, devices, selected mixer sections or parts of the master effects rack. Loaded sample assignments survive a device reset. |
-| Draw a fade or filter sweep | Select a clip, then **Edit → Automation**. Choose level, pan, track filter, delay send or reverb send. Click to add points and drag to move them. Choose a linear glide or stepped hold. **Shape** generates a rise, fall, triangle, sine or pulse. Select **Draw** or **Select** to return to notes. |
+| Draw a fade or filter sweep | Select a clip, then **Edit → Automation**. Choose a mix control, instrument cutoff or a macro. Click to add points and drag to move them. Choose a linear glide or stepped hold. **Shape** generates a rise, fall, triangle, sine or pulse. Select **Draw** or **Select** to return to notes. |
 | Make only the final chorus sound different | In **Arrange…**, select the chorus slot and choose **Make variation**. Apply to copy its notes and curves to a free pattern. For a repeated section, Shift-click the ends of a slot range, set the number of additional copies and choose **Repeat range**. |
 | Reuse a sound | **Device → Patch…** offers factory sounds, instruments from other tracks and named settings saved in this browser. Copying from another track includes its sample assignments. Saved settings use the destination track’s samples. |
 
 A pattern can span up to 16 bars within a 256-sixteenth-note limit. Longer patterns have four-bar pages in the editor. A song contains up to 32 pattern references. Notes and curves belong to the pattern. Independent variations use one of the eight pattern banks.
+
+## Performance and production
+
+| Task | Console control |
+| --- | --- |
+| Launch a performance | **Clip matrix → Live…** launches clips or scenes on a step, beat or bar. Set each clip’s loop in sixteenths, record launches, then edit the captured events and play the take. |
+| Work with recordings | The song row’s **Audio… → Timeline** imports files or records regions into eight mixer lanes. Move, trim, split and crossfade clips there. Split a region and select a different take on each piece to comp a performance. |
+| Overdub a loop | **Audio… → Looper** captures layers against the same loop. Choose the input or instrument, add a pass and undo a layer while keeping earlier passes. |
+| Slice or change tempo | On a sampler track, **Device → Play → Edit…** detects transients, edits slice boundaries and warps audio to a target tempo. Anchors set how much each passage stretches. The project keeps the original audio. |
+| Write harmony and groove | **Chords…** in the song row sets the progression and the tracks that follow it. **Edit → Groove** extracts a timing and accent template from notes, taps or microphone claps. Blend it into a clip or edit individual offsets. |
+| Modulate an instrument | **Device → Mod…** routes sources such as velocity, LFOs, audio envelopes and four named macros to destinations with independent ranges. Draw the macro curves under **Edit → Automation**. |
+| Mix and deliver stems | **Master → Routing…** edits insert order, track-to-bus assignments and sidechain keys. Each drum pad also has its own drive. **File → Export stems…** renders aligned stereo WAVs to a ZIP archive. |
+| Keep a reusable break | **File → Material library…** saves a whole pattern or individual clip with its instruments, notes, curves and sample audio. Search by name, tag or BPM, audition at the project tempo and drag the material name onto a free matrix cell, track or pattern. Insert finds a free destination automatically. |
+| Use external MIDI | **MIDI → Connect devices** selects inputs, output, channels and clock direction. Learn a mix control, instrument cutoff or macro from a hardware CC. Arm **REC** and play to capture its movement, then edit the points in the clip’s automation lane. |
 
 ## Editing and playing
 
@@ -53,7 +67,7 @@ The project autosaves locally, with sample audio in IndexedDB. **File → Save p
 
 **Import MIDI** accepts standard MIDI files of type 0 and 1. Its preview shows the track and pattern mapping, quantization and any limits reached before you replace the open project. **Export MIDI** writes the note performance with swing, arpeggios and repeats. Automation uses MIDI controllers 7, 10, 74, 91 and 94. Incoming controller movements are fitted to the sixteenth-note grid. Use MusicLab JSON for exact curves, instrument settings, effects and embedded samples.
 
-**Export audio** renders the active song or pattern to a 24-bit stereo WAV, up to 20 minutes per render. Use Tape for a live performance.
+**Export audio** renders the active song, pattern or launcher performance to a 24-bit stereo WAV, up to 20 minutes per render. Use Tape for a live performance.
 
 ## Run locally
 
@@ -73,4 +87,4 @@ npx playwright install chromium
 npm test
 ```
 
-The self-test starts a local server and checks six desktop sizes, editing, playback, tape recording, audio and MIDI export, project files, scoped edits, extended phrases, automation, patch recall, song variations and reset recovery. To run the same suite in all three engines, install them with `npx playwright install chromium firefox webkit`, then run `MUSICLAB_BROWSERS=chromium,firefox,webkit npm test`.
+The self-test starts a local server and checks six desktop sizes, editing, playback, tape recording, audio and MIDI export, project files, scoped edits, extended phrases, automation, patch recall, song variations and reset recovery. Production checks cover live capture, groove, harmony, audio takes and looper overdubs, pitch-preserving warp, mix routing, stem contents, material-library recall and simulated MIDI hardware. To run the same suite in all three engines, install them with `npx playwright install chromium firefox webkit`, then run `MUSICLAB_BROWSERS=chromium,firefox,webkit npm test`.

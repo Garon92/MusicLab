@@ -1,0 +1,24 @@
+.ast-dialog {width:min(970px,95vw);max-height:94vh;overflow:auto;}
+.ast-dialog .ast-body {display:grid;gap:.72em;padding:1.1em 1.3em;}
+.ast-head,.ast-toolbar,.ast-inspect,.ast-subhead {display:flex;align-items:end;gap:.55em;flex-wrap:wrap;min-width:0;}
+.ast-head {align-items:center;border-bottom:1px solid var(--ln2);padding-bottom:.65em;}
+.ast-head h2 {margin-right:.65em;}
+.ast-head .sp {flex:1;}
+.ast-dialog h3 {margin:0;font:600 1em var(--f);letter-spacing:.06em;color:var(--t1);}
+.ast-dialog small,.ast-field span {color:var(--t3);font-size:.8em;}
+.ast-field {min-width:0;display:grid;gap:.17em;}
+.ast-field input,.ast-field select {background:var(--r0,#050a07);border:1px solid var(--ln3);font:inherit;letter-spacing:inherit;color:var(--t1);border-radius:0;height:2.05em;color-scheme:dark;padding:0 .4em;}
+.ast-field input {width:6.3em;}
+.ast-field select {max-width:20em;}
+.ast-dialog .bt {height:2.05em;padding:0 .65em;font-size:1em;}
+.ast-dialog .bt.on {border-color:var(--am);background:var(--am2);color:var(--am);}
+.ast-dialog .bt.rec {color:var(--rd);}
+.ast-dialog canvas {display:block;box-sizing:border-box;width:100%;border:1px solid var(--ln2);touch-action:none;}
+.ast-timeline {height:clamp(164px,32vh,320px);cursor:crosshair;}
+.ast-wave {height:clamp(64px,13vh,120px);cursor:ew-resize;}
+.ast-warp {height:2.5em;}
+.ast-inspect {border-top:1px solid var(--ln2);padding-top:.6em;}
+.ast-params .ast-field input {width:6.6em;}
+.ast-subhead {justify-content:space-between;border-top:1px solid var(--ln2);padding-top:.55em;}
+.ast-status {font-size:.85em;color:var(--am);min-height:1.5em;overflow-wrap:anywhere;}
+@media(max-height:700px) {.ast-dialog .ast-body {gap:.45em;}.ast-timeline {height:160px;}}
