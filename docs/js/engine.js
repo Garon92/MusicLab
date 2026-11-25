@@ -211,6 +211,7 @@
       if (d) for (const v of E.voices) if (v.ti === i && v.f.length) {
         set(v.cutScale.gain, clamp(d.cut * v.kt, 20, 20000) / d.cut);
         set(v.f[0].Q, qOf(d));
+        if (v.cloud && d.mode===2) v.cloud.refresh(d,v.tEnd);
       }
     };
 
@@ -229,6 +230,53 @@
       set(low.gain, f.low); set(mid.gain, f.mid); set(high.gain, f.high);
       set(comp.threshold, -30 * f.comp); set(comp.ratio, 1 + 9 * f.comp);
       set(out.gain, f.vol * f.vol);
+    };
+
+    E.stopTempo=()=>{
+      const P=getP(),time=ctx.currentTime;
+      if(!P.arrangement?.tempo.length && !P.arrangement?.meters.length)return;
+      dL.delayTime.cancelScheduledValues(time);dR.delayTime.cancelScheduledValues(time);
+      for(const x of tr)if(x.lfo)x.lfo.frequency.cancelScheduledValues(time);
+      E.tempo(P.bpm,App.spb(P),time);
+    };
+    E.tempo=(bpm,barSteps,time)=>{
+      const P=getP();
+      if(!P.arrangement?.tempo.length && !P.arrangement?.meters.length)return;
+      const dt=clamp(DELAY_BEATS[P.fx.dtime]*60/bpm,.01,2.4);
+      dL.delayTime.setTargetAtTime(dt,time,.015);dR.delayTime.setTargetAtTime(dt,time,.015);
+      tr.forEach((t,i)=>{
+        const d=devOf(P.tracks[i]);
+        if(t.lfo && d?.lsync){
+          const beats=LFO_UNITS[d.ldiv]*(d.ldiv<4 ? barSteps/4 : 1);
+          t.lfo.frequency.setValueAtTime(bpm/60/beats,time);
+        }
+      });
+      rack.tempo?.(bpm,time);
+    };
+    const masterScene = () => ({vol:out.gain,low:low.gain,mid:mid.gain,high:high.gain,dfb:dFb.gain,dtone:dTone.frequency,
+      comp:comp.threshold,dwid:pR.pan});
+    const sceneWritten=new Set();
+    E.sceneParam=(key,index,from,to,start,end)=>{
+      const schedule=(p,a,b)=>{
+        sceneWritten.add(p);
+        p.setValueAtTime(a,start);
+        if(a!==b)p.linearRampToValueAtTime(b,end);
+      };
+      if(index>=0){
+        const t=tr[index], p=t.params[key];
+        if(p)schedule(p,key==="cutoff" || key==="pan"?from:audioValue(key,from),key==="cutoff" || key==="pan"?to:audioValue(key,to));
+        return;
+      }
+      const p=masterScene()[key];
+      if(!p)return;
+      const val=v=>key==="comp"?-30*v:key==="vol"?v*v:v;
+      schedule(p,val(from),val(to));
+      if(key==="comp")schedule(comp.ratio,1+9*from,1+9*to);
+      if(key==="dwid")schedule(pL.pan,-from,-to);
+    };
+    E.endScenes=()=>{
+      for(const p of sceneWritten)p.cancelScheduledValues(ctx.currentTime);
+      sceneWritten.clear();rack.endScenes();delete E.sceneTrack;
     };
 
     E.syncAll = () => { rack.sync(); for (let i = 0; i < 8; i++) E.syncTrack(i); E.syncFx(); hard = false; };
@@ -252,6 +300,7 @@
       v.dead = 1;
       const k = E.voices.indexOf(v);
       if (k >= 0) E.voices.splice(k, 1);
+      v.cloud?.dispose();
       for (const [a, b] of v.mods) { try { a.disconnect(b); } catch (e) {} }
       for (const n of v.nodes) { try { n.disconnect(); } catch (e) {} }
     };
@@ -262,6 +311,7 @@
     const watch = (v) => { E.voices.push(v); v.src[0].onended = () => kill(v); };
     const finish = (v, at) => {
       v.tEnd = at;
+      v.cloud?.stop(at);
       for (const s of v.src) { try { s.stop(at); } catch (e) {} }
     };
     // Fast fade on the voice's own output gain, which carries no other automation.
@@ -294,10 +344,15 @@
       if (!mono && n >= 14 && old) cut(old, t, 0.01);
     };
 
+    const zoneCounters = new WeakMap();
     const pitched = (i, d, note, vel, t, dur, smp, poly) => {
       const t_ = tr[i];
-      let S = null;
-      if (smp) { S = App.samples.get(d.id); if (!S) return null; }
+      let S = null, zone = null;
+      if (smp) {
+        if (d.mode===3) zone=App.SamplerLab.pickZone(d,note,vel,zoneCounters);
+        S=App.samples.get(d.mode===3 ? zone?.sample : d.id);
+        if (!S) return null;
+      }
       limit(i, t, !poly && !smp && d.mode === 1);
       const v = { ti: i, note, t0: t, tEnd: Infinity, src: [], nodes: [], mods: [], f: [], live: dur == null, kt: 2 ** ((d.ftrk * (note - 60)) / 12) };
       const outG = (v.out = G()), amp = (v.amp = G(0));
@@ -318,7 +373,6 @@
       let tOff = dur == null ? null : t + dur, rel = d.ar, peak;
 
       if (smp) {
-        const buf = d.rev ? S.rev || (S.rev = reverse(S.buffer)) : S.buffer;
         let a = Math.min(d.st, d.en), b = Math.max(d.st, d.en);
         if (d.mode === 1) {
           const k = note - 36;
@@ -328,15 +382,21 @@
         }
         if (b - a < 1e-5) { kill(v); return null; }
         if (d.rev) [a, b] = [1 - b, 1 - a];
-        const rate = 2 ** ((d.tune + (d.mode === 1 ? 0 : note - d.root)) / 12);
-        const s = ctx.createBufferSource();
-        s.buffer = buf; s.playbackRate.value = rate;
-        if (s.detune) { t_.pitch.connect(s.detune); v.mods.push([t_.pitch, s.detune]); }
-        const off = a * buf.duration, len = (b - a) * buf.duration, loop = d.loop && d.mode === 0;
-        if (loop) { s.loop = true; s.loopStart = off; s.loopEnd = off + len; s.start(t, off); } else s.start(t, off, len);
-        s.connect(head);
-        v.src.push(s); v.nodes.push(s);
-        if (!loop && d.shot) { tOff = t + Math.max(0.004, len / rate - 0.006); rel = 0.008; v.live = false; }
+        const rate = 2 ** ((d.tune + (d.mode === 1 ? 0 : note - (zone?.root ?? d.root))) / 12);
+        if (d.mode===2) {
+          v.cloud=App.SamplerLab.grainVoice(ctx,t,head,t_.pitch,S,d,note);
+          v.src.push(v.cloud.lifetime);
+        } else {
+          const buf = d.rev ? S.rev || (S.rev = reverse(S.buffer)) : S.buffer;
+          const s = ctx.createBufferSource();
+          s.buffer = buf; s.playbackRate.value = rate;
+          if (s.detune) { t_.pitch.connect(s.detune); v.mods.push([t_.pitch, s.detune]); }
+          const off = a * buf.duration, len = (b - a) * buf.duration, loop = d.loop && d.mode !== 1;
+          if (loop) { s.loop = true; s.loopStart = off; s.loopEnd = off + len; s.start(t, off); } else s.start(t, off, len);
+          s.connect(head);
+          v.src.push(s); v.nodes.push(s);
+          if (!loop && d.shot) { tOff = t + Math.max(0.004, len / rate - 0.006); rel = 0.008; v.live = false; }
+        }
         peak = (0.25 + 0.75 * vel) * 0.7;
       } else {
         const hz = mtof(note), from = !poly && d.mode === 1 && d.glide > 0.001 && t_.lastHz ? t_.lastHz : 0;
@@ -465,7 +525,7 @@
     };
 
     const start = (i, note, vel, t, dur, poly=false) => {
-      const T = getP().tracks[i];
+      const T = E.manualSceneTrack?.(i,t) || E.sceneTrack?.(i,t) || getP().tracks[i];
       rack.velocity(i, vel, t);
       if (T.kind === "kit") return drum(i, T, note - 36, vel, t);
       return pitched(i, T.kind === "smp" ? T.smp : T.syn, note, vel, t, dur, T.kind === "smp",poly);

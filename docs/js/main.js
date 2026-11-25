@@ -39,7 +39,7 @@
     const running=Seq.playing, slot=Seq.frame()?.si;
     if (running) Seq.stop();
     if (d<0 ? App.undo() : App.redo()) {
-      session++; resetTools(); App.E?.panic(true); App.refresh();
+      session++; resetTools(!App.historyCrossedProject); App.E?.panic(true); App.refresh();
       if (running) Seq.play(slot);
       UI.msg(d < 0 ? "UNDONE" : "REDONE");
     }
@@ -283,8 +283,8 @@
     if (App.taping) await App.tape();
   }
 
-  function resetTools() {
-    App.AudioStudio?.reset(); App.Live?.reset(); App.Groove?.reset(); App.MidiIO?.reset(); App.Library?.stop();
+  function resetTools(keepRecent=false) {
+    App.AudioStudio?.reset(); App.Live?.reset(); App.Groove?.reset(); App.MidiIO?.reset(); App.Library?.stop(); App.Rules?.reset(); if(keepRecent)App.Retrospective?.rebind();else App.Retrospective?.reset(); App.Scenes?.reset?.();
   }
   function installProject(project, take = null) {
     session++;
@@ -426,7 +426,7 @@
   const recNote = (ti, note, vel) => {
     const c = App.recArm && Seq.playing ? Seq.now(ti) : null;
     if (!c) return null;
-    const P = App.P, n = App.Live.length(P,ti,c.pat), near = Math.round(c.step), s = near % n, clip = P.tracks[ti].clips[c.pat];
+    const P = App.P, n = c.n || App.Live.length(P,ti,c.pat), near = Math.round(c.step), s = near % n, clip = P.tracks[ti].clips[c.pat];
     for (let i = clip.length - 1; i >= 0; i--) if (clip[i].n === note && clip[i].s === s) clip.splice(i, 1);
     const nt = { s, n: note, l: 1, v: Math.round(vel * 100) / 100, p: 1 };
     const offset = App.Groove.recordOffset(c);
@@ -449,7 +449,7 @@
     E.noteOn(ti, note, vel);
     if (!id.startsWith("m:")) App.MidiIO.live(ti,note,vel);
     App.Ed.key(note, true);
-    held.set(id, { ti, note, rec: recNote(ti, note, vel) });
+    held.set(id, { ti, note, rec: recNote(ti, note, vel), recent: App.Retrospective.start(ti,note,vel) });
   };
   App.noteOff = (id) => {
     const d = held.get(id);
@@ -457,6 +457,7 @@
     held.delete(id);
     if ([...held.values()].includes(d)) return;
     if (!id.startsWith("m:")) App.MidiIO.live(d.ti,d.note,0);
+    App.Retrospective.end(d.recent);
     App.Ed.key(d.note, false);
     App.E && App.E.noteOff(d.ti, d.note);
     if (d.rec) {

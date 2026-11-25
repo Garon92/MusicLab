@@ -60,7 +60,7 @@
         for (const fx of cfg.chain) if (fx.on) {
           const node = makeEffect(fx); connect(g.wires, last, node); last = node;
         }
-        connect(g.wires, last, g.output); g.sig = sig;
+        connect(g.wires, last, g.basePath || g.output); g.sig = sig;
       }
       const key = [cfg.key,cfg.depth,cfg.release,cfg.threshold,cfg.ratio].join("/");
       if (key !== g.key) {
@@ -79,6 +79,8 @@
     for (const bus of buses) { bus.fader = gain(); bus.output.connect(bus.fader).connect(mix); }
     strips.forEach((g, i) => {
       const t = tracks[i];
+      g.eq = App.ParametricEQ.graph(ctx,g.output);
+      g.basePath=gain();g.basePath.connect(g.eq.input);g.alternates=new Map();
       // Modulated distortion adds wet-minus-dry signal to a parallel dry path.
       g.modFx = gain(); t.filter.connect(g.modFx).connect(t.trem);
       g.wet = null; g.level = gain(); t.pan.connect(g.level).connect(g.input);
@@ -142,7 +144,7 @@
       const rack = getP().rack;
       buses.forEach((b, j) => { const cfg = rack.groups[j]; syncChain(b, cfg); b.fader.gain.value = cfg.level ** 2; });
       strips.forEach((g, i) => {
-        const cfg = rack.strips[i]; syncChain(g, cfg); syncRoutes(g, cfg, i);
+        const cfg = rack.strips[i]; syncChain(g, cfg); g.eq.sync(cfg.eq); syncRoutes(g, cfg, i);
         const dest = buses[cfg.bus]?.input || mix;
         if (g.bus !== dest) { if (g.bus) g.output.disconnect(g.bus); g.output.connect(dest); g.bus = dest; }
         cfg.macros.forEach((v,j) => {
@@ -217,7 +219,47 @@
       const old = g.lfo; old.stop(time); old.onended = () => old.disconnect();
       g.lfo = oscillator(g,cfg,time);
     });
-    return {sync, automate, stop, macro, mic, restart, releaseVoice, tap:i => strips[i].output,
+    // A cue crossfades complete insert chains. Every parallel path receives the
+    // same input, so tails are retained and neutral processors stay at unity.
+    const sceneChain = (i,from,to,start,end) => {
+      const g=strips[i], weights=new Map();
+      for(const [index,bank] of [from,to].entries()) for(const item of bank) {
+        const id=JSON.stringify(item.chain);
+        if(!weights.has(id))weights.set(id,{chain:item.chain,level:[0,0]});
+        weights.get(id).level[index]=item.weight;
+      }
+      for(const [id,item] of weights) {
+        if(id===g.sig || g.alternates.has(id))continue;
+        let last=g.input;const wires=[];
+        for(const fx of item.chain)if(fx.on){const node=makeEffect(fx);connect(wires,last,node);last=node;}
+        const fader=gain(0);connect(wires,last,fader);connect(wires,fader,g.eq.input);
+        g.alternates.set(id,{fader,wires});
+      }
+      const volume=(fader,id)=>{
+        const [a,b]=weights.get(id)?.level || [0,0];
+        fader.gain.setValueAtTime(a,start);if(a!==b)fader.gain.linearRampToValueAtTime(b,end);
+      };
+      volume(g.basePath,g.sig);
+      for(const [id,path] of g.alternates)volume(path.fader,id);
+    };
+    function endScenes() {
+      const now=ctx.currentTime;
+      for(const [i,g] of strips.entries()) {
+        for(const path of g.alternates.values())clear(path.wires);
+        g.alternates.clear();g.basePath.gain.cancelScheduledValues(now);g.basePath.gain.setValueAtTime(1,now);
+        g.eq.cancel(now);
+        g.macros.forEach((macro,j)=>{macro.offset.cancelScheduledValues(now);macro.offset.setValueAtTime(getP().rack.strips[i].macros[j],now);});
+      }
+    }
+    const sceneMacro=(ti,j,a,b,start,end)=>{
+      const p=strips[ti].macros[j].offset;
+      p.setValueAtTime(a,start);if(a!==b)p.linearRampToValueAtTime(b,end);
+    };
+    const tempo = (bpm,time) => strips.forEach((g,i) => {
+      const beats=getP().rack.strips[i].lfoBeats;
+      if (beats && g.lfo) g.lfo.frequency.setValueAtTime(bpm/(60*beats),time);
+    });
+    return {sync, automate, stop, macro, mic, restart, tempo, sceneMacro, sceneChain, endScenes, releaseVoice, eq:i=>strips[i].eq, tap:i => strips[i].output,
       velocity:(i,v,t) => strips[i].velocity.offset.setValueAtTime(v,t)};
   };
 })();

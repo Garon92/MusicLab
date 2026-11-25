@@ -4,7 +4,9 @@
   const {h,btn} = App.UI, {clamp} = App, MAX = 8192;
   const num = (v, min, max, def) => Number.isFinite(v) ? clamp(v,min,max) : def;
   const idOf = v => typeof v === "string" ? v.slice(0,128) : "";
-  const seconds = () => 15 / App.P.bpm;
+  const beatTime=(s,P=App.P)=>App.Conductor.time(P,s);
+  const after=(s,sec,P=App.P)=>App.Conductor.step(P,beatTime(s,P)+sec);
+  const endOf=(r,P=App.P)=>after(r.at,r.len*r.repeats,P);
   const reg = r => {
     const takes = (Array.isArray(r?.takes) ? r.takes : []).slice(0,64)
       .filter(t => idOf(t?.sample)).map(t => ({sample:idOf(t.sample), offset:num(t.offset,0,7200,0)}));
@@ -47,8 +49,7 @@
   const pool = () => App.P.audio.regions;
   const sample = id => App.samples.get(id)?.buffer;
   function durationSteps(P) {
-    const sd = 15 / P.bpm;
-    return Math.max(0, Math.ceil((P.audio?.regions || []).reduce((end,r) => Math.max(end,r.at+r.len*r.repeats/sd),0) - 1e-8));
+    return Math.max(0, Math.ceil((P.audio?.regions || []).reduce((end,r) => Math.max(end,endOf(r,P)),0) - 1e-8));
   }
   const sounding = new WeakMap();
   function stopSources(E) {
@@ -77,12 +78,12 @@
     if (!E.ctx || !E.tracks) return;
     for (const r of P.audio?.regions || []) {
       if (r.mute) continue;
-      const span = r.len / sd, first = Math.max(0,Math.floor((absolute-r.at)/span + 1e-8));
+      const elapsed=beatTime(absolute,P)-beatTime(r.at,P), until=beatTime(absolute+width,P)-beatTime(absolute,P), first=Math.max(0,Math.floor(elapsed/r.len+1e-8));
       for (let k = first; k < r.repeats; k++) {
-        const onset = r.at + k * span, diff = onset-absolute;
-        if (diff >= width-1e-8) break;
-        if (diff >= -1e-8) voice(E,r,time+Math.max(0,diff)*sd);
-        else if (chase && -diff < span) voice(E,r,time,-diff*sd);
+        const diff=k*r.len-elapsed;
+        if (diff >= until-1e-8) break;
+        if (diff >= -1e-8) voice(E,r,time+Math.max(0,diff));
+        else if (chase && -diff < r.len) voice(E,r,time,-diff);
       }
     }
   }
@@ -93,14 +94,14 @@
     const frame=App.Seq.frame(), future=App.Seq.nextGrid();
     if(!frame || !future)return;
     stopSources(E);
-    const sd=seconds(), total=App.Seq.rangeSteps?.() || Infinity;
-    let time=E.ctx.currentTime+.005, step=Math.max(0,frame.absoluteStep+(time-frame.straightTime)/sd), chase=true;
+    const total=App.Seq.rangeSteps?.() || Infinity;
+    let time=E.ctx.currentTime+.005, step=Math.max(0,after(frame.absoluteStep,time-frame.straightTime)), chase=true;
     while(time<future.time-.000001){
       step%=total;
-      const width=Math.min(Math.floor(step+1e-7)+1-step,(future.time-time)/sd);
+      const width=Math.min(Math.floor(step+1e-7)+1-step,after(step,future.time-time)-step);
       if(width<=0)break;
-      schedule(E,App.P,step,time,sd,chase,width);
-      step+=width;time+=width*sd;chase=false;
+      schedule(E,App.P,step,time,beatTime(step+1)-beatTime(step),chase,width);
+      time+=beatTime(step+width)-beatTime(step);step+=width;chase=false;
     }
   }
   let studio = null, sampleDialog = null, capture = null, captureTimer, generation = 0, selected = "", track = 0, cursor = 0;
@@ -119,7 +120,7 @@
   }
   function split(r,step) {
     if (!r) throw Error("SELECT A REGION");
-    const cut=(step-r.at)*seconds();
+    const cut=beatTime(step)-beatTime(r.at);
     if (r.repeats!==1 || cut<.001 || cut>r.len-.001) throw Error("PLACE CURSOR INSIDE A SINGLE REGION");
     if (pool().length >= 2048) throw Error("REGION LIMIT REACHED");
     const next=reg({...r,id:App.uid(),at:step,len:r.len-cut,fin:0,takes:r.takes.map(t=>({...t,offset:t.offset+cut}))});
@@ -128,26 +129,26 @@
   }
   function crossfade(r) {
     if (!r || r.repeats!==1) throw Error("SELECT A SINGLE REGION");
-    const prev=pool().filter(x=>x!==r && x.track===r.track && x.repeats===1 && x.at<r.at && x.at+x.len/seconds()>r.at)
+    const prev=pool().filter(x=>x!==r && x.track===r.track && x.repeats===1 && x.at<r.at && endOf(x)>r.at)
       .sort((a,b)=>b.at-a.at)[0];
     if (!prev) throw Error("OVERLAP THE END OF AN EARLIER REGION ON THIS TRACK");
-    const duration = (prev.at-r.at)*seconds()+prev.len;
+    const duration=beatTime(prev.at)-beatTime(r.at)+prev.len;
     if (duration>r.len) throw Error("EXTEND THE LATER REGION PAST THE EARLIER END");
     prev.fout=duration; r.fin=duration;
   }
   function setTrim(r,from,to) {
     const old=r.takes[r.take].offset, delta=from-old;
     if (!(to>from+.0009) || r.takes.some(t=>t.offset+delta<-.00001 || t.offset+delta+to-from>(sample(t.sample)?.duration ?? Infinity)+.00001)) throw Error("TRIM EXCEEDS A TAKE BOUNDARY");
-    if (r.at+delta/seconds()<-.00001) throw Error("TRIM WOULD START BEFORE THE TIMELINE");
+    if (after(r.at,delta)<-.00001) throw Error("TRIM WOULD START BEFORE THE TIMELINE");
     r.takes.forEach(t=>t.offset=Math.max(0,t.offset+delta));
-    r.at=Math.max(0,r.at+delta/seconds());r.len=to-from;r.fin=Math.min(r.fin,r.len);r.fout=Math.min(r.fout,r.len);
+    r.at=Math.max(0,after(r.at,delta));r.len=to-from;r.fin=Math.min(r.fin,r.len);r.fout=Math.min(r.fout,r.len);
   }
   async function importFiles(files,ti,at) {
     const P=App.P, epoch=generation, imported=[];
     try {
       for (const file of files) imported.push(await App.addSample(file.name.replace(/\.[^.]+$/,"").slice(0,40),file));
       if (P!==App.P || epoch!==generation) return;
-      edit(()=>{const positions=imported.map(id=>{const start=at;at+=sample(id).duration/seconds();return start;});
+      edit(()=>{const positions=imported.map(id=>{const start=at;at=after(at,sample(id).duration);return start;});
         if(positions.some(start=>start>MAX) || pool().length+imported.length>2048)throw Error("TIMELINE LIMIT REACHED");
         imported.forEach((id,i)=>add(id,ti,positions[i]));});
     } catch {if(P===App.P && epoch===generation){notice="CANNOT DECODE AUDIO FILE";render();}}
@@ -215,7 +216,7 @@
       c.rec=await E.record(node);
       if(capture!==c){await c.rec.stop();return;}
       c.connected=E.ctx.currentTime;
-      const stepSec=seconds(), loopSteps=App.spb(App.P)*loopBars;
+      const loopSteps=App.Conductor.barsAfter(App.P,cursor,loopBars)-cursor;
       if(mode==="loop") {
         // Play aligned layers through normal mixer channels while a new pass is captured.
         // A rolling transport already supplies those layers through the scheduler.
@@ -229,10 +230,10 @@
           c.when=next?.time ?? E.ctx.currentTime+.12;
           c.at=next?.step ?? cursor;
         }
-        const group=pool().find(x=>x.layer && Math.abs(x.at-c.at)<.001 && Math.abs(x.len-loopSteps*stepSec)<.002)?.layer;
+        const group=pool().find(x=>x.layer && Math.abs(x.at-c.at)<.001 && Math.abs(x.len-loopLength(c.at))<.002)?.layer;
         c.group=group || App.uid();
         if(!App.Seq.playing && !loopClock && src!=="mix") for(const layer of pool().filter(x=>x.layer===c.group)) voice(E,layer,c.when);
-        c.end=c.when+loopSteps*stepSec;
+        c.end=c.when+loopLength(c.at);
       } else {
         c.when=E.ctx.currentTime+.09;
         if(mode==="take") {
@@ -240,7 +241,7 @@
           if(next && App.Seq.playing){
             const cycle=App.Seq.rangeSteps?.() ?? Infinity;
             const wait=Number.isFinite(cycle)?((r.at-next.step+cycle)%cycle):Math.max(0,r.at-next.step);
-            c.when=next.time+wait*stepSec;
+            c.when=next.time+(Number.isFinite(cycle)&&r.at<next.step?beatTime(cycle)-beatTime(next.step)+beatTime(r.at):beatTime(next.step+wait)-beatTime(next.step));
           }
           c.end=c.when+r.len;
         }
@@ -271,7 +272,7 @@
     if(loopClock && App.E)stopSources(App.E);
     loopClock=null;
   }
-  const loopLength=()=>App.spb(App.P)*loopBars*seconds();
+  const loopLength=(at=cursor)=>beatTime(App.Conductor.barsAfter(App.P,at,loopBars))-beatTime(at);
   const layersAt=(at,len)=>pool().filter(r=>r.layer && Math.abs(r.at-at)<.001 && Math.abs(r.len-len)<.002);
   function startLoop() {
     if(loopClock){stopLoop();render();return;}
@@ -305,25 +306,26 @@
     const b=btn(label,tip,fn,cls);b.disabled=!!disabled;return b;
   }
   const trackOptions=()=>App.P.tracks.map((t,i)=>[i,App.pad2(i+1)+" "+t.name]);
-  const projectSteps=()=>Math.max(App.spb(App.P)*2,durationSteps(App.P),App.P.song ? App.P.chain.reduce((n,pi)=>n+App.patSteps(App.P,pi),0):App.patSteps(App.P,App.P.sel.p));
+  const projectSteps=()=>Math.max(App.spb(App.P)*2,durationSteps(App.P),App.P.song ? (App.Conductor.layout(App.P,App.P.chain).at(-1)?.end||0):App.patSteps(App.P,App.P.sel.p));
   function bounds(cv) {
     const w=cv.clientWidth,height=cv.clientHeight, left=Math.min(90,w*.135),top=18;
-    const bar=App.spb(App.P), span=zoom ? zoom*bar : Math.ceil(Math.max(projectSteps(),cursor+1)/bar)*bar;
-    const start=zoom?viewportStart:0;
+    const C=App.Conductor,start=zoom?viewportStart:0,bar=C.meter(App.P,start).width;
+    const last=Math.max(projectSteps(),cursor+1),pos=C.position(App.P,last);
+    const span=zoom ? C.barsAfter(App.P,start,zoom)-start : C.barStart(App.P,pos.bar+Number(pos.inside>0));
     return {w,height,left,top,span,start,bar,scale:(w-left)/span,row:(height-top)/8};
   }
   function positions(cv) {
     const b=bounds(cv),out=[];
     for(let ti=0;ti<8;ti++) {
-      const rs=pool().filter(r=>r.track===ti && r.at+r.len*r.repeats/seconds()>b.start && r.at<b.start+b.span).sort((a,c)=>a.at-c.at);
+      const rs=pool().filter(r=>r.track===ti && endOf(r)>b.start && r.at<b.start+b.span).sort((a,c)=>a.at-c.at);
       const lanes=[];
       const packed=rs.map(r=>{
         let line=lanes.findIndex(end=>end<=r.at+.0001);
-        if(line<0)line=lanes.length;lanes[line]=r.at+r.len*r.repeats/seconds();return {r,line};
+        if(line<0)line=lanes.length;lanes[line]=endOf(r);return {r,line};
       });
       const hh=b.row/Math.max(1,lanes.length);
       for(const {r,line} of packed)out.push({r,x:b.left+(r.at-b.start)*b.scale,
-        y:b.top+ti*b.row+line*hh+1,w:r.len*r.repeats/seconds()*b.scale,h:Math.max(2,hh-2)});
+        y:b.top+ti*b.row+line*hh+1,w:(endOf(r)-r.at)*b.scale,h:Math.max(2,hh-2)});
     }
     return {b,out};
   }
@@ -337,40 +339,42 @@
       ctx.fillStyle=i===track?C.am:C.t2;ctx.fillText(App.pad2(i+1)+" "+App.P.tracks[i].name.slice(0,8),5,y+b.row/2,b.left-8);
       ctx.fillStyle=C.ln;ctx.fillRect(0,y,b.w,1);
     }
-    for(let pos=b.start;pos<b.start+b.span;pos+=b.bar*Math.max(1,Math.ceil(42/(b.bar*b.scale)))) {
-      const x=b.left+(pos-b.start)*b.scale;ctx.fillStyle=C.ln2;ctx.fillRect(Math.round(x),b.top,1,b.height-b.top);
-      ctx.fillStyle=C.t3;ctx.fillText(String(Math.floor(pos/b.bar)+1),x+3,9);
+    const map=App.Conductor;
+    for(let i=map.position(App.P,b.start).bar;map.barStart(App.P,i)<b.start+b.span;){
+      const pos=map.barStart(App.P,i),meter=map.meter(App.P,pos),x=b.left+(pos-b.start)*b.scale;
+      ctx.fillStyle=C.ln2;ctx.fillRect(Math.round(x),b.top,1,b.height-b.top);ctx.fillStyle=C.t3;ctx.fillText(String(i+1),x+3,9);
+      i+=Math.max(1,Math.ceil(42/(meter.width*b.scale)));
     }
     ctx.save();ctx.beginPath();ctx.rect(b.left,b.top,b.w-b.left,b.height-b.top);ctx.clip();
     if(b.scale*4>=12) {
       ctx.fillStyle=C.ln;
-      for(let pos=Math.ceil(b.start/4)*4;pos<b.start+b.span;pos+=4)if(pos%b.bar)ctx.fillRect(Math.round(b.left+(pos-b.start)*b.scale),b.top,1,b.height-b.top);
+      for(let pos=Math.ceil(b.start/4)*4;pos<b.start+b.span;pos+=4)if(map.position(App.P,pos).inside)ctx.fillRect(Math.round(b.left+(pos-b.start)*b.scale),b.top,1,b.height-b.top);
     }
     for(const {r,x,y,w,h:hh} of out) {
       const on=r.id===selected,S=App.samples.get(r.takes[r.take].sample);
       ctx.fillStyle=r.mute?C.r1:on?C.r3:C.r2;ctx.fillRect(x,y,w,hh);
       ctx.strokeStyle=on?C.am:r.mute?C.ln2:C.t3;ctx.strokeRect(x+.5,y+.5,Math.max(0,w-1),Math.max(0,hh-1));
       if(S && hh>=5){
-        const pk=S.peaks,n=pk.length/2,one=w/r.repeats,center=y+hh/2,amp=hh*.41/Math.max(.02,S.peak),offset=r.takes[r.take].offset;
+        const pk=S.peaks,n=pk.length/2,center=y+hh/2,amp=hh*.41/Math.max(.02,S.peak),offset=r.takes[r.take].offset;
         ctx.fillStyle=r.mute?C.ln3:C.t2;
         for(let xx=Math.max(b.left,Math.ceil(x+1));xx<Math.min(b.w,x+w-1);xx+=2){
-          const secs=((xx-x)%one)/one*r.len, i=clamp(Math.floor((offset+secs)/S.buffer.duration*n),0,n-1);
+          const time=beatTime(b.start+(xx-b.left)/b.scale)-beatTime(r.at),secs=((time%r.len)+r.len)%r.len, i=clamp(Math.floor((offset+secs)/S.buffer.duration*n),0,n-1);
           let a=pk[i*2],cc=pk[i*2+1];
-          const j1=Math.min(n,Math.ceil((offset+secs+2/one*r.len)/S.buffer.duration*n));
+          const j1=Math.min(n,Math.ceil((offset+secs+beatTime(b.start+(xx+2-b.left)/b.scale)-beatTime(b.start+(xx-b.left)/b.scale))/S.buffer.duration*n));
           for(let j=i+1;j<j1;j++){a=Math.min(a,pk[j*2]);cc=Math.max(cc,pk[j*2+1]);}
           ctx.fillRect(xx,center-cc*amp,1,Math.max(1,(cc-a)*amp));
         }
       }
       if((r.fin || r.fout || r.repeats>1) && w/r.repeats>3) {
-        const one=w/r.repeats;
+        const px=sec=>b.left+(after(r.at,sec)-b.start)*b.scale;
         ctx.strokeStyle=on?C.am:C.t3;ctx.lineWidth=1;
         for(let rep=0;rep<r.repeats;rep++){
-          const xx=x+rep*one;
+          const xx=px(rep*r.len),one=px((rep+1)*r.len)-xx;
           if(xx+one<b.left || xx>b.w)continue;
           ctx.beginPath();
           if(rep){ctx.moveTo(xx,y);ctx.lineTo(xx,y+hh);}
-          if(r.fin){ctx.moveTo(xx,y+hh-1);ctx.lineTo(xx+one*r.fin/r.len,y+1);}
-          if(r.fout){ctx.moveTo(xx+one*(1-r.fout/r.len),y+1);ctx.lineTo(xx+one,y+hh-1);}ctx.stroke();
+          if(r.fin){ctx.moveTo(xx,y+hh-1);ctx.lineTo(px(rep*r.len+r.fin),y+1);}
+          if(r.fout){ctx.moveTo(px((rep+1)*r.len-r.fout),y+1);ctx.lineTo(xx+one,y+hh-1);}ctx.stroke();
         }
       }
       if(hh>13 && w>42){ctx.fillStyle=C.r0;ctx.fillRect(Math.max(x,b.left)+2,y+1,Math.min(w-3,r.name.length*6+3),11);ctx.fillStyle=on?C.am:C.t1;ctx.fillText(r.name,Math.max(x,b.left)+3,y+7,w-5);}
@@ -378,7 +382,7 @@
     const line=(step,color)=>{const x=b.left+(step-b.start)*b.scale;ctx.fillStyle=color;ctx.fillRect(x,b.top,1,b.height-b.top);};
     line(cursor,C.am);
     if(App.Seq.playing){const p=App.Seq.frame();if(p)line(p.absoluteStep+clamp((App.E.ctx.currentTime-p.straightTime)/p.sd,0,1),C.t1);}
-    if(loopClock){const t=App.E.ctx.currentTime-loopClock.phase;if(t>=0)line(loopClock.at+(t%loopClock.len)/seconds(),C.t1);}
+    if(loopClock){const t=App.E.ctx.currentTime-loopClock.phase;if(t>=0)line(after(loopClock.at,t%loopClock.len),C.t1);}
     ctx.restore();
   }
   function bindCanvas(cv) {
@@ -414,7 +418,7 @@
     if(!studio?.open)return;
     if(App.P.sel.t!==track)App.select(track,App.P.sel.p);
     const old=document.activeElement, tag=old?.tagName, label=old?.getAttribute("aria-label") || old?.textContent;
-    const body=h("div.dlg-body.ast-body"),r=find(),sd=seconds();
+    const body=h("div.dlg-body.ast-body"),r=find();
     const tabs=["timeline","looper"].map(v=>action(v==="timeline"?"Timeline":"Looper",v==="timeline"?"AUDIO REGIONS AND ALTERNATE TAKES":"RECORD AND OVERDUB LOOP LAYERS",()=>{if(capture)return;stopLoop();view=v;render();},!!capture,view===v?"on":""));
     body.append(h("div.ast-head",null,h("h2",{text:"Audio studio"}),...tabs,h("span.sp"),action("Close","RETURN TO CONSOLE",()=>studio.close())));
     const zoomCtl=select("View",[[0,"FIT"],[2,"2 BARS"],[4,"4 BARS"],[8,"8 BARS"],[16,"16 BARS"],[32,"32 BARS"]],zoom,v=>{zoom=+v;viewportStart=zoom?Math.floor(cursor/(zoom*App.spb(App.P)))*zoom*App.spb(App.P):0;render();});
@@ -442,7 +446,8 @@
     const opts=pool().map((x,i)=>[x.id,(i+1)+" · "+App.pad2(x.track+1)+" "+x.name]);
     body.append(h("div.ast-inspect",null,select("Region",[["","SELECT REGION"],...opts],r?.id || "",v=>{selected=v;const x=find();if(x){track=x.track;cursor=x.at;}render();}),
       r? select("Take",r.takes.map((t,i)=>[i,(i+1)+" · "+(App.samples.get(t.sample)?.name || "MISSING")]),r.take,v=>edit(()=>r.take=+v)):null,
-      r?action("Audition","PLAY SELECTED TAKE THROUGH ITS OUTPUT STRIP",()=>{const E=App.audio();if(E)voice(E,{...r,mute:false},E.ctx.currentTime+.02);}):null));
+      r?action("Audition","PLAY SELECTED TAKE THROUGH ITS OUTPUT STRIP",()=>{const E=App.audio();if(E)voice(E,{...r,mute:false},E.ctx.currentTime+.02);}):null,
+      r?action("Transcribe…","CONVERT THIS SINGLE-NOTE MELODY TO EDITABLE NOTES",openTranscription,!idle):null));
     if(r) {
       const source=r.takes[r.take],end=source.offset+r.len;
       body.append(h("div.ast-toolbar.ast-params",null,number("Start · step",r.at,0,MAX,.001,v=>edit(()=>r.at=v)),
@@ -453,7 +458,7 @@
       body.append(h("div.ast-toolbar",null,select("Route",trackOptions(),r.track,v=>edit(()=>{r.track=+v;track=r.track;})),
         action("Split at cursor","SPLIT ALL TAKES AT THE CURSOR · CHOOSE A TAKE FOR EACH PIECE",()=>edit(()=>split(r,cursor))),
         action("Crossfade","FADE BETWEEN OVERLAPPING REGIONS ON THIS TRACK",()=>edit(()=>crossfade(r))),
-        action("Duplicate","PLACE A COPY IMMEDIATELY AFTER THIS REGION",()=>edit(()=>{const at=r.at+r.len*r.repeats/sd;if(at>MAX || pool().length>=2048)throw Error("TIMELINE LIMIT REACHED");const n=reg({...r,id:App.uid(),at});pool().push(n);selected=n.id;})),
+        action("Duplicate","PLACE A COPY IMMEDIATELY AFTER THIS REGION",()=>edit(()=>{const at=endOf(r);if(at>MAX || pool().length>=2048)throw Error("TIMELINE LIMIT REACHED");const n=reg({...r,id:App.uid(),at});pool().push(n);selected=n.id;})),
         action(r.mute?"Unmute":"Mute","TOGGLE REGION IN THE MIX",()=>edit(()=>r.mute=!r.mute)),
         action("Remove","REMOVE REGION · PROJECT UNDO RESTORES IT",()=>edit(()=>{pool().splice(pool().indexOf(r),1);selected="";}))));
     }
@@ -605,5 +610,12 @@
     dlg.addEventListener("close",()=>{if(sampleDialog===dlg)sampleDialog=null;},{once:true});
     dlg.showModal();renderSample();
   }
-  App.AudioStudio={open,editSample,reset,sync:render,durationSteps,schedule,stopSources};
+  function openTranscription() {
+    if(capture)return;
+    const r=find() || pool()[0];
+    if(!r){open();notice="Record or import a single-note melody, then select its region.";render();return;}
+    const take=r.takes[r.take];
+    App.Transcription.open({sample:take.sample,offset:take.offset,seconds:r.len,name:r.name,track:r.track,at:r.at});
+  }
+  App.AudioStudio={open,editSample,openTranscription,reset,sync:render,durationSteps,schedule,stopSources};
 })();

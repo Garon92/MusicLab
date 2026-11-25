@@ -15,6 +15,9 @@
     const s = Math.floor(pos), fraction = pos - s;
     return pos * sd + (1 - fraction) * swingOf(P, s, sd) + fraction * swingOf(P, s + 1, sd);
   };
+  const C=()=>App.Conductor;
+  const seconds=(P,s)=>C().time(P,s);
+  const duration=(P,s)=>seconds(P,s+1)-seconds(P,s);
   const countOf = nt => clamp(Math.round(nt.r || 1), 1, 8);
 
   // At high swing an early note on the next step can precede a late ratchet
@@ -47,34 +50,46 @@
       }
     };
   }
-  let output;
+  let output, sceneSession, runStep=0;
   function plan(P,pattern=P.sel.p) {
     const source=P.performance?.source || "arrangement", chain=songOn(P);
-    const list=chain ? P.chain : [pattern], ends=[];
-    let count=0;
-    for (const pi of list) {count+=App.patSteps(P,pi);ends.push(count);}
+    const list=chain ? P.chain : [pattern], slots=C().layout(P,list), ends=slots.map(slot=>slot.end);
+    const count=ends.at(-1) || 0;
     const music=source==="take" ? P.performance.take.steps : source==="live" ? P.performance.bars*App.spb(P) : count;
     const clipLength=!chain && source==="arrangement" && P.performance ? Math.max(...P.performance.loops.map(row=>row[pattern])) : 0;
     const harmony=source==="arrangement" && !chain ? App.Harmony?.duration(P)||0 : 0;
-    const total=Math.max(music,clipLength,harmony,App.AudioStudio?.durationSteps(P)||0);
-    return {source,chain,list,ends,music,total};
+    const sceneEnd=source==="arrangement" ? (P.scenes?.cues||[]).reduce((end,c)=>Math.max(end,C().barsAfter(P,c.at,c.bars||0)),0) : 0;
+    const total=Math.max(music,clipLength,harmony,sceneEnd,App.AudioStudio?.durationSteps(P)||0);
+    return {source,chain,list,slots,ends,music,total};
   }
   function position(P,layout,at,realtime=false) {
     const {source,chain,list,ends,music}=layout;
     // A single selected pattern repeats underneath longer chord or audio timelines.
     const index=chain && at<music ? ends.findIndex(end=>at<end) : 0;
     const pi=list[index],s=chain && at<music ? at-(index?ends[index-1]:0) : at%App.patSteps(P,pi);
-    const silent=(chain || source==="take") && at>=music;
+    const silent=((chain || source==="take") && at>=music) || (chain && layout.slots[index]?.rest);
     const lanes=silent ? Array(8).fill(null) : App.Live?.frames(P,at,realtime) || P.tracks.map((_,ti)=>{
-      const n=App.Live?.length(P,ti,pi) || App.patSteps(P,pi);
-      return {p:pi,s:(chain?s:at)%n,n};
+      const n=P.performance?.loops?.[ti]?.[pi] || (chain && P.arrangement?.slots?.[index]?.steps ? App.patSteps(P,pi) : chain ? layout.slots[index].end-layout.slots[index].from : layout.ends[0]);
+      return {p:pi,s:(chain?s+layout.slots[index].offset:at)%n,n};
     });
-    return {pat:pi,step:s,si:index,lanes,changes:App.Live?.transitions(P,at,realtime)||[]};
+    const slot=layout.slots[index], prev=layout.slots[index-1], continuous=prev && !slot.rest && !prev.rest && prev.p===slot.p && prev.offset+prev.end-prev.from===slot.offset;
+    const boundary=chain && at===slot.from && !continuous && (slot.rest || slot.offset || prev?.rest || prev?.offset);
+    return {pat:pi,step:s,si:index,lanes,changes:boundary ? P.tracks.map((_,i)=>i) : App.Live?.transitions(P,at,realtime)||[]};
   }
   const emit = (E,P,pi,gridStep,t,sd,options={}) => {
     const absolute=options.absoluteStep ?? gridStep, musical=absolute+(P.performance?.source==="take" ? P.performance.take.origin||0 : 0);
     const floor=options.floor ?? 0;
-    const sink=options.output || eventQueue(E,P), folded=new Map(), base=t-gridTime(P,musical,sd);
+    const sink=options.output || eventQueue(E,P), folded=new Map();
+    const mapped=options.mapTime && P.arrangement?.tempo.length;
+    const clock=offset=>{
+      if(!mapped)return gridTime(P,musical+offset,sd)-gridTime(P,musical,sd);
+      const swingAt=x=>{
+        const k=Math.floor(x), f=x-k;
+        const boundary=i=>seconds(P,absolute+i)-(seconds(P,absolute)) + swingOf(P,musical+i,duration(P,absolute+i));
+        return boundary(k)+(boundary(k+1)-boundary(k))*f;
+      };
+      return swingAt(offset)-swingAt(0);
+    };
     for (let ti=0;ti<P.tracks.length;ti++) {
       const lane=options.lanes?.[ti];
       const changed=options.changes?.includes(ti);
@@ -86,9 +101,13 @@
       const bank=lane?.p ?? pi, n=lane?.n || App.Live?.length(P,ti,bank) || App.patSteps(P,bank), s=lane?.s ?? gridStep%n;
       const T=P.tracks[ti], clip=T.clips[bank];
       const harmony=App.Harmony?.state(P,ti,musical);
-      const at=pos=>base+gridTime(P,musical+pos-s,sd);
+      const at=pos=>t+clock(pos-s);
+      const pass=App.Rules?.pass?.(P,ti,bank,s,n,{...options,lane}) ?? lane?.pass ?? Math.floor((options.runStep??absolute)/n)+1;
+      const fill=E===App.E && !!App.Rules?.filling?.();
+      if(E===App.E)App.Rules?.step?.(ti,bank,s,n,pass,t,at(s+1));
       const add=(ti,note,nt,pos,length,gate)=>{
-        if(note>127 || length<=0 || (nt.p<1 && Math.random()>=nt.p))return;
+        if(note>127 || length<=0)return;
+        if(App.Rules ? !App.Rules.allow(P,ti,bank,nt,pass,pos,fill) : nt.p<1 && Math.random()>=nt.p)return;
         const from=at(pos),span=at(pos+length)-from;
         const time=Math.max(changed?t:floor,from+(nt.off||0)*sd);
         let duration=gate==null ? span-Math.min(.004,span*.12) : span*gate;
@@ -104,12 +123,25 @@
             folded.set(id,e);
           }
           sink.note(e);
+          if(E===App.E)App.Rules?.hit?.(ti,bank,s,pass,key,e.velocity,time,duration,e);
         }
       };
       E.automate?.(ti,T,T.automation?.[bank],s,t,at(s+1));
       if (!clip.length) continue;
+      for(const nt of clip)if(nt.fixed && nt.s===s) {
+        const repeats=countOf(nt), gate=nt.fixed.gate*nt.l/(nt.fixed.base||nt.l);
+        if(App.Rules && !App.Rules.allow(P,ti,bank,nt,pass,s,fill))continue;
+        for(let k=0;k<repeats;k++){
+          const pos=s+nt.fixed.offset+k*gate/repeats, time=Math.max(floor,at(pos)+(nt.off||0)*sd);
+          const held=Math.max(.001,at(pos+gate/repeats)-at(pos));
+          const e={ti,note:nt.n,velocity:nt.v,time,duration:held,poly:!!nt.fixed.poly};
+          sink.note(e);
+          if(E===App.E)App.Rules?.hit?.(ti,bank,s,pass,nt.n,nt.v,time,held,e);
+        }
+      }
       if (T.kind !== "syn" || !T.arp.mode) {
         for (const nt of clip) {
+          if(nt.fixed)continue;
           const length = Math.min(nt.l, n - nt.s);
           if (s < nt.s || s >= nt.s + length) continue;
           const count = countOf(nt);
@@ -133,7 +165,7 @@
         }
         continue;
       }
-      const held = clip.filter(nt => nt.s <= s && s < nt.s + nt.l);
+      const held = clip.filter(nt => !nt.fixed && nt.s <= s && s < nt.s + nt.l);
       if (!held.length) continue;
       held.sort((a, b) => a.n - b.n);
       const A = T.arp, per = [2, 1, 0.5][A.rate];
@@ -144,7 +176,7 @@
         if (A.mode === 1) x = k % L;
         else if (A.mode === 2) x = L - 1 - (k % L);
         else if (A.mode === 3) { const cycle = Math.max(1, 2 * L - 2), m = k % cycle; x = m < L ? m : cycle - m; }
-        else x = Math.floor(Math.random() * L);
+        else x = Math.floor((App.Rules?.random?.(P,ti,bank,pass,s,k,91) ?? Math.random()) * L);
         const nt = held[x % held.length];
         const length = Math.min(per, n - pos, nt.s + nt.l - pos);
         const count = countOf(nt), width = length / count;
@@ -163,27 +195,32 @@
     const now = E.ctx.currentTime;
     while (q.length && q[0].t <= now) Seq.pos = q.shift();
     if (nextT < now - 0.25) nextT = now + 0.03; // tab was asleep: resume from now instead of replaying the gap
-    const P=App.P,sd=15/P.bpm,SPB=App.spb(P);
-    let layout=plan(P,pat);
-    while (nextT<now+.12+.5*sd) {
+    const P=App.P;
+    let layout=plan(P,pat),sd=duration(P,cursor);
+    while (nextT<now+.12+.5*Math.max(sd,duration(P,cursor+1))) {
       if(layout.source!=="live" && cursor>=layout.total)cursor=0;
       if(queued!=null && layout.source==="arrangement" && !layout.chain && cursor%App.patSteps(P,pat)===0) {
         pat=queued; queued=null; cursor=0;layout=plan(P,pat);
       }
+      sd=duration(P,cursor);
       const frame=position(P,layout,cursor,true);
       if(layout.chain)pat=frame.pat;
       nextT=App.MidiIO?.phase?.(E.ctx,nextT,sd) ?? nextT;
       const phase=cursor+(layout.source==="take" ? P.performance.take.origin : 0);
       const t=nextT+swingOf(P,phase,sd);
-      emit(E,P,frame.pat,frame.step,t,sd,{absoluteStep:cursor,lanes:frame.lanes,changes:frame.changes,output,floor:origin});
+      E.tempo?.(C().bpm(P,cursor),C().meter(P,cursor).width,nextT);
+      App.Scenes?.schedule?.(E,sceneSession,cursor,nextT,nextT+sd,frame.lanes);
+      const current=App.Scenes?.projectAt?.(sceneSession,cursor)||P;
+      emit(E,current,frame.pat,frame.step,t,sd,{slots:layout.chain?layout.slots:null,arrangementSteps:layout.total,mapTime:true,runStep,absoluteStep:cursor,lanes:frame.lanes,changes:frame.changes,output,floor:origin});
       App.AudioStudio?.schedule(E,P,cursor,nextT,sd,cursor===0||firstFrame);
       firstFrame=false;
       App.MidiIO?.clock(E.ctx,nextT,sd);
-      if(P.click && cursor%App.beatSteps(P)===0) E.click(t,cursor%SPB===0);
-      q.push({...frame,t,straightTime:nextT,absoluteStep:cursor,bar:Math.floor(cursor/SPB),sd,span:gridTime(P,phase+1,sd)-gridTime(P,phase,sd)});
-      cursor++;nextT+=sd;
+      const meter=C().position(P,cursor);
+      if(P.click && meter.inside%meter.beatSteps===0) E.click(t,meter.inside===0);
+      q.push({...frame,...meter,t,straightTime:nextT,absoluteStep:cursor,runStep,sd,span:sd+swingOf(P,phase+1,duration(P,cursor+1))-swingOf(P,phase,sd)});
+      cursor++;runStep++;nextT+=sd;
     }
-    output.flush(nextT-.5*sd-.002);
+    output.flush(nextT-.5*Math.max(sd,duration(P,cursor))-.002);
   };
 
   // A worker clock keeps time when the tab is in the background; timers on the page itself get throttled there.
@@ -197,6 +234,7 @@
     const E = App.audio();
     if (!E) return;
     Seq.stop(true);
+    Seq.runId=(Seq.runId||0)+1;
     const P = App.P;
     q=[];cursor=0;queued=null;pat=P.sel.p;
     const layout=plan(P);
@@ -210,6 +248,7 @@
       if(layout.chain)pat=layout.list[layout.ends.findIndex(end=>cursor<end)] ?? layout.list[0];
     }
     App.Live?.start(P);
+    runStep=cursor;sceneSession=App.Scenes?.session?.(P);
     output=eventQueue(E,P);
     firstFrame=true;origin=nextT=Math.max(E.ctx.currentTime+.06,.16);
     E.restartLfos(nextT);
@@ -223,8 +262,10 @@
     if (worker) worker.postMessage(0);
     clearInterval(timer);
     const was = Seq.playing;
+    if(was) App.Retrospective?.mark();
     if(was) {App.Live?.finish();App.MidiIO?.stop();App.AudioStudio?.stopSources(App.E);}
-    output=null;
+    if(was){App.Rules?.stop?.(App.E.ctx.currentTime);App.Scenes?.end?.(App.E,sceneSession);App.E.stopTempo?.();}
+    sceneSession=null;output=null;
     Seq.playing = false; Seq.pos = null; q = []; queued = null;
     Seq.skip.clear();
     if (was && App.E) { App.E.panic(); App.E.stopAutomation(); }
@@ -249,23 +290,24 @@
     const c=Seq.frame();if(!c)return null;
     const lane=ti==null ? {p:c.pat,s:c.step} : c.lanes[ti];
     if(!lane)return null;
-    return {pat:lane.p,step:lane.s+clamp((App.E.ctx.currentTime-c.t)/c.span,0,1),sd:c.sd,span:c.span};
+    return {pat:lane.p,n:lane.n,step:lane.s+clamp((App.E.ctx.currentTime-c.t)/c.span,0,1),sd:c.sd,span:c.span};
   };
   Seq.rangeSteps=()=>App.P.performance.source==="live" ? Infinity : plan(App.P,Seq.playing?pat:App.P.sel.p).total;
   Seq.nextGrid = (steps=1) => {
-    const sd=15/App.P.bpm, grid=Math.max(1,Math.round(steps)), end=Seq.rangeSteps();
-    const from=cursor>=end ? 0 : cursor;
-    const at=Math.min(end,Math.ceil(from/grid)*grid);
-    return {step:at===end?0:at,time:nextT+(at-from)*sd};
+    const end=Seq.rangeSteps(),from=cursor>=end ? 0 : cursor;
+    const meter=C().position(App.P,from),grid=steps==="bar"?meter.barSteps:steps==="beat"?meter.beatSteps:Math.max(1,Math.round(steps)||1);
+    const base=typeof steps==="string" ? from-meter.inside : 0;
+    const at=Math.min(end,base+Math.ceil((from-base)/grid)*grid);
+    return {step:at===end?0:at,time:nextT+seconds(App.P,at)-seconds(App.P,from)};
   };
 
   /* Offline and file events share the same clip clocks, timing offsets and chords. */
   async function renderSong({stems,project}={}) {
-    const P=JSON.parse(JSON.stringify(project || App.P)),layout=plan(P),sd=15/P.bpm,steps=layout.total;
+    const P=JSON.parse(JSON.stringify(project || App.P)),layout=plan(P),steps=layout.total, span=seconds(P,steps), scenes=App.Scenes?.session?.(P);
     const sr = App.E ? App.E.ctx.sampleRate : 48000, tail = Math.max(Math.min(12,1.5+P.fx.rsize),App.Rack?.tailSeconds?.(P)||0);
-    if (steps * sd > 1200) throw Error("LONGER THAN 20 MIN");
+    if (span > 1200) throw Error("LONGER THAN 20 MIN");
     // The browser's compressor fades in during its first ~150 ms. Render a silent lead-in for it, then cut it off.
-    const PRE=.3, channels=stems?.length ? stems.length*2 : 2, frames=Math.ceil((PRE+steps*sd+tail)*sr);
+    const PRE=.3, channels=stems?.length ? stems.length*2 : 2, frames=Math.ceil((PRE+span+tail)*sr);
     if(stems?.length && frames*channels*4>768*1024*1024)throw Error("SELECT FEWER STEMS OR SHORTEN ARRANGEMENT");
     const ctx=new OfflineAudioContext(channels,frames,sr);
     const E=App.Engine(ctx,()=>P,{offline:true,stems});
@@ -277,16 +319,19 @@
     // envelopes, delay lines and convolution tails live across every window.
     let t = PRE, windowEnd = PRE + 8, rendering;
     const canSuspend = typeof ctx.suspend === "function" && typeof ctx.resume === "function";
-    for(let at=0;at<steps;at++,t+=sd) {
+    for(let at=0;at<steps;at++) {
+      const sd=duration(P,at);
       if(canSuspend && t>=windowEnd) {
         const paused=ctx.suspend(t-.25);
         if(!rendering)rendering=ctx.startRendering();else await ctx.resume();
         await Promise.race([paused,rendering]);E.collectEnded();windowEnd=t+8;
       }
       const frame=position(P,layout,at);
-      emit(E,P,frame.pat,frame.step,t+swingOf(P,at+(layout.source==="take"?P.performance.take.origin:0),sd),sd,{absoluteStep:at,lanes:frame.lanes,changes:frame.changes,output:events,floor:PRE});
+      E.tempo?.(C().bpm(P,at),C().meter(P,at).width,t);
+      App.Scenes?.schedule?.(E,scenes,at,t,t+sd,frame.lanes);
+      emit(E,App.Scenes?.projectAt?.(scenes,at)||P,frame.pat,frame.step,t+swingOf(P,at+(layout.source==="take"?P.performance.take.origin:0),sd),sd,{slots:layout.chain?layout.slots:null,arrangementSteps:layout.total,mapTime:true,runStep:at,absoluteStep:at,lanes:frame.lanes,changes:frame.changes,output:events,floor:PRE});
       App.AudioStudio?.schedule(E,P,at,t,sd,at===0);
-      events.flush(t+sd*.5);
+      events.flush(t+sd-.5*duration(P,at+1));t+=sd;
     }
     if(layout.source==="take")P.tracks.forEach((_,ti)=>events.cut(ti,t));
     events.flush();
@@ -322,16 +367,23 @@
       d.push(...vlq(Math.max(0, endTick - last)), 0xff, 0x2f, 0);
       return chunk("MTrk", d);
     };
-    const [num, den] = App.SIGS[P.sig];
-    const endTick=layout.total*TPS;
-    const conductor = [[0, 0xff, 0x51, 3, ...be(Math.round(6e7 / P.bpm), 3)], [0, 0xff, 0x58, 4, num, Math.log2(den), 24, 8]];
+    const endTick=layout.total*TPS, conductor=[];
+    let previousTempo,previousSig;
+    for(let s=0;s<layout.total;s++) {
+      const micros=Math.round(4e6*duration(P,s)), sig=C().meter(P,s).sig;
+      if(micros!==previousTempo) { conductor.push([s*TPS,0xff,0x51,3,...be(micros,3)]);previousTempo=micros; }
+      if(sig!==previousSig) {
+        const [num,den]=App.SIGS[sig];
+        conductor.push([s*TPS,0xff,0x58,4,num,Math.log2(den),24,8]);previousSig=sig;
+      }
+    }
     const swingText = txt("MusicLab Swing " + P.swing);
     conductor.push([0, 0xff, 0x01, swingText.length, ...swingText]);
-    let markerTick = 0;
+    let markerTick = 0, markerIndex=0;
     for (const pi of (layout.source==="arrangement" ? list : [])) {
       const marker = txt("MusicLab Pattern " + String.fromCharCode(65 + pi));
       conductor.push([markerTick, 0xff, 0x06, marker.length, ...marker]);
-      markerTick += App.patSteps(P, pi) * TPS;
+      markerTick = layout.ends[markerIndex++] * TPS;
     }
     const tracks = [track(P.name, conductor, endTick)];
     const events = P.tracks.map(() => []);
@@ -389,7 +441,7 @@
     const midiQueue=eventQueue(sink,P);
     for(let at=0;at<layout.total;at++){
       const frame=position(P,layout,at);
-      emit(sink,P,frame.pat,frame.step,at*sd+swingOf(P,at+(layout.source==="take"?P.performance.take.origin:0),sd),sd,{absoluteStep:at,lanes:frame.lanes,changes:frame.changes,output:midiQueue});
+      emit(sink,P,frame.pat,frame.step,at*sd+swingOf(P,at+(layout.source==="take"?P.performance.take.origin:0),sd),sd,{slots:layout.chain?layout.slots:null,arrangementSteps:layout.total,runStep:at,absoluteStep:at,lanes:frame.lanes,changes:frame.changes,output:midiQueue});
       midiQueue.flush((at+.5)*sd);
     }
     if(layout.source==="take")P.tracks.forEach((_,ti)=>midiQueue.cut(ti,layout.total*sd));

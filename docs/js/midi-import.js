@@ -159,7 +159,6 @@
     for (const event of events) if (event.tick === 0) value = event.value;
     return value;
   }
-  const differentLater = (events, value) => events.some(e => e.tick > 0 && String(e.value) !== String(value));
   const noteSort = (a, b) => a.t - b.t || a.s - b.s || a.n - b.n || a.end - b.end || a.v - b.v || a.r - b.r;
 
   function configure(file, filename, warnings) {
@@ -169,7 +168,7 @@
     const micros = initial(file.tempos, 500000), bpm = 6e7 / micros;
     P.bpm = App.clamp(Math.round(bpm * 1000) / 1000, 40, 300);
     if (bpm < 39.999 || bpm > 300.001) warnings.push("Tempo adjusted to " + P.bpm + " BPM (console range 40–300).");
-    if (differentLater(file.tempos, micros)) warnings.push("Tempo changes use the opening tempo throughout.");
+
     const signature = initial(file.signatures, [4, 4]);
     let sig = App.SIGS.findIndex(s => String(s) === String(signature));
     if (sig === -1) {
@@ -177,12 +176,20 @@
       if (sig < 0) sig = 2;
       warnings.push(signature.join("/") + " meter mapped to " + App.SIGS[sig].join("/") + ".");
     }
-    if (differentLater(file.signatures, signature)) warnings.push("Meter changes use the opening meter throughout.");
+
     P.sig = sig;
     [P.key, P.scale] = initial(file.keys, [0, 0]);
     const frameCode = 256 - (file.division >> 8);
     const fps = frameCode === 29 ? 30000 / 1001 : frameCode;
     const stepPerTick = file.division & 0x8000 ? bpm / (15 * fps * (file.division & 255)) : 4 / file.division;
+    function markers(events,read) {
+      const byStep=new Map();
+      for(const event of events){const at=Math.round(event.tick*stepPerTick), cue=read(event.value);
+        if(at>0 && at<=65536 && cue)byStep.set(at,{at,...cue});}
+      return [...byStep.values()].sort((a,b)=>a.at-b.at);
+    }
+    P.arrangement.tempo=markers(file.tempos,x=>({bpm:App.clamp(6e7/x,40,300),ramp:false}));
+    P.arrangement.meters=markers(file.signatures,x=>{const sig=App.SIGS.findIndex(v=>v[0]===x[0] && v[1]===x[1]);return sig>=0?{sig}:null;});
     return { P, stepPerTick };
   }
 
@@ -509,8 +516,9 @@
         }
       }
       P.chain.push(seen.get(item.id));
+      if(P.arrangement.meters.length)P.arrangement.slots.push({offset:0,steps:Math.min(item.len*spb,Math.max(1,maxEnd-item.start*spb)),rest:false});
     }
-    P.song = P.chain.length > 1 ? 1 : 0;
+    P.song = P.chain.length > 1 || P.arrangement.meters.length ? 1 : 0;
     P.sel.p = P.chain[0];
     if (file.parts.length > parts.length) warnings.push(file.parts.length + " MIDI parts share " + parts.length + " console tracks.");
     if (pitched.size) warnings.push(pitched.size + " non-kit drum pitch" + (pitched.size === 1 ? "" : "es") + " mapped to the closest pads.");

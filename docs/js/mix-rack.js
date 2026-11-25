@@ -25,7 +25,7 @@
       const r = raw?.strips?.[i];
       const routes = items(r?.routes,16).filter(x => x && sources.includes(x.source) && Object.hasOwn(targets,x.target))
         .map(x => ({source:x.source, target:x.target, low:limit(x.low,-1,1,0), high:limit(x.high,-1,1,1)}));
-      return {...channel(r),routes, bus:Math.round(limit(r?.bus,-1,3,-1)),
+      return {...channel(r),eq:App.ParametricEQ.model(r?.eq),routes, bus:Math.round(limit(r?.bus,-1,3,-1)),
         lfoRate:limit(r?.lfoRate,.02,30,1), lfoBeats:choice(r?.lfoBeats,divisions.map(d => d[0]),0), lfoWave:choice(r?.lfoWave,waves,"sine"),
         macros:macroIds.map((_,j) => limit(r?.macros?.[j],0,1,0)),
         macroNames:macroIds.map((_,j) => typeof r?.macroNames?.[j] === "string" ? r.macroNames[j].trim().slice(0,20) : "")};
@@ -134,8 +134,8 @@
       return [settings,section("Macros",macros),section("Routes",list,add,help)];
     });
   }
-  function mixer() {
-    let path = "t"+App.P.sel.t;
+  function mixer(track = App.P.sel.t) {
+    let path = "t"+track;
     editor("Mixer routing",draw => {
       const isTrack = path[0] === "t", i = +path.slice(1);
       const r = App.P.rack, c = isTrack ? r.strips[i] : r.groups[i];
@@ -150,6 +150,7 @@
         };
         controls.append(field("Bus name",name),field("Level %",number("Bus level",Math.round(c.level*100),0,100,1,v => {c.level=v/100; change();})));
       }
+      controls.append(btn("Scenes…","Capture or morph selected device and mix settings",() => App.Scenes.open()));
       const inserts = h("div.rack-list");
       c.chain.forEach((f,j) => {
         const move = d => { [c.chain[j+d],c.chain[j]] = [f,c.chain[j+d]]; change(); draw(); };
@@ -178,7 +179,7 @@
         field("Response · ms",number("Sidechain response",Math.round(c.release*1000),12,600,1,v => {c.release=v/1000; change();})));
       const members = isTrack ? "" : App.P.tracks.map((t,j) => r.strips[j].bus === i ? t.name : "").filter(Boolean).join(" + ");
       return [controls,...(isTrack?[]:[h("p.rack-note",{text:"Inputs · "+(members || "No tracks assigned")})]),
-        section("Insert chain",inserts,h("div.rack-row",null,type,add)),
+        section("Insert chain",inserts,h("div.rack-row",null,type,add,isTrack && btn("Parametric EQ…","Edit the post-insert spectrum and parametric bands",() => App.ParametricEQ.open(i)))),
         section("Sidechain compressor",side,...(c.key === "mic" ? [h("p.rack-note",{text:"Open IN in Signal analysis to supply a live microphone key."})] : []))];
     });
   }

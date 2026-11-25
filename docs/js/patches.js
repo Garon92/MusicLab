@@ -30,7 +30,7 @@
   function saveable(t) {
     if (t.kind === "syn") return {syn:clone(t.syn), arp:clone(t.arp)};
     if (t.kind === "smp") {
-      const {id,st,en,root,markers,warpSource,warpSpec,...smp} = t.smp;
+      const {id,st,en,root,markers,warpSource,warpSpec,zones,...smp} = t.smp;
       return {smp};
     }
     return {kit:{pads:t.kit.pads.map(p => {

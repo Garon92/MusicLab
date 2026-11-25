@@ -208,8 +208,8 @@
   function patchDefaults(track, factory) {
     if (track.kind === "syn") return {syn:factory.syn, arp:factory.arp};
     if (track.kind === "smp") {
-      const {id,warpSource,warpSpec,markers,slices}=track.smp;
-      return {smp:{...factory.smp,id,warpSource,warpSpec,...(markers?.length ? {markers,slices} : {})}};
+      const {id,warpSource,warpSpec,markers,slices,zones}=track.smp;
+      return {smp:{...factory.smp,id,warpSource,warpSpec,zones,...(markers?.length ? {markers,slices} : {})}};
     }
     return {kit:{pads:factory.kit.pads.map((pad,i) => {
       const current = track.kit.pads[i];

@@ -83,7 +83,7 @@
       redoB = btn("REDO", "REDO · CTRL SHIFT Z", () => App.doUndo(1));
       el.append(
         h("div.tc.logo", { text: "MUSICLAB" }), nameEl,
-        h("div.tc.grp", null, playB, recB, tapeB), posEl,
+        h("div.tc.grp", null, playB, recB, btn("CAPTURE","RETRIEVE RECENT KEYBOARD OR MIDI PLAYING",()=>App.Retrospective.open()), tapeB), posEl,
         pms[0], h("div.tc", null, btn("TAP", "TAP TEMPO", tap)), pms[1], pms[2], pms[3], pms[4], h("div.tc", null, clickB),
         h("div.sp"), takeEl, om,
         h("div.tc.grp", null, midiB, undoB, redoB, fileB),
@@ -114,7 +114,7 @@
     }
 
     function pos(c) {
-      const p = P(), SPB = App.spb(p), BS = App.beatSteps(p), s = c ? c.step % SPB : 0;
+      const p = P(), BS = c?.beatSteps || App.beatSteps(p), s = c?.inside ?? 0;
       const t = PATS[c ? c.pat : p.sel.p] + " " + String((c ? c.bar : 0) + 1).padStart(3, "0") + "." + (Math.floor(s / BS) + 1) + "." + ((s % BS) + 1);
       if (t !== lastPos) posEl.textContent = lastPos = t;
     }
@@ -248,16 +248,16 @@
       });
       songB.classList.toggle("on", !!p.song);
       songEl.classList.toggle("off", !p.song);
-      let bars = 0;
+      const spans=App.Conductor.layout(p,p.chain);
       slots.forEach((e, i) => {
         const has = i < p.chain.length;
-        e.textContent = has ? PATS[p.chain[i]] : "";
+        e.textContent = has ? spans[i].rest?"—":PATS[p.chain[i]] : "";
         e.dataset.tip = has ? "SLOT " + pad2(i+1) + " · CLICK TO START HERE · DRAG TO REORDER" : "DROP A PATTERN TO APPEND · ARRANGE EDITS THE SONG";
         e.classList.toggle("e", !has);
         e.classList.toggle("at", has && !!p.song && i === App.Seq.start());
-        if (has) bars += App.patSteps(p, p.chain[i]) / App.spb(p);
       });
-      lenEl.textContent = p.chain.length ? bars + " BAR" : "";
+      const end=spans.at(-1)?.end||0,m=App.Conductor.position(p,end);
+      lenEl.textContent = p.chain.length ? (m.bar+Number(m.inside>0))+" BAR" : "";
       draw();
     }
 
@@ -385,6 +385,10 @@
         const k = o.slices ? o.slices() : 0;
         cx.fillStyle = C.t3;
         if (k) for (const f of App.AudioDSP.sliceEdges(obj).slice(1,-1)) cx.fillRect(Math.round(f * W), 0, L, H);
+        if (o.grain && obj.mode===2) {
+          const pos=lo+obj.gpos*(hi-lo);
+          cx.fillStyle=C.t1;cx.fillRect(Math.round(pos*W),0,2*L,H);
+        }
         cx.fillStyle = C.am;
         for (const f of [obj.st, obj.en]) cx.fillRect(Math.min(W - L, Math.round(f * W)), 0, L, H);
       });
@@ -392,6 +396,12 @@
         if (e.button !== 0 || !App.samples.get(getId())) return;
         const r = wrap.getBoundingClientRect(), fx = (ev) => clamp((ev.clientX - r.left) / r.width, 0, 1), f0 = fx(e);
         const ds = Math.abs(f0 - obj.st) * r.width, de = Math.abs(f0 - obj.en) * r.width;
+        if (Math.min(ds,de)>9 && o.grain && obj.mode===2) {
+          const move=ev=>{const a=Math.min(obj.st,obj.en),b=Math.max(obj.st,obj.en);
+            obj.gpos=clamp((fx(ev)-a)/Math.max(.00001,b-a),0,1);paint();o.grain();};
+          const end=()=>{wrap.removeEventListener("pointermove",move);wrap.removeEventListener("pointerup",end);wrap.removeEventListener("pointercancel",end);App.commit();};
+          wrap.setPointerCapture(e.pointerId);move(e);o.audition();wrap.addEventListener("pointermove",move);wrap.addEventListener("pointerup",end);wrap.addEventListener("pointercancel",end);return;
+        }
         if (Math.min(ds, de) > 9) { o.audition(); return; }
         const key = ds <= de ? "st" : "en";
         let ch = false;
@@ -462,16 +472,27 @@
         );
       } else if (T.kind === "smp") {
         const d = T.smp, tg = { ti };
-        let st, en;
+        let st, en, position;
         const wv = waveView(4, () => d.id, d, {
-          tg, slices: () => (d.mode === 1 ? d.slices : 0), change: () => { st.paint(); en.paint(); },
+          tg, grain:()=>{position?.paint();push();}, slices: () => (d.mode === 1 ? d.slices : 0), change: () => { st.paint(); en.paint(); },
           audition: () => { const E = App.audio(); E && E.play(ti, d.mode === 1 ? 36 : d.root, 0.9, 0, 4); },
         });
         const q = (k, o) => UI.param(DEF.smp[k], d, (key) => { push(); if (key === "st" || key === "en" || key === "slices") wv.paint(); if (key === "slices") { d.markers = []; App.Ed.sync(); } }, o);
         st = q("st"); en = q("en");
+        const mode=q("mode",{done:()=>{build();App.Ed.sync();App.Mx.draw();}});
+        const zoning=d.mode===3, grain=d.mode===2;
+        if(grain){
+          position=UI.param(DEF.smp.gpos,d,()=>{push();wv.paint();});
+          wv.dataset.tip="GRAIN POSITION · DRAG THROUGH THE WAVEFORM · DRAG END MARKERS TO TRIM";
+        }
+        const summary=zoning?h("div.zone-summary",{style:"grid-column:span 4;grid-row:span 2",
+          text:d.zones.length+" ZONES · "+new Set(d.zones.map(z=>z.sample)).size+" SAMPLES"}):null;
         body.append(
-          mod("SAMPLE", 4, [wv, st, en, q("root"), q("tune")], smpTools(tg, d.id)),
-          mod("PLAY", 2, [q("mode", { done: () => { build(); App.Ed.sync(); App.Mx.draw(); } }), q("slices"), q("shot"), q("loop"), q("rev")], [btn("EDIT…", "TRANSIENT SLICES · WARP TEMPO · EDIT ANCHORS", () => App.AudioStudio.editSample(ti))]),
+          zoning ? mod("KEYMAP",4,[summary,st,en,q("tune"),q("rev")],[btn("ZONES…","ASSIGN KEYS, VELOCITIES AND ROUND ROBIN SAMPLES",()=>App.SamplerLab.zones(ti))])
+            : mod("SAMPLE",4,[wv,st,en,q("root"),q("tune")],smpTools(tg,d.id)),
+          mod(grain?"GRAINS":"PLAY",2,grain?[mode,position,q("gsize"),q("gdens"),q("gspray"),q("rev")]:
+            zoning?[mode,q("shot"),q("loop")]:[mode,q("slices"),q("shot"),q("loop"),q("rev")],
+            zoning?[]:[btn("EDIT…","TRANSIENT SLICES · WARP TEMPO · EDIT ANCHORS",()=>App.AudioStudio.editSample(ti))]),
           ...shared(d, DEF.smp),
           filler(2), outMod(),
         );

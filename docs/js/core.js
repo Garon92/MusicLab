@@ -199,7 +199,11 @@
       N("glide", "GLIDE", "GLIDE TIME (MONO)", 0, 2, 0, { c: "sq", u: "t" }),
     ]),
     smp: dict([
-      EN("mode", "MODE", "PITCH = KEYS TRANSPOSE SAMPLE · SLICE = KEYS PLAY SLICES", ["PITCH", "SLICE"]),
+      EN("mode", "MODE", "SAMPLER MODE · PITCHED SAMPLE, SLICES, GRANULAR CLOUD OR KEY AND VELOCITY ZONES", ["PITCH", "SLICE", "GRAIN", "ZONES"]),
+      N("gpos","POSITION","GRAIN CENTER IN THE TRIMMED SAMPLE",0,1,.3,{u:"pc1"}),
+      N("gsize","SIZE","GRAIN DURATION",.012,.36,.09,{u:"t",c:"exp"}),
+      N("gdens","DENSITY","GRAINS PER SECOND",2,80,26,{int:1}),
+      N("gspray","SPRAY","RANDOM SPREAD AROUND THE GRAIN CENTER",0,1,.08,{u:"pc1"}),
       N("slices", "SLICES", "SLICE COUNT", 2, 16, 8, { int: 1 }),
       N("root", "ROOT", "ROOT NOTE · KEY THAT PLAYS ORIGINAL PITCH", 24, 96, 60, { int: 1, u: "note" }),
       N("tune", "TUNE", "SAMPLE TRANSPOSE", -24, 24, 0, { int: 1, u: "st", bi: 1 }),
@@ -352,7 +356,7 @@
   const notes = (a) =>
     Array.isArray(a)
       ? a.filter((n) => n && Number.isInteger(n.s) && Number.isInteger(n.n)).slice(0, 4000)
-          .map((n) => ({ s: clamp(n.s, 0, MAX_STEPS - 1), n: clamp(n.n, 0, 127), l: num(n.l, 1, MAX_STEPS, 1, 1), v: num(n.v, 0.02, 1, 0.8), p: num(n.p, 0, 1, 1), ...(Number.isFinite(n.off) && n.off ? {off:clamp(n.off,-0.49,0.49)} : {}), ...(n.r > 1 ? { r: num(n.r, 1, 8, 1, 1) } : {}) }))
+          .map((n) => ({ s: clamp(n.s, 0, MAX_STEPS - 1), n: clamp(n.n, 0, 127), ...App.Rules?.fields(n), l: num(n.l, 1, MAX_STEPS, 1, 1), v: num(n.v, 0.02, 1, 0.8), p: num(n.p, 0, 1, 1), ...(Number.isFinite(n.off) && n.off ? {off:clamp(n.off,-0.49,0.49)} : {}), ...(n.r > 1 ? { r: num(n.r, 1, 8, 1, 1) } : {}) }))
       : [];
 
   function loadCurves(src) {
@@ -429,6 +433,7 @@
     if (i < 0 || i >= hist.st.length) return false;
     const sel = App.P.sel;
     const crossesProject = hist.st[d < 0 ? hist.i : i].projectChange;
+    App.historyCrossedProject=!!crossesProject;
     hist.i = i;
     App.P = JSON.parse(hist.st[i].data);
     if (!crossesProject) App.P.sel = sel;

@@ -7,11 +7,11 @@
   const modes=["off","root","chord"],memo=new WeakMap();
   App.extendProject({load(P,raw) {
     const H=raw.harmony||{};
-    P.harmony={chords:(Array.isArray(H.chords)?H.chords:[]).slice(0,64).filter(c=>c&&Number.isFinite(c.root)&&Object.hasOwn(types,c.type)).map(c=>({
-      root:App.clamp(Math.round(c.root),0,11),type:c.type,bars:App.clamp(Math.round(Number(c.bars)||1),1,16)
+    P.harmony={chords:(Array.isArray(H.chords)?H.chords:[]).slice(0,1024).filter(c=>c&&Number.isFinite(c.root)&&Object.hasOwn(types,c.type)).map(c=>({
+      root:App.clamp(Math.round(c.root),0,11),type:c.type,bars:App.clamp(Math.round(Number(c.bars)||1),1,16),...(c.rest?{rest:true}:{}),...(Number.isFinite(c.steps)&&c.steps>0?{steps:Math.min(65536,Math.round(c.steps))}:{})
     })),follow:Array.from({length:8},(_,i)=>modes.includes(H.follow?.[i])?H.follow[i]:"off")};
   }});
-  const duration=P=>P.harmony?.follow.some(m=>m!=="off") ? P.harmony.chords.reduce((a,c)=>a+c.bars*App.spb(P),0) : 0;
+  const duration=P=>P.harmony?.follow.some(m=>m!=="off") ? (App.Arrangement.chordList(P).at(-1)?.end||0) : 0;
   function inversion(chord,near,prev) {
     const intervals=types[chord.type];
     let best=null,cost=Infinity;
@@ -29,23 +29,23 @@
     const H=P.harmony,T=P.tracks[t],mode=H?.follow[t];
     if (!H?.chords.length || !mode || mode==="off" || T.kind==="kit" || (T.kind==="smp"&&T.smp.mode===1)) return null;
     let data=memo.get(H);
-    if(!data) {
-      let bars=0;
-      const ends=H.chords.map(c=>bars+=c.bars);
-      data={bars,ends,voices:new Map()};memo.set(H,data);
+    if(!data || data.meters!==P.arrangement?.meters || data.sig!==P.sig) {
+      const ends=App.Arrangement.chordList(P).map(c=>c.end);
+      data={meters:P.arrangement?.meters,sig:P.sig,steps:ends.at(-1),ends,voices:new Map()};memo.set(H,data);
     }
-    const spb=App.spb(P),step=at%(data.bars*spb),index=data.ends.findIndex(end=>step<end*spb),chord=H.chords[index];
+    const step=at%data.steps,index=data.ends.findIndex(end=>step<end),chord=H.chords[index];
+    if(chord.rest)return null;
     // Consecutive identical assignments sustain across the edit boundary.
-    const different=c=>c.root!==chord.root || (mode==="chord"&&c.type!==chord.type);
+    const different=c=>c.rest || c.root!==chord.root || (mode==="chord"&&c.type!==chord.type);
     const previous=H.chords[(index+H.chords.length-1)%H.chords.length];
-    const change=step===(index ? data.ends[index-1]*spb : 0) && different(previous);
+    const change=step===(index ? data.ends[index-1] : 0) && different(previous);
     let remain=Infinity;
     if(H.chords.length>1){
-      let distance=data.ends[index]*spb-step;
+      let distance=data.ends[index]-step;
       for(let k=1;k<H.chords.length;k++){
         const next=H.chords[(index+k)%H.chords.length];
         if(different(next)){remain=distance;break;}
-        distance+=next.bars*spb;
+        const i=(index+k)%H.chords.length;distance+=data.ends[i]-(i?data.ends[i-1]:0);
       }
     }
     return {mode,chord,data,index,remain,change};
@@ -61,7 +61,7 @@
     const register=Math.floor(n/12);
     if(!data.voices.has(register)) {
       let prev=null;
-      data.voices.set(register,H.chords.map(c=>prev=inversion(c,register*12+5,prev)));
+      data.voices.set(register,H.chords.map(c=>c.rest ? [] : prev=inversion(c,register*12+5,prev)));
     }
     return data.voices.get(register)[index];
   }
@@ -73,9 +73,10 @@
     const bars=num("Chord duration in bars",1,16,1),total=h("output"),status=h("output");
     function read(){const c=chords[list.selectedIndex];if(c){root.value=c.root;type.value=c.type;bars.value=c.bars;}}
     function draw(i) {
-      let beat=1;
-      list.replaceChildren(...chords.map((c,k)=>{const label="BAR "+App.pad2(beat)+"    "+App.NOTES[c.root]+" "+c.type+"    × "+c.bars;beat+=c.bars;return h("option",{value:k,text:label});}));
-      list.selectedIndex=Math.min(i,chords.length-1);total.textContent=(beat-1)+" bars";read();
+      const spans=App.Arrangement.chordList({...P,harmony:{chords}});
+      list.replaceChildren(...chords.map((c,k)=>{const s=spans[k],bar=App.Conductor.position(P,s.from).bar+1;
+        return h("option",{value:k,text:"BAR "+App.pad2(bar)+"    "+(c.rest?"—":App.NOTES[c.root]+" "+c.type)+"    "+(c.steps?c.steps+" steps":"× "+c.bars)});}));
+      list.selectedIndex=Math.min(i,chords.length-1);total.textContent=(spans.at(-1)?.end||0)+" steps";read();
     }
     list.onchange=read;
     function edit(add){

@@ -241,10 +241,10 @@ async function run(browserName, url) {
     await confirmIfAsked(page, name);
     assert.deepEqual(await project(page), original);
     assert.deepEqual(errors, []);
-    for (const suite of ["workstation", "operations", "phrases", "automation", "performance", "audio-studio", "mix-rack", "material-midi"]) {
+    for (const suite of ["workstation", "operations", "phrases", "automation", "performance", "audio-studio", "mix-rack", "material-midi", "capture-rules-finder", "conductor", "sampler-lab", "scenes-eq"]) {
       await require("./" + suite + ".cjs")(page);
     }
-    console.log(browserName + " " + browser.version() + " — passed 6 viewports, input/undo, transport, tape, WAV/MIDI, JSON, recovery, batch operations, phrases, automation, patches, arrangement, live performance, audio studio, stems, library and MIDI devices");
+    console.log(browserName + " " + browser.version() + " — passed 6 viewports, input/undo, transport, tape, WAV/MIDI, JSON, recovery, batch operations, phrases, automation, patches, arrangement, live performance, audio studio, stems, library, MIDI devices, capture, conductor, granular and multisampling, transcription, scenes, EQ and command search");
   } finally { await browser.close(); }
 }
 

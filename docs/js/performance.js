@@ -33,7 +33,7 @@
   }
   function reset() { heads=[]; pending=[]; capture=null; }
   function start(P) { heads=P.performance.active.map(p=>lane(p)); pending=[]; }
-  function quantSteps(P) { return P.performance.quant === "bar" ? App.spb(P) : P.performance.quant === "beat" ? App.beatSteps(P) : 1; }
+  function quantSteps(P) { return ["bar","beat"].includes(P.performance.quant) ? P.performance.quant : 1; }
   function source(value) {
     const P=App.P, running=App.Seq.playing;
     if (P.performance.source === value) return;
@@ -72,7 +72,11 @@
     });
   }
   function positions(P,banks,at) {
-    return banks.map((c,t)=>c.p<0 ? null : {p:c.p,s:(at-c.start+c.offset)%length(P,t,c.p),n:length(P,t,c.p)});
+    return banks.map((c,t)=>{
+      if(c.p<0)return null;
+      const n=length(P,t,c.p), elapsed=at-c.start+c.offset;
+      return {p:c.p,s:elapsed%n,n,pass:1+Math.floor(elapsed/n)};
+    });
   }
   function frames(P,at,live=false) {
     const S=P.performance;

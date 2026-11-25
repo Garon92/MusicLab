@@ -43,7 +43,7 @@
   function record(ti,key,value) {
     const pos=App.recArm && App.Seq.playing && App.Seq.now(ti);
     if (!pos) return;
-    const n=App.Live.length(App.P,ti,pos.pat), s=App.clamp(Math.floor(pos.step),0,n-1);
+    const n=pos.n || App.Live.length(App.P,ti,pos.pat), s=App.clamp(Math.floor(pos.step),0,n-1);
     const bank=App.P.tracks[ti].automation[pos.pat];
     const lane=bank[key] ||= {mode:"linear",points:[]};
     const v=Math.round(value*10000)/10000, old=lane.points.find(p=>p.s===s);

@@ -1,0 +1,13 @@
+dialog.arr-full{width:min(96vw,1000px);max-height:95vh;overflow:auto}
+.arr-full .song-editor{display:flex;flex-direction:column;gap:.35rem;padding:1.1rem}
+.arr-full h2,.arr-full .arr-summary,.arr-full .dlg-buttons{margin:.25rem 0}
+.arr-content{display:flex;flex-direction:column;gap:.25rem;min-width:0}
+.arr-content .arr-row{flex-wrap:wrap;align-items:flex-end;min-height:1.7rem}
+.arr-timeline{display:block;border:1px solid var(--ln2);height:clamp(150px,25vh,310px);width:100%;background:var(--bg);cursor:crosshair}
+.arr-legend,.arr-status{color:var(--t2);font-size:.8rem}
+.arr-status:empty{display:none}
+.arr-content .song-slots{margin:0}
+.arr-field{display:inline-flex;flex-direction:column;gap:.2rem;color:var(--t2);font-size:.82rem}
+.arr-content input:not([type=number]){max-width:12rem}
+.arr-maps{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.arr-maps>div,.arr-maps label{display:flex;flex-direction:column;align-items:stretch;gap:.25rem}

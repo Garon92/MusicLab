@@ -17,7 +17,7 @@
       const P = App.P, ti = P.sel.t, pi = P.sel.p, T = P.tracks[ti];
       return { P, ti, pi, T, clip: T.clips[pi] };
     };
-    const isKeys = (T) => T.kind === "syn" || (T.kind === "smp" && T.smp.mode === 0);
+    const isKeys = (T) => T.kind === "syn" || (T.kind === "smp" && T.smp.mode !== 1);
 
     // Rows top to bottom. Pads and slices sit on MIDI notes 36+, so clips survive a change of instrument.
     const rowList = () => {
@@ -78,7 +78,7 @@
       h("div.hd.ed-actions", null,
         h("span.grp", null, h("span.tg", { text: "NOTES" }), hd.count, hd.nudge, hd.dup, hd.remove),
         h("span.grp", null, h("span.tg", { text: "CLIP" }),
-          btn("<", "SHIFT CLIP ONE STEP EARLIER", () => rotate(-1)), btn(">", "SHIFT CLIP ONE STEP LATER", () => rotate(1)), hd.dn, hd.up, hd.euc,btn("GROOVE","GROOVE TEMPLATE · NOTE TIMING · RECORD QUANTIZATION",()=>App.Groove.open()))));
+          btn("<", "SHIFT CLIP ONE STEP EARLIER", () => rotate(-1)), btn(">", "SHIFT CLIP ONE STEP LATER", () => rotate(1)), hd.dn, hd.up, hd.euc,btn("GROOVE","GROOVE TEMPLATE · NOTE TIMING · RECORD QUANTIZATION",()=>App.Groove.open()),btn("RULES","NOTE CONDITIONS, RANDOM SEED AND PRINTING A PLAYED PASS",()=>App.Rules.open()),App.Rules.fillButton())));
       cv = h("canvas", { tabindex: "0", "aria-label": "Note editor. In Select mode drag a box or Shift-click notes. Use arrow keys to move a selection.", role: "application" }); ph = h("div.ed-ph");
       el.addEventListener("keydown", shortcuts);
       el.addEventListener("click", e => {
@@ -255,6 +255,7 @@
         cx.fillRect(x, y, w, hh);
         cx.globalAlpha = 1;
         cx.fillStyle = moving ? C.pn : C.t1;
+        if(nt.when){cx.fillStyle=C.am;cx.fillRect(x,y,w,Math.min(2*D,hh));cx.fillStyle=moving?C.pn:C.t1;}
         if (nt.s >= start) cx.fillRect(x, y, edge, hh); // bright leading edge marks where the note starts
         if (nt.p < 1) { cx.fillRect(x, y, w, L); cx.fillRect(x, y + hh - L, w, L); }
       }
@@ -634,7 +635,9 @@
         rd.textContent = where + "   " + (lane === "r" ? clamp(Math.ceil(m.val * 8), 1, 8) + " HITS" : Math.round(m.val * 100) + "%");
         UI.hint(v + " AT STEP " + where + (selection.size ? "    DRAG = SET SELECTED NOTES HERE · SHIFT-DRAG = SET ENTIRE SELECTION" : "    DRAG = SET"));
       } else {
-        rd.textContent = where + "   " + o.label + (chordTxt ? "   " + chordTxt : "");
+        const rule=clip.find(nt=>nt.n===o.n && nt.s<=s && s<nt.s+nt.l && nt.when)?.when;
+        const label=rule ? "   "+(rule.every>1?"PASS "+rule.phase+"/"+rule.every:"")+(rule.fill===1?" FILL":rule.fill===-1?" NO FILL":""):"";
+        rd.textContent = where + "   " + o.label + (chordTxt ? "   " + chordTxt : "")+label;
         UI.hint(tool === "select" ? "DRAG EMPTY SPACE = SELECT · SHIFT-CLICK = ADD / REMOVE · DRAG NOTES = MOVE · CTRL/CMD D = DUPLICATE" : "CLICK = NOTE · DRAG RIGHT = LENGTH · SHIFT-CLICK = SELECT · DRAG NOTE = MOVE · NOTE END = RESIZE · RIGHT-CLICK = DELETE");
       }
       later();

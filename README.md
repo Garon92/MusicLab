@@ -8,7 +8,7 @@ A single-screen music workstation for a desktop browser. Start with an empty gri
 
 1. Click an empty square in **Edit** to add a note. Click **Play** or press Space to loop the selected pattern. The track name and pattern letter above the grid show what you are editing.
 2. Click a different cell in **Clip matrix** to edit another track or pattern. Choose **Synth**, **Drums** or **Sampler** in **Device**. Click **Arrange…** in the song row and insert pattern letters in the order you want to hear them.
-3. Click the expand control in any panel to give it the whole workspace. **Full console** brings the panels back.
+3. Use **Find** or **Ctrl/Cmd+K** to jump to a control. Try “warp”, “sidechain” or “reset”. Click the expand control in any panel to give it the whole workspace. **Full console** brings the panels back.
 4. Choose **File → Reset project…** to start over. The confirmation shows what the current project contains. **Save a copy** downloads a portable project and keeps you working on it. **Reset project** stops playback and starts a blank project with the default instruments and mixer. **Undo** steps back immediately. **File → Restore last reset** also works after reloading the page in the same browser when local storage is available. The last tape take is recoverable with Restore in the same tab.
 
 ## Workspace
@@ -51,6 +51,20 @@ A pattern can span up to 16 bars within a 256-sixteenth-note limit. Longer patte
 | Keep a reusable break | **File → Material library…** saves a whole pattern or individual clip with its instruments, notes, curves and sample audio. Search by name, tag or BPM, audition at the project tempo and drag the material name onto a free matrix cell, track or pattern. Insert finds a free destination automatically. |
 | Use external MIDI | **MIDI → Connect devices** selects inputs, output, channels and clock direction. Learn a mix control, instrument cutoff or macro from a hardware CC. Arm **REC** and play to capture its movement, then edit the points in the clip’s automation lane. |
 
+## Arrange, design instruments and recover performances
+
+| Task | Console control |
+| --- | --- |
+| Move a whole chorus | Open **Song → Arrange**. Select a slot range, name the section and move it on the timeline. Insert space, split slots, copy or move a section, then **Apply arrangement**. Pattern notes and curves, audio takes, chord changes, launches and song cues follow the edit. |
+| Conduct tempo and meter | In **Arrange → Tempo & Meter**, add tempo points, ramps and meter changes at musical positions. The transport, click, tempo-synced effects, WAV and MIDI export follow the map. |
+| Sing an instrument part | Select a recorded or imported region in **Audio → Timeline → Transcribe**. Analyze a single voice or melody, audition the original and corrected pitches, review rows marked **Check**, then insert notes into the destination clip. |
+| Recover the last improvisation | Click **Capture** in the transport after playing on the computer keyboard or MIDI input. Choose the last phrase or a bar range, audition it and write it to an empty clip. The recent-note buffer lasts for the current session. |
+| Compose a repeating fill | In **Edit → Rules**, choose notes, the period, the pass and an optional Fill condition. Hold **Fill** or the backslash key during playback. The project seed controls chance decisions. **Print to clip** turns a complete heard pass into editable notes with its resolved repeats, pitches and timing. |
+| Build a granular instrument | Load a sample and set **Device → Sampler → Mode** to **Grain**. Play a chord and move the grain position while the notes are held. Adjust grain size, density and spread. |
+| Map an acoustic instrument | Choose **Zones** in the sampler's mode control and open **Zones…**. Map recordings to key ranges and velocity layers. Overlapping alternatives can rotate on successive strikes. Portable project files include the source recordings. |
+| Change a mix over several bars | In **Master → Routing → Scenes…**, save named snapshots of selected tracks and settings. Recall a scene live or place a song cue and set its transition in bars. |
+| Hear an individual frequency range | **Master → Routing → Parametric EQ…** offers four draggable bands per track. Drag for frequency and gain, use the wheel or the Q control for bandwidth and switch the monitor between band solo, dry reference and EQ output. **Level match A/B** compares dry and processed audio at matched levels. |
+
 ## Editing and playing
 
 - **Draw** places notes. Drag a note to move it or its end to change its length. Right-click deletes it. **Select** lets you drag a box around a phrase. Shift-click adds or removes individual notes.
@@ -87,4 +101,4 @@ npx playwright install chromium
 npm test
 ```
 
-The self-test starts a local server and checks six desktop sizes, editing, playback, tape recording, audio and MIDI export, project files, scoped edits, extended phrases, automation, patch recall, song variations and reset recovery. Production checks cover live capture, groove, harmony, audio takes and looper overdubs, pitch-preserving warp, mix routing, stem contents, material-library recall and simulated MIDI hardware. To run the same suite in all three engines, install them with `npx playwright install chromium firefox webkit`, then run `MUSICLAB_BROWSERS=chromium,firefox,webkit npm test`.
+The self-test starts a local server and checks six desktop sizes, editing, playback, tape recording, audio and MIDI export, project files, scoped edits, extended phrases, automation, patch recall, song variations and reset recovery. Production checks also exercise tempo-map timing, ripple edits across audio and note tracks, recovered playing across transport restarts, note conditions and printed passes, melodic transcription, granular and multisample rendering, scene morphs, loudness-matched EQ, stem contents, portable projects and simulated MIDI hardware. To run the same suite in all three engines, install them with `npx playwright install chromium firefox webkit`, then run `MUSICLAB_BROWSERS=chromium,firefox,webkit npm test`.
