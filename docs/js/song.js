@@ -11,7 +11,7 @@
     const running=App.Seq.playing;
     if(running)App.Seq.stop();
     const wasEmpty=!P.chain.length;
-    for(const k of ["chain","arrangement","harmony","audio","performance","scenes","pats","tracks"])if(draft[k])P[k]=draft[k];
+    for(const k of ["chain","arrangement","harmony","audio","performance","scenes","songCurves","pats","tracks"])if(draft[k])P[k]=draft[k];
     if(!P.chain.length || wasEmpty)P.song=Number(!!P.chain.length);
     App.Seq.startAt(App.clamp(first,0,Math.max(0,P.chain.length-1)));
     App.commit();App.refresh();
@@ -35,7 +35,7 @@
   }
 
   function chart(canvas,P,first,last,onPick,onMove) {
-    const C=App.Conductor, slots=ranges(P), end=Math.max(slots.at(-1)?.end||0,App.AudioStudio.durationSteps(P),App.Arrangement.chordList(P).at(-1)?.end||0,
+    const C=App.Conductor, slots=ranges(P), end=Math.max(slots.at(-1)?.end||0,App.SongCurves.end(P),App.AudioStudio.durationSteps(P),App.Arrangement.chordList(P).at(-1)?.end||0,
       P.performance.take.events.length ? P.performance.take.steps : 0,...P.arrangement.tempo.map(e=>e.at+1),...P.arrangement.meters.map(e=>e.at+1),1);
     const ctx=canvas.getContext("2d"),width=canvas.clientWidth,height=canvas.clientHeight;
     if(!width||!height)return;
@@ -75,6 +75,12 @@
         }
       }
     }
+    for(const [ti,bank] of (P.songCurves||[]).entries()){
+      const points=Object.values(bank)[0];if(!points)continue;
+      const y=(3+ti)*rh;ctx.strokeStyle="#ffc063";ctx.beginPath();
+      for(let px=0;px<=span;px+=2){const py=y+rh*(.94-.34*App.SongCurves.value(points,px/span*end));if(px)ctx.lineTo(margin+px,py);else ctx.moveTo(margin,py);}
+      ctx.stroke();
+    }
     for(const r of P.audio.regions)rect(r.at,C.step(P,C.time(P,r.at)+r.len*r.repeats),(3+r.track)*rh+rh*.49,rh*.28,r.mute?"#485751":"#67b9a6");
     for(const e of P.performance.take.events)rect(e.at,Math.min(end,e.at+1),rh*11+2,rh-4,e.p<0?"#627269":"#75a483");
     for(const e of P.scenes?.cues||[])rect(e.at,e.at+1,rh*11+2,3,"#efc076");
@@ -97,7 +103,7 @@
   }
   function open(startTab) {
     const P=App.P,D=copy(P), node=App.Workspace.begin("Song arrangement"), A=D.arrangement,C=App.Conductor;
-    let first=App.clamp(App.Seq.start(),0,Math.max(0,D.chain.length-1)),last=first,anchor=first,dirty=false,tab=startTab==="conductor"?"map":"song", resize;
+    let first=App.clamp(App.Seq.start(),0,Math.max(0,D.chain.length-1)),last=first,anchor=first,dirty=false,tab=startTab==="conductor"?"map":startTab==="automation"?"automation":"song", resize;
     const body=h("div.dlg-body.song-editor"), center=h("div.arr-content"), summary=h("output.arr-summary"),status=h("output.arr-status",{role:"status"});
     const grid=h("div.song-slots",{role:"group","aria-label":"Song slots"}), cv=h("canvas.arr-timeline",{role:"img","aria-label":"Song timeline with sections, chords, eight tracks, launches and conductor",title:"Select or Shift-select slots. Drag a section or selected range to move it across all lanes."});
     const gap=selector("Insert position",[["after","After selection"],["before","Before selection"]]);
@@ -146,11 +152,15 @@
     const save=btn("Apply arrangement","Apply all timeline edits as one undo step",()=>{
       if(App.P!==P){node.close();return;}apply(P,D,first);if(P.chain[first]!=null)App.select(P.sel.t,P.chain[first]);node.close();
     },"confirm-action");
+    const tabs=[["song","Arrangement"],["map","Tempo & meter"],["automation","Song automation"]].map(([id,title])=>{
+      const b=button(title,"Show "+title,()=>{tab=id;render();});b.dataset.section=id;return b;
+    });
     function render(){
+      for(const b of tabs)b.setAttribute("aria-pressed",String(b.dataset.section===tab));
       const slots=ranges(D), end=slots.at(-1)?.end||0, n=D.chain.length, selection=n?last-first+1:0;
       const secs=Math.round(C.time(D,end));
       summary.textContent=n+" / 32 slots · "+C.position(D,end).bar+" bars · "+Math.floor(secs/60)+":"+String(secs%60).padStart(2,"0");save.disabled=!dirty;
-      center.replaceChildren();
+      center.replaceChildren();center.classList.remove("song-envelope-controls");
       if(tab==="song"){
         grid.replaceChildren();
         for(const [i,s] of slots.entries()){
@@ -182,6 +192,8 @@
             if(!cut.reportValidity()||left<=0||mid>=s.end){status.textContent="Choose a bar inside the selected slot.";return;}
             const list=current();list.splice(first,1,{...list[first],len:left},{...list[first],skip:left,len:s.end-mid});edit(list,first);
           },selection===1 && n<limit)));
+      }else if(tab==="automation"){
+        App.SongCurves.editor(center,D,()=>{dirty=true;save.disabled=false;requestAnimationFrame(()=>chart(cv,D,first,last,select,dragRange));});
       }else{
         listCues("tempo",tempoList);listCues("meters",meterList);
         center.append(row(label("Bar",at),label("BPM",tempo),label("Transition",shape),button("Set tempo","Set BPM at bar; ramp connects to the next tempo point",()=>setCue("tempo")),label("Meter",signature),button("Set meter","Set time signature starting at bar",()=>setCue("meters"))),
@@ -191,7 +203,7 @@
       requestAnimationFrame(()=>chart(cv,D,first,last,select,dragRange));
     }
     copies.oninput=render;
-    body.append(h("h2",{text:"Song arrangement"}),summary,cv,h("small.arr-legend",{text:"GREEN  notes    TEAL  audio    AMBER  automation"}),row(...[["song","Arrangement"],["map","Tempo & meter"]].map(([id,text])=>button(text,"Show "+text,()=>{tab=id;render();}))),center,status,h("div.dlg-buttons",null,btn("Cancel","Discard pending arrangement edits",()=>node.close()),save));
+    body.append(h("h2",{text:"Song arrangement"}),summary,cv,h("small.arr-legend",{text:"GREEN  notes    TEAL  audio    AMBER  automation"}),row(...tabs),center,status,h("div.dlg-buttons",null,btn("Cancel","Discard pending arrangement edits",()=>node.close()),save));
     node.classList.add("arr-dialog","arr-full");node.append(body);render();node.showModal();
     resize=new ResizeObserver(()=>chart(cv,D,first,last,select,dragRange));resize.observe(cv);node.addEventListener("close",()=>resize.disconnect(),{once:true});
   }

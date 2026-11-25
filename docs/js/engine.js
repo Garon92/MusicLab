@@ -87,6 +87,7 @@
         pitch: G(), cut: G(), // modulation buses in cents, summed into every voice of the track
         lfo: null, lg: G(0), ldest: 0, drive: -1, lastHz: 0, an: null, lv: 0,
       };
+      t.scan = G(); t.scanBase = ctx.createConstantSource(); t.scanBase.offset.value = 0; t.scanBase.connect(t.scan); t.scanBase.start();
       t.instrument.connect(t.tin);
       t.tin.connect(t.sh).connect(t.post).connect(t.filter);
       t.trem.connect(t.gate).connect(t.vol).connect(t.pan);
@@ -206,11 +207,16 @@
           t.post.gain.value = k ** -0.45; // keep loudness roughly level as drive rises
         }
       }
+      set(t.scanBase.offset, T.syn.scan || 0);
       syncLfo(t, d, P);
       // cutoff and resonance follow the control while notes are sounding
       if (d) for (const v of E.voices) if (v.ti === i && v.f.length) {
         set(v.cutScale.gain, clamp(d.cut * v.kt, 20, 20000) / d.cut);
         set(v.f[0].Q, qOf(d));
+        if (v.tuningCV && v.tunedHz !== mtof(v.note,P)) {
+          v.tunedHz = mtof(v.note,P);
+          set(v.tuningCV.offset,1200 * Math.log2(v.tunedHz / v.originalHz),.006);
+        }
         if (v.cloud && d.mode===2) v.cloud.refresh(d,v.tEnd);
       }
     };
@@ -220,11 +226,12 @@
       set(dL.delayTime, dt, 0.06); set(dR.delayTime, dt, 0.06);
       set(dFb.gain, f.dfb); set(dTone.frequency, f.dtone);
       set(pL.pan, -f.dwid); set(pR.pan, f.dwid);
-      const sig = f.rsize.toFixed(3) + "/" + f.rdamp.toFixed(3);
+      const ir = App.SignalWorkshop?.impulse(P,sr);
+      const sig = ir ? P.impulse.sample + "/" + sr : f.rsize.toFixed(3) + "/" + f.rdamp.toFixed(3);
       if (sig !== irSig) {
         irSig = sig;
         clearTimeout(irT);
-        const apply = () => (conv.buffer = makeIR(f.rsize, f.rdamp));
+        const apply = () => (conv.buffer = ir || makeIR(f.rsize, f.rdamp));
         if (hard || !live) apply(); else irT = setTimeout(apply, 140);
       }
       set(low.gain, f.low); set(mid.gain, f.mid); set(high.gain, f.high);
@@ -301,6 +308,7 @@
       const k = E.voices.indexOf(v);
       if (k >= 0) E.voices.splice(k, 1);
       v.cloud?.dispose();
+      if(v.tuningCV)try { v.tuningCV.stop(); } catch {}
       for (const [a, b] of v.mods) { try { a.disconnect(b); } catch (e) {} }
       for (const n of v.nodes) { try { n.disconnect(); } catch (e) {} }
     };
@@ -312,6 +320,7 @@
     const finish = (v, at) => {
       v.tEnd = at;
       v.cloud?.stop(at);
+      if(v.tuningCV)try {v.tuningCV.stop(at);} catch {}
       for (const s of v.src) { try { s.stop(at); } catch (e) {} }
     };
     // Fast fade on the voice's own output gain, which carries no other automation.
@@ -371,6 +380,21 @@
         t_.cut.connect(f.detune); v.mods.push([t_.cut, f.detune]);
       }
       let tOff = dur == null ? null : t + dur, rel = d.ar, peak;
+      const hz = mtof(note,getP());
+      const glideFrom = !smp && d.design && !poly && d.mode === 1 && d.glide > .001 ? t_.lastHz : 0;
+      const tuneVoice = param => {
+        if (!v.tuningCV) {
+          v.originalHz = v.tunedHz = hz;
+          v.tuningCV = ctx.createConstantSource(); v.tuningCV.offset.value = 0;
+          if(glideFrom) {
+            v.tuningCV.offset.setValueAtTime(1200 * Math.log2(glideFrom / hz),t);
+            v.tuningCV.offset.setTargetAtTime(0,t,d.glide / 4);
+          }
+          v.tuningCV.start(t); v.nodes.push(v.tuningCV);
+        }
+        v.tuningCV.connect(param);
+        t_.pitch.connect(param); v.mods.push([t_.pitch,param]);
+      };
 
       if (smp) {
         let a = Math.min(d.st, d.en), b = Math.max(d.st, d.en);
@@ -382,15 +406,21 @@
         }
         if (b - a < 1e-5) { kill(v); return null; }
         if (d.rev) [a, b] = [1 - b, 1 - a];
-        const rate = 2 ** ((d.tune + (d.mode === 1 ? 0 : note - (zone?.root ?? d.root))) / 12);
+        const pitchRatio = d.mode === 1 ? 1 : hz / App.InstrumentLab.standardHz(zone?.root ?? d.root);
+        const rate = pitchRatio * 2 ** (d.tune / 12);
         if (d.mode===2) {
-          v.cloud=App.SamplerLab.grainVoice(ctx,t,head,t_.pitch,S,d,note);
-          v.src.push(v.cloud.lifetime);
+          const grainPitch = ctx.createConstantSource(); grainPitch.offset.value = 0; tuneVoice(grainPitch.offset);
+          grainPitch.start(t); v.nodes.push(grainPitch);
+          v.cloud=App.SamplerLab.grainVoice(ctx,t,head,grainPitch,S,d,note,pitchRatio);
+          v.src.push(v.cloud.lifetime,grainPitch);
         } else {
           const buf = d.rev ? S.rev || (S.rev = reverse(S.buffer)) : S.buffer;
           const s = ctx.createBufferSource();
           s.buffer = buf; s.playbackRate.value = rate;
-          if (s.detune) { t_.pitch.connect(s.detune); v.mods.push([t_.pitch, s.detune]); }
+          if (s.detune) {
+            if(d.mode !== 1)tuneVoice(s.detune);
+            else { t_.pitch.connect(s.detune); v.mods.push([t_.pitch,s.detune]); }
+          }
           const off = a * buf.duration, len = (b - a) * buf.duration, loop = d.loop && d.mode !== 1;
           if (loop) { s.loop = true; s.loopStart = off; s.loopEnd = off + len; s.start(t, off); } else s.start(t, off, len);
           s.connect(head);
@@ -398,15 +428,22 @@
           if (!loop && d.shot) { tOff = t + Math.max(0.004, len / rate - 0.006); rel = 0.008; v.live = false; }
         }
         peak = (0.25 + 0.75 * vel) * 0.7;
+      } else if (d.design === 1 || d.design === 2) {
+        t_.lastHz = hz;
+        const options = {head,time:t,off:tOff,hz,tune:tuneVoice,noise,adsr,scan:t_.scan};
+        if(d.design===1)App.InstrumentLab.modularVoice(ctx,v,d,options);
+        else App.InstrumentLab.wavetableVoice(ctx,v,d,options);
+        if (!v.src.length) { kill(v); return null; }
+        peak = (.25 + .75 * vel) * .5;
       } else {
-        const hz = mtof(note), from = !poly && d.mode === 1 && d.glide > 0.001 && t_.lastHz ? t_.lastHz : 0;
+        const from = !poly && d.mode === 1 && d.glide > 0.001 && t_.lastHz ? t_.lastHz : 0;
         t_.lastHz = hz;
         const osc = (wave, ratio, level) => {
           const o = ctx.createOscillator(), g = G(level * TRIM[wave]);
           o.type = WAVE[wave];
           if (from) { o.frequency.setValueAtTime(from * ratio, t); o.frequency.setTargetAtTime(hz * ratio, t, d.glide / 4); }
           else o.frequency.value = hz * ratio;
-          t_.pitch.connect(o.detune); v.mods.push([t_.pitch, o.detune]);
+          tuneVoice(o.detune);
           o.connect(g).connect(head);
           o.start(t);
           v.src.push(o); v.nodes.push(o, g);
@@ -546,10 +583,10 @@
 
     // Played note: sounds until noteOff.
     const held = new Map();
-    E.noteOn = (i, note, vel = 0.8) => {
+    E.noteOn = (i, note, vel = 0.8, poly = false) => {
       const key = i + ":" + note;
       if (held.has(key)) return;
-      const v = start(i, note, vel, soon(0), null);
+      const v = start(i, note, vel, soon(0), null, poly);
       if (v && v.live) held.set(key, v);
     };
     E.noteOff = (i, note) => {
@@ -561,6 +598,7 @@
       const t = Math.max(ctx.currentTime, v.t0 + 0.012);
       v.live = false;
       v.releaseCurve?.(t);
+      v.releaseModules?.(t);
       v.amp.gain.cancelScheduledValues(t);
       v.amp.gain.setTargetAtTime(0, t, v.rel / 4);
       for (const f of v.f) { f.detune.cancelScheduledValues(t); f.detune.setTargetAtTime(0, t, v.frel / 4); }

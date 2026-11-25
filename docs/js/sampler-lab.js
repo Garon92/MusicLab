@@ -41,7 +41,7 @@
 
   const cache=new WeakMap();
   const keyOf=(d,note)=>[d.gpos,d.gsize,d.gdens,d.gspray,d.st,d.en,d.rev,d.tune,d.root,note].join("/");
-  function grains(buf,d,note,key) {
+  function grains(buf,d,note,key,pitchRatio) {
     let bank=cache.get(buf);
     if(!bank)cache.set(buf,bank=new Map());
     if(bank.has(key)) {
@@ -50,7 +50,7 @@
     const sr=Math.min(buf.sampleRate,48000), n=Math.round(sr*1.4);
     const result=new AudioBuffer({length:n,numberOfChannels:Math.min(2,buf.numberOfChannels),sampleRate:sr});
     const width=Math.max(1,Math.round(d.gsize*sr)), count=Math.max(2,Math.round(d.gdens*n/sr));
-    const step=buf.sampleRate/sr * 2**((note-d.root+d.tune)/12);
+    const step=buf.sampleRate/sr * pitchRatio*2**(d.tune/12);
     const low=clamp(Math.floor(Math.min(d.st,d.en)*buf.length),0,buf.length-1);
     const high=clamp(Math.ceil(Math.max(d.st,d.en)*buf.length),low+1,buf.length), span=high-low;
     const readWidth=width*step, scale=1/Math.max(1,.55*count*width/n), window=new Float32Array(width);
@@ -80,7 +80,7 @@
     if(bank.size>=12)bank.delete(bank.keys().next().value);
     bank.set(key,result);return result;
   }
-  function grainVoice(ctx,time,head,pitch,sample,d,note) {
+  function grainVoice(ctx,time,head,pitch,sample,d,note,pitchRatio=2**((note-d.root)/12)) {
     const lifetime=ctx.createConstantSource();
     lifetime.offset.value=0;lifetime.connect(head);lifetime.start(time);
     const nodes=new Set();let active=null,key="";
@@ -90,11 +90,11 @@
       pair.source.disconnect();pair.gain.disconnect();
     };
     function refresh(cfg,end=Infinity) {
-      const id=keyOf(cfg,note), start=active?Math.max(time,ctx.currentTime+.004):time;
+      const id=keyOf(cfg,note)+"/"+pitchRatio, start=active?Math.max(time,ctx.currentTime+.004):time;
       if(id===key || start>=end || cfg.id!==sample.id)return;
       key=id;
       const source=ctx.createBufferSource(),gain=ctx.createGain(), fade=.022;
-      source.buffer=grains(sample.buffer,cfg,note,id);source.loop=true;
+      source.buffer=grains(sample.buffer,cfg,note,id,pitchRatio);source.loop=true;
       if(source.detune)pitch.connect(source.detune);
       source.connect(gain).connect(head);
       const pair={source,gain};nodes.add(pair);

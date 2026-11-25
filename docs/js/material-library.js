@@ -34,7 +34,7 @@
   function capture(project,scope) {
     const P=App.newProject(), pi=project.sel.p, tracks=scope==="pattern" ? project.tracks.map((_,i)=>i).filter(i=>used(project.tracks[i],pi)) : [project.sel.t];
     if (!tracks.some(i=>used(project.tracks[i],pi))) throw Error("The selected material contains no notes or automation.");
-    for (const key of ["sig","swing","key","scale","bpm","fx","harmony","rack"]) P[key]=clone(project[key]);
+    for (const key of ["sig","swing","key","scale","bpm","fx","harmony","rack","tuning","impulse"]) P[key]=clone(project[key]);
     P.pats[0]=clone(project.pats[pi]);P.sel.t=tracks[0];
     for(const i of tracks) {
       const original=project.tracks[i], t=clone(original);

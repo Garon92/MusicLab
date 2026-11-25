@@ -32,7 +32,7 @@
   function relocate(P,order) {
     // The first explicit rest before a stand-alone composition gives that
     // composition its own slot, so its recordings move with its notes.
-    if(!P.chain.length && order.some(e=>e.rest) && (P.audio.regions.length || P.harmony.chords.length ||
+    if(!P.chain.length && order.some(e=>e.rest) && (P.audio.regions.length || P.harmony.chords.length || App.SongCurves.end(P) ||
         P.tracks.some(t=>t.clips[P.sel.p].length || Object.keys(t.automation[P.sel.p]).length))) {
       P.chain=[P.sel.p];P.arrangement.slots=[null];order=[...order,{p:P.sel.p,old:0}];
     }
@@ -124,6 +124,7 @@
     }
     const cues=P.scenes?.cues && split.filter(s=>s.from!=null).flatMap(s=>points(P.scenes.cues,s));
     if(cues?.length>256 || cues?.some(c=>c.at>=65536) || sections.length>32)throw Error("Edit exceeds scene or section capacity");
+    P.songCurves=App.SongCurves.relocate(P,split);
     P.chain=chain;Object.assign(A,{slots:plan.slots,tempo,meters,sections});P.audio={regions};
     P.harmony={...P.harmony,chords:cycle?chords:[]};
     if(events.length || take.events.length)P.performance.take={...take,steps:Math.max(1,materialEnd),events:events.sort((a,b)=>a.at-b.at || a.t-b.t)};

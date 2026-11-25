@@ -121,7 +121,7 @@
           Object.assign(T.smp,sound.smp,{id,st,en,root,warpSource,warpSpec});
           T.smp.markers = T.smp.slices === slices ? markers : [];
         } else {
-          Object.assign(T.syn,sound.syn); Object.assign(T.arp,sound.arp);
+          Object.assign(T.syn,App.defs(App.DEF.syn),sound.syn,{graph:App.InstrumentLab.graphOf(sound.syn.graph),frames:App.InstrumentLab.framesOf(sound.syn.frames)}); Object.assign(T.arp,sound.arp);
         }
       }
       App.commit(); App.refresh(); node.close(); App.UI.msg("PATCH LOADED · "+entry.name);

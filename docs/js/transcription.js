@@ -47,8 +47,8 @@
     if(tau<0){if(bestValue>.40)return {n:null,rms};tau=best;}
     const before=diff[tau-1],v=diff[tau],after=diff[tau+1],den=2*(before-2*v+after);
     const period=tau+(den?clamp((before-after)/den,-.5,.5):0);
-    const pitch=69+12*Math.log2(RATE/(period*440)),n=Math.round(pitch);
-    const confidence=(1-v)*(1-.45*Math.abs(pitch-n));
+    const {note:n,cents}=App.InstrumentLab.nearest(RATE/period);
+    const confidence=(1-v)*Math.max(0,1-.45*Math.abs(cents)/100);
     return {n:n>=0&&n<=127?n:null,confidence,rms};
   }
   async function analyze(buffer,start=0,end=buffer.duration,active=()=>true) {

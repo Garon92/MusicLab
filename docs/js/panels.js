@@ -76,8 +76,8 @@
           "-",
           { label: "Import MIDI…", value: "import-midi", key: ".MID" }, { label: "Export MIDI", value: "mid", key: ".MID" },
           { label: "Export audio", value: "wav", key: "24-BIT WAV" }, { label:"Export stems…", value:"stems", key:"WAV / ZIP" }, "-", {label:"Material library…",value:"library"}, "-",
-          { label: "Reset project…", value: "new" }, { label: "Restore last reset…", value: "restore", disabled: !App.hasRecovery() }
-        ], v => App.file(v)));
+          { label: "Project tuning…", value: "tuning", key:"SCALA" }, { label: "Reset project…", value: "new" }, { label: "Restore last reset…", value: "restore", disabled: !App.hasRecovery() }
+        ], v => v === "tuning" ? App.InstrumentLab.tuning() : App.file(v)));
       fileB.setAttribute("aria-label", "File"); fileB.setAttribute("aria-haspopup", "menu");
       undoB = btn("UNDO", "UNDO · CTRL Z", () => App.doUndo(-1));
       redoB = btn("REDO", "REDO · CTRL SHIFT Z", () => App.doUndo(1));
@@ -460,15 +460,20 @@
       };
 
       if (T.kind === "syn") {
-        const d = T.syn, q = (k) => UI.param(DEF.syn[k], d, push), a = (k) => UI.param(DEF.arp[k], T.arp, () => App.touch());
+        const d = T.syn, q = (k,o) => UI.param(DEF.syn[k], d, push,o), a = (k) => UI.param(DEF.arp[k], T.arp, () => App.touch());
         body.append(
-          mod("OSC 1", 1, [q("w1"), q("oct1"), q("lv1")]),
-          mod("OSC 2", 2, [q("w2"), q("lv2"), q("semi2"), q("fine2")]),
-          mod("MIX", 1, [q("sub"), q("noise"), q("fm")]),
+          ...(d.design === 0 ? [
+            mod("OSC 1", 1, [q("w1"), q("oct1"), q("lv1")]),
+            mod("OSC 2", 2, [q("w2"), q("lv2"), q("semi2"), q("fine2")]),
+            mod("MIX", 1, [q("sub"), q("noise"), q("fm")])
+          ] : [mod(d.design === 1 ? "PATCH GRAPH" : "WAVETABLE", 4,
+            [h("div.inst-overview",{style:"grid-column:span 4;grid-row:span 2",text:d.design === 1 ? d.graph.nodes.length+" MODULES / "+d.graph.cables.length+" CABLES" : d.frames.length+" FRAMES / "+App.InstrumentLab.PARTIALS+" PARTIALS"}),
+              ...(d.design===2?[q("scan")]:[])],
+            [btn(d.design===1?"WIRE…":"EDIT…",d.design===1?"WIRE AND EDIT THE SYNTH MODULES":"BUILD FRAMES FROM HARMONICS OR AUDIO",()=>App.InstrumentLab.open(d.design===1?"graph":"table",ti))])]),
           ...shared(d, DEF.syn),
           mod("VOICE", 1, [q("mode"), q("glide")]),
           mod("ARP", 2, [a("mode"), a("rate"), a("oct"), a("gate")]),
-          filler(1), outMod(),
+          mod("SOURCE", 1, [q("design",{done:build})]), outMod(),
         );
       } else if (T.kind === "smp") {
         const d = T.smp, tg = { ti };
@@ -548,7 +553,8 @@
         h("div.hd", null, h("span.tg", { text: "MASTER" }), h("span.ti", { text: "SENDS + OUTPUT" }), h("span.sp"), btn("ROUTING…","INSERTS, BUSES AND SIDECHAINS", () => App.Rack.mixer())),
         h("div.dv-b.f5", null,
           mod("DELAY", 2, [q("dtime"), q("dfb"), q("dtone"), q("dwid")]),
-          mod("REVERB", 1, [q("rsize"), q("rdamp")]),
+          mod("REVERB", 1, P().impulse?.sample ? [h("div.inst-overview",{text:App.samples.get(P().impulse.sample)?.name || "CUSTOM IR",tip:"USER IMPULSE RESPONSE"})] : [q("rsize"), q("rdamp")],
+            [btn("IR…","SELECT OR IMPORT A CONVOLUTION IMPULSE RESPONSE",()=>App.SignalWorkshop.openImpulse())]),
           mod("EQ", 1, [q("high"), q("mid"), q("low")]),
           mod("OUTPUT", 1, [q("comp"), gr, q("vol")])),
       );

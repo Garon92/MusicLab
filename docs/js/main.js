@@ -29,9 +29,9 @@
 
   App.refresh = () => {
     App.E && App.E.syncAll();
-    App.Top.sync(); App.Mx.sync(); App.Ed.sync(); App.Dv.build(); App.Fx.sync(); App.Sg.source();
+    App.Top.sync(); App.Mx.sync(); App.Ed.sync(); App.Dv.build(); App.Fx.build(); App.Sg.source();
     App.AudioStudio?.sync();
-    App.restoreSamples().then((n) => { if (n) App.Dv.build(); }); // the sample name and waveform appear once decoded
+    App.restoreSamples().then((n) => { if (n) { App.Dv.build(); if(App.P.impulse?.sample){ App.E?.syncFx(); App.Fx.build(); } } }); // the sample name and waveform appear once decoded
   };
   App.doUndo = d => {
     App.releaseAll();
@@ -112,6 +112,10 @@
     App.E && App.E.syncTrack(tg.ti);
     if (tg.pad != null && tg.ti === App.P.sel.t) App.P.sel.pad = tg.pad;
     App.Mx.sync(); App.Ed.sync(); App.Dv.build();
+  };
+  App.assignBufferToSampler = (ti,id) => {
+    if(!App.P.tracks[ti] || !App.samples.has(id))throw Error("Sample or destination is unavailable.");
+    assign({ti},id); App.P.tracks[ti].smp.mode=0; landed({ti});
   };
   // A drop on a drum track fills pads; several files fill consecutive pads.
   const resolve = (tg) => {

@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   const {h,btn}=App.UI, {clamp}=App;
-  const parts={mix:"Level, pan & sends",device:"Instrument controls",macros:"Macros",effects:"Inserts & parametric EQ",master:"Master EQ, delay & dynamics"};
+  const parts={mix:"Level, pan & sends",device:"Instrument controls",macros:"Macros",effects:"Inserts, splits & EQ",master:"Master EQ, delay & dynamics"};
   const mixKeys=["vol","pan","dly","rev"], masterKeys=["vol","low","mid","high","comp","dfb","dtone","dwid"];
   const clip=(v,lo,hi,def)=>Number.isFinite(v)?clamp(v,lo,hi):def;
   const copy=v=>JSON.parse(JSON.stringify(v));
@@ -22,10 +22,13 @@
       }
       if(keys.length===6 && sub==="kit" && a==="pads" && isIndex(b,8) && Object.hasOwn(App.DEF.pad,c)){def=App.DEF.pad[c];part="device";}
     }
+    if(top==="rack" && i==="groups" && isIndex(sub,4) && keys.length===4 && ["chain","split"].includes(a)){
+      ti=8+Number(sub);type=a;part="effects";
+    }
     if(top==="rack" && i==="strips" && isIndex(sub,8)){
       ti=Number(sub);
       if(a==="macros" && keys.length===5 && isIndex(b,4)){def={min:0,max:1};part="macros";}
-      if(a==="chain" && keys.length===4){type="chain";part="effects";}
+      if((a==="chain" || a==="split") && keys.length===4){type=a;part="effects";}
       if(a==="eq"){
         if(keys.length===5 && b==="on"){type="boolean";part="effects";}
         if(keys.length===7 && b==="bands" && isIndex(c,4)){
@@ -44,6 +47,7 @@
   const set=(P,keys,val)=>{let o=P;for(const k of keys.slice(0,-1))o=o[k];o[keys.at(-1)]=val;};
   const allowedFx=new Set(["lowpass","highpass","lowshelf","highshelf","saturate","compress"]);
   function safeValue(d,x) {
+    if(d.type==="split")return x && typeof x==="object" && !Array.isArray(x)?App.Rack.cleanSplit(x):undefined;
     if(d.type==="chain")return Array.isArray(x)?x.slice(0,8).filter(f=>f && allowedFx.has(f.type)).map(f=>({type:f.type,value:clip(f.value,0,1,.5),on:f.on!==false})):undefined;
     if(d.type==="boolean")return typeof x==="boolean"?x:undefined;
     if(d.type==="kind")return ["syn","smp","kit"].includes(x)?x:undefined;
@@ -78,6 +82,10 @@
     const add=(path)=>{const d=descriptor(path),v=d && get(P,d.keys);if(v!==undefined && d)values[path]=copy(v);};
     const block=(path,keys)=>keys.forEach(k=>add(path+"."+k));
     for(const i of tracks){
+      if(i>=8 && i<12) {
+        if(groups.includes("effects"))block("rack.groups."+(i-8),["chain","split"]);
+        continue;
+      }
       const T=P.tracks[i];if(!T)continue;
       const t="tracks."+i,r="rack.strips."+i;
       if(groups.includes("mix"))block(t,mixKeys);
@@ -87,7 +95,7 @@
         else {block(t+"."+T.kind,Object.keys(App.DEF[T.kind]));if(T.kind==="syn")block(t+".arp",Object.keys(App.DEF.arp));}
       }
       if(groups.includes("effects")){
-        add(r+".chain");add(r+".eq.on");
+        add(r+".chain");add(r+".split");add(r+".eq.on");
         for(let b=0;b<4;b++)block(r+".eq.bands."+b,["hz","db","q","on"]);
       }
       if(groups.includes("macros"))block(r+".macros",[0,1,2,3]);
@@ -131,15 +139,15 @@
         const base=get(P,d.keys);if(base===undefined)continue;
         line={d,base:copy(base),events:[]};lines.set(path,line);
       }
-      line.events.push({at,end,from:current(line,at),to:target,weights:d.type==="chain"?chainMix(line,at):null});
+      line.events.push({at,end,from:current(line,at),to:target,weights:(d.type==="chain" || d.type==="split")?chainMix(line,at):null});
     }
     for(const [path,line] of lines){
       let layer=layers.find(l=>l.ti===line.d.ti);
-      if(!layer){layer={ti:line.d.ti,mix:[],master:[],macros:[],eq:false,chain:null,device:false};layers.push(layer);}
+      if(!layer){layer={ti:line.d.ti,mix:[],master:[],macros:[],eq:false,chain:null,split:null,device:false};layers.push(layer);}
       const {part,keys}=line.d;
       if(part==="mix"||part==="master")layer[part].push(keys.at(-1));
       if(part==="macros")layer.macros.push(+keys.at(-1));
-      if(part==="effects"){if(keys.at(-1)==="chain")layer.chain=line;else layer.eq=true;}
+      if(part==="effects"){if(line.d.type==="chain" || line.d.type==="split")layer[line.d.type]=line;else layer.eq=true;}
       if(part==="device")layer.device=true;
     }
     return {P,lines,layers,times:[],valid:!!lines.size,cache:null};
@@ -187,14 +195,18 @@
     for(const layer of s.layers){
       const i=layer.ti;
       if(i<0){for(const k of layer.master)E.sceneParam(k,-1,A.fx[k],B.fx[k],time,end);continue;}
+      if(layer.split)E.rack.sceneSplit(i,chainMix(layer.split,at),chainMix(layer.split,next),time,end);
+      if(layer.chain)E.rack.sceneChain(i,chainMix(layer.chain,at),chainMix(layer.chain,next),time,end);
+      if(i>=8)continue;
       const tr=A.tracks[i],to=B.tracks[i],strip=A.rack.strips[i],dest=B.rack.strips[i];
       const bank=lanes?.[i], curves=bank ? tr.automation[bank.p] : null;
-      for(const k of layer.mix)if(!curves?.[k]?.points?.length)E.sceneParam(k,i,tr[k],to[k],time,end);
-      if(layer.device && (tr.kind!=="kit" || to.kind!=="kit") && !curves?.cutoff?.points?.length)
+      const song=A.song && A.chain.length && A.performance.source==="arrangement" ? A.songCurves?.[i] : null;
+      const automated=key=>song?.[key]?.length || curves?.[key]?.points?.length;
+      for(const k of layer.mix)if(!automated(k))E.sceneParam(k,i,tr[k],to[k],time,end);
+      if(layer.device && (tr.kind!=="kit" || to.kind!=="kit") && !automated("cutoff"))
         E.sceneParam("cutoff",i,tr[tr.kind]?.cut??20000,to[to.kind]?.cut??20000,time,end);
-      for(const j of layer.macros)if(!curves?.["macro"+(j+1)]?.points?.length)E.rack.sceneMacro(i,j,strip.macros[j],dest.macros[j],time,end);
+      for(const j of layer.macros)if(!automated("macro"+(j+1)))E.rack.sceneMacro(i,j,strip.macros[j],dest.macros[j],time,end);
       if(layer.eq)E.rack.eq(i).schedule(strip.eq,dest.eq,time,end);
-      if(layer.chain)E.rack.sceneChain(i,chainMix(layer.chain,at),chainMix(layer.chain,next),time,end);
     }
   }
   function schedule(E,s,at,time,nextTime,lanes) {
@@ -250,13 +262,13 @@
     advance();
   }
   const field=(name,el)=>h("label.rack-field",null,h("span",{text:name}),el);
-  function open() {
+  function open(channel=App.P.sel.t) {
     const P=App.P,S=P.scenes, node=App.Workspace.begin("Setting scenes");
     node.classList.add("rack-dialog","scene-dialog");
     const body=h("div.dlg-body");node.append(body);
     const pick=h("select",{"aria-label":"Setting scene"}),name=h("input",{type:"text",maxlength:36,"aria-label":"Scene name",placeholder:"Scene name"});
     const tx=h("div.scene-tracks"),gx=h("div.scene-parts");
-    let tracks=new Set([P.sel.t]),groups=new Set(["mix","device","effects","macros"]),id="";
+    let tracks=new Set([channel]),groups=new Set(channel<8?["mix","device","effects","macros"]:["effects"]),id="";
     const bars=h("select",{"aria-label":"Morph length"},[0,.25,.5,1,2,4,8,16,32].map(v=>h("option",{value:v,text:v ? v+" bar"+(v===1?"":"s"):"Instant"})));
     const start=h("input",{type:"number",min:1,max:2048,step:1,value:1,"aria-label":"Cue bar"});
     const saved=()=>S.items.find(s=>s.id===id);
@@ -284,13 +296,15 @@
     }
     function buttons(){
       store.textContent=saved()?"Update scene":"Save scene";
-      store.disabled=!name.value.trim() || (!groups.has("master") && (!tracks.size || !groups.size));
+      const canCapture=groups.has("master") || (tracks.size && (groups.has("effects") || ([...tracks].some(i=>i<8) && groups.size)));
+      store.disabled=!name.value.trim() || !canCapture;
       call.disabled=!saved() || !Object.keys(selection()).length;
       add.disabled=!saved() || S.cues.length>=256;del.disabled=!saved();
     }
     function render(){
       pick.replaceChildren(h("option",{value:"",text:"New scene"}),...S.items.map(s=>h("option",{value:s.id,text:s.name})));pick.value=id;
-      mask(tx,P.tracks.map((_,i)=>i),tracks,P.tracks.map((t,i)=>(i+1)+" · "+t.name));
+      const channels=[...P.tracks.map((t,i)=>(i+1)+" · "+t.name),...P.rack.groups.map(g=>g.name)];
+      mask(tx,channels.map((_,i)=>i),tracks,channels);
       mask(gx,Object.keys(parts),groups,Object.values(parts));buttons();
       list.replaceChildren(...S.cues.map((c,j)=>{
         const n=S.items.find(s=>s.id===c.id);const pos=App.Conductor?.position(P,c.at);

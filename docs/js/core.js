@@ -16,7 +16,7 @@
     return o != null && [5, 10, 3, 8, 1, 6].includes(pc(P.key + o)) ? FLATS : NOTES;
   };
   const noteName = (m) => names()[pc(m)] + (Math.floor(m / 12) - 1);
-  const mtof = (m) => 440 * 2 ** ((m - 69) / 12);
+  const mtof = (m, P = App.P) => App.InstrumentLab ? App.InstrumentLab.frequency(m, P) : 440 * 2 ** ((m - 69) / 12);
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const pad2 = (n) => String(n).padStart(2, "0");
 
@@ -181,6 +181,8 @@
       N("gate", "GATE", "ARPEGGIATOR NOTE LENGTH", 0.05, 1, 0.5, { u: "pc" }),
     ]),
     syn: dict([
+      EN("design", "ENGINE", "SYNTH ENGINE", ["CLASSIC", "MODULAR", "WAVETABLE"]),
+      N("scan", "SCAN", "WAVETABLE FRAME POSITION", 0, 1, 0, { u:"pc1" }),
       EN("w1", "WAVE", "OSC 1 WAVEFORM", WAVES, 2),
       N("oct1", "OCTAVE", "OSC 1 OCTAVE", -3, 3, 0, { int: 1, u: "st", bi: 1 }),
       N("lv1", "LEVEL", "OSC 1 LEVEL", 0, 1, 0.8, { u: "pc" }),
@@ -356,7 +358,7 @@
   const notes = (a) =>
     Array.isArray(a)
       ? a.filter((n) => n && Number.isInteger(n.s) && Number.isInteger(n.n)).slice(0, 4000)
-          .map((n) => ({ s: clamp(n.s, 0, MAX_STEPS - 1), n: clamp(n.n, 0, 127), ...App.Rules?.fields(n), l: num(n.l, 1, MAX_STEPS, 1, 1), v: num(n.v, 0.02, 1, 0.8), p: num(n.p, 0, 1, 1), ...(Number.isFinite(n.off) && n.off ? {off:clamp(n.off,-0.49,0.49)} : {}), ...(n.r > 1 ? { r: num(n.r, 1, 8, 1, 1) } : {}) }))
+          .map((n) => ({ s: clamp(n.s, 0, MAX_STEPS - 1), n: clamp(n.n, 0, 127), ...App.Rules?.fields(n), l: num(n.l, 1, MAX_STEPS, 1, 1), v: num(n.v, Number.isFinite(n.fixed?.gate) ? 0 : 0.02, 1, 0.8), p: num(n.p, 0, 1, 1), ...(Number.isFinite(n.off) && n.off ? {off:clamp(n.off,-0.49,0.49)} : {}), ...(n.r > 1 ? { r: num(n.r, 1, 8, 1, 1) } : {}) }))
       : [];
 
   function loadCurves(src) {
@@ -452,7 +454,7 @@
 
   /* ── sample store (decoded buffers in memory, encoded bytes in IndexedDB) ── */
   const idb = (() => {
-    let db;
+    let db, useBytes=false;
     const open = () =>
       db || (db = new Promise((res, rej) => {
         const r = indexedDB.open("musiclab3", 1);
@@ -465,12 +467,29 @@
       return new Promise((res, rej) => {
         const t = d.transaction("smp", mode), q = fn(t.objectStore("smp"));
         t.oncomplete = () => res(q.result);
-        t.onerror = t.onabort = () => rej(t.error);
+        q.onerror = () => rej(q.error);
+        t.onabort = () => rej(t.error || Error("Sample storage transaction aborted"));
       });
     };
     return {
-      put: (o) => tx("readwrite", (s) => s.put(o)),
-      get: (id) => tx("readonly", (s) => s.get(id)),
+      async put(record) {
+        if (!useBytes) {
+          try { return await tx("readwrite", store => store.put(record)); }
+          catch (e) {
+            // Some WebKit stores accept IndexedDB but cannot persist Blob values.
+            if (!["UnknownError","DataCloneError","NotSupportedError"].includes(e?.name)) throw e;
+          }
+        }
+        const {id,name,blob}=record, bytes=await blob.arrayBuffer();
+        const key=await tx("readwrite",store=>store.put({id,name,type:blob.type,bytes}));
+        useBytes=true;
+        return key;
+      },
+      async get(id) {
+        const record=await tx("readonly", store => store.get(id));
+        if (record?.bytes && !record.blob) record.blob=new Blob([record.bytes],{type:record.type || "audio/wav"});
+        return record;
+      },
       del: (id) => tx("readwrite", (s) => s.delete(id)),
       keys: () => tx("readonly", (s) => s.getAllKeys()),
     };
@@ -487,17 +506,21 @@
     return out;
   };
 
-  const wav = (buf, firstSample = 0) => {
-    const ch = Math.min(2, buf.numberOfChannels), n = buf.length - firstSample, size = n * ch * 3;
-    const ab = new ArrayBuffer(44 + size), dv = new DataView(ab), u8 = new Uint8Array(ab);
+  const wav = (buf, firstSample = 0, floating = false) => {
+    const ch = floating ? buf.numberOfChannels : Math.min(2, buf.numberOfChannels), n = buf.length - firstSample;
+    const width = floating ? 4 : 3, size = n * ch * width;
+    const header = floating ? 56 : 44, ab = new ArrayBuffer(header + size), dv = new DataView(ab), u8 = new Uint8Array(ab);
     const tag = (o, s) => { for (let i = 0; i < 4; i++) u8[o + i] = s.charCodeAt(i); };
-    tag(0, "RIFF"); dv.setUint32(4, 36 + size, true); tag(8, "WAVE"); tag(12, "fmt ");
-    dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, ch, true);
-    dv.setUint32(24, buf.sampleRate, true); dv.setUint32(28, buf.sampleRate * ch * 3, true);
-    dv.setUint16(32, ch * 3, true); dv.setUint16(34, 24, true); tag(36, "data"); dv.setUint32(40, size, true);
+    tag(0, "RIFF"); dv.setUint32(4, header - 8 + size, true); tag(8, "WAVE"); tag(12, "fmt ");
+    dv.setUint32(16, 16, true); dv.setUint16(20, floating ? 3 : 1, true); dv.setUint16(22, ch, true);
+    dv.setUint32(24, buf.sampleRate, true); dv.setUint32(28, buf.sampleRate * ch * width, true);
+    dv.setUint16(32, ch * width, true); dv.setUint16(34, 8 * width, true);
+    if (floating) { tag(36,"fact"); dv.setUint32(40,4,true); dv.setUint32(44,n,true); }
+    tag(header-8, "data"); dv.setUint32(header-4, size, true);
     const c = []; for (let k = 0; k < ch; k++) c.push(buf.getChannelData(k));
-    let o = 44;
+    let o = header;
     for (let i = firstSample; i < buf.length; i++) for (let k = 0; k < ch; k++) {
+      if (floating) { dv.setFloat32(o, c[k][i], true); o += 4; continue; }
       const x = Math.round(clamp(c[k][i], -1, 1) * 8388607);
       u8[o++] = x & 255; u8[o++] = (x >> 8) & 255; u8[o++] = (x >> 16) & 255;
     }
@@ -525,10 +548,10 @@
     idb.put({ id, name, blob }).catch(() => App.UI.msg("SAMPLE NOT STORED LOCALLY · USE FILE > SAVE"));
     return id;
   };
-  App.addBuffer = (name, buffer) => {
-    const id = uid();
-    register(id, name, buffer);
-    idb.put({ id, name, blob: wav(buffer) }).catch(() => App.UI.msg("SAMPLE NOT STORED LOCALLY · USE FILE > SAVE"));
+  App.addBuffer = (name, buffer, {floating=false}={}) => {
+    const id = uid(), blob = wav(buffer,0,floating);
+    register(id, name, buffer, floating ? blob : null);
+    idb.put({ id, name, blob }).catch(() => App.UI.msg("SAMPLE NOT STORED LOCALLY · USE FILE > SAVE"));
     return id;
   };
   App.sampleIds = (P) => {

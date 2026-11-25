@@ -20,6 +20,11 @@
     if(i<0){App.Workspace.focus("dv");App.UI.msg("SELECT A TRACK AND CHOOSE SAMPLER IN DEVICE");return;}
     App.select(i,P.sel.p);open(i);
   }
+  function instrument(type){
+    const P=App.P,ti=P.tracks[P.sel.t].kind==="syn"?P.sel.t:P.tracks.findIndex(t=>t.kind==="syn");
+    if(ti<0){App.Workspace.focus("dv");App.UI.msg("CHOOSE SYNTH IN DEVICE TO DESIGN AN INSTRUMENT");return;}
+    App.select(ti,P.sel.p);App.InstrumentLab.open(type,ti);
+  }
   // Names and aliases lead to the same functions as each control at its normal location.
   function catalogue(){
     const rows=[],add=(label,path,aliases,run)=>rows.push({label,path,aliases,run});
@@ -30,19 +35,29 @@
     add("Loop overdubs","Song / Audio / Looper","looper layer record vrstva smyčka",()=>{App.AudioStudio.open();document.querySelector("dialog[open]") && [...document.querySelectorAll("dialog[open] button")].find(b=>b.textContent.trim().toLowerCase()==="looper")?.click();});
     add("Transcribe audio to notes","Song / Audio / Transcribe","audio midi hummed sing whistle melodie hlas přepis noty",()=>App.AudioStudio.openTranscription());
     add("Capture recent notes","Transport / Capture","retrospective recover playing zapomenuté nahrávání zpětně",()=>App.Retrospective.open());
+    add("Resample audio range","Song / Audio / Resample","print bounce internal track group pre post tail sampler resampling",()=>App.AudioStudio.openResample());
+    add("Spectral region editor","Song / Audio / Spectrum","spectrogram selection isolate attenuate delta frequency spektrum",()=>App.AudioStudio.openSpectral());
     add("Clip launcher","Clip matrix / Live","launch scenes queue spustit klipy",()=>App.Live.open());
     add("Recorded launch events","Clip matrix / Live / Take","capture edit recorded live performance záznam klipů",()=>App.Live.open("take"));
     add("Phrase editing","Clip matrix / Phrase","length repeat resize overlay stretch copy prodloužit zkrátit opakovat",()=>App.Phrases.open());
     add("Batch edit & defaults","Clip matrix / Batch edit","clean reset selected tracks defaults notes batch quantize hromadně výchozí vyčistit",()=>App.Operations.open());
+    add("Cycle sequencer","Edit / Cycles","polymeter pitch gate accent rhythm phase generative polyrytmus",()=>App.Cycles.open());
+    add("Song automation","Song / Arrange / Song automation","continuous curves bend arrangement repeat stretch průběh obálka",()=>App.Song.open("automation"));
     add("Note rules & print pass","Edit / Rules","fill every fourth pass random seed probability conditions freeze podmínky náhoda",()=>App.Rules.open());
     add("Groove & timing","Edit / Groove","microtiming clap swing timing tleskání",()=>App.Groove.open());
     add("Clip automation","Edit / Automation","curve envelope fade automatizace křivka",()=>{App.Workspace.focus("ed");App.Automation.open();});
     add("Instrument patches","Device / Patch","patch presets settings předvolby zvuky",()=>App.Patches.open());
+    add("Modular instrument","Device / Voice / Modular","patch graph oscillator noise envelope resonator kabely modulární",()=>instrument("graph"));
+    add("Wavetable instrument","Device / Voice / Wavetable","resynthesis harmonic frames wave scan harmonické",()=>instrument("table"));
+    add("Project tuning","File / Project tuning","scala scl microtonal ratios cents temperament ladění",()=>App.InstrumentLab.tuning());
     add("Modulation matrix","Device / Mod","LFO macros mappings envelope modulace makra",()=>App.Rack.modulate());
     add("Sample warp & slices","Device / Sampler / Edit","warp tempo stretch audio slice transient řezy vzorku natáhnout",()=>sampler(i=>{App.AudioStudio.editSample(i);within("Source BPM");}));
     add("Multisample zones","Device / Sampler / Zones","key velocity layers round robin multisampler zóny vrstvy",()=>sampler(i=>App.SamplerLab.zones(i)));
     add("Granular sampler","Device / Sampler","grains density jitter granular zrno zrnka hustota",()=>sampler(i=>{App.Workspace.focus("dv");App.Dv.build();focusControl([...document.querySelectorAll("#dv [aria-label]")].find(e=>/PITCHED SAMPLE|sampler mode|playback mode/i.test(e.getAttribute("aria-label"))) || document.querySelector("#dv .pm.en"));App.UI.msg("CHOOSE GRAIN IN THE SAMPLER MODE CONTROL");}));
     add("Mixer routing & inserts","Master / Routing","inserts chain group bus compressor efekty sběrnice",()=>App.Rack.mixer());
+    add("Parallel and split processing","Master / Routing","multiband crossover mid side branches paralelní pásma",()=>App.Rack.mixer());
+    add("Convolution impulse response","Master / Reverb / IR","import room custom convolution kernel impuls odezva",()=>App.SignalWorkshop.openImpulse());
+    add("Signal bench","Signal / Bench","measurement frequency response harmonics distortion delay transfer sweep měření",()=>App.SignalBench.open());
     add("Sidechain","Master / Routing / Sidechain","ducking key source kompresor kopák",()=>{App.Rack.mixer();within("Sidechain key");});
     add("Settings scenes","Master / Routing / Scenes","mix snapshots morph transition scény nastavení přechod",()=>App.Scenes.open());
     add("Parametric EQ","Master / Routing / EQ","equalizer frequency Q resonance spectrum notch ekvalizér rezonance",()=>App.ParametricEQ.open(App.P.sel.t));

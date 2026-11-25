@@ -220,6 +220,10 @@
     const {id, values:v} = state, kind = operations[id].kind, target = targets(P,state);
     const result = {notes:0,lanes:0,clips:0,tracks:0,controls:0,example:""};
     if (kind === "master") {
+      if ((v.section==="reverb" || v.section==="all") && P.impulse?.sample) {
+        result.controls++;
+        if (apply) P.impulse.sample="";
+      }
       const keys = fxGroups[v.section] || Object.keys(App.DEF.fx);
       for (const key of keys) if (P.fx[key] !== App.DEF.fx[key].def) {
         result.controls++;

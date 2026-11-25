@@ -58,7 +58,7 @@
   function voice(E,r,at,skip=0) {
     const take = r.takes[r.take], buffer = sample(take.sample);
     if (r.mute || !buffer || !E.tracks?.[r.track]) return;
-    const dur = Math.min(r.len,buffer.duration-take.offset);
+    const dur = Math.min(r.len,buffer.duration-take.offset,(E.renderUntil ?? Infinity)-at+skip);
     if (dur - skip < .0001) return;
     const node = E.ctx.createBufferSource(), level = E.ctx.createGain();
     const attack = r.fin || .002, release = r.fout || .002;
@@ -67,6 +67,7 @@
     node.buffer = buffer;
     level.gain.setValueAtTime(volume(skip),at);
     for (const t of [fi,r.len-fo,dur]) if (t>skip && t<=dur) level.gain.linearRampToValueAtTime(volume(t),at+t-skip);
+    if (dur < r.len-.0001 && E.renderUntil != null) level.gain.setTargetAtTime(0,Math.max(at,at+dur-skip-.003),.0007);
     node.connect(level).connect(E.tracks[r.track].tin);
     let nodes = sounding.get(E);
     if (!nodes) sounding.set(E, nodes = new Set());
@@ -431,7 +432,8 @@
     if(view==="looper" && src==="mix")src="track";
     const sourceCtl=select("Record source",[["mic","MIC / LINE"],["track","TRACK INSTRUMENT"],...(view==="timeline"?[["mix","MASTER OUTPUT"]]:[])],src,v=>{src=v;});
     if(view==="timeline"){
-      body.append(h("div.ast-toolbar",null,action("Import audio…","PLACE FILES CONSECUTIVELY AT THE CURSOR",()=>App.pickFile("audio/*",files=>importFiles(files,track,cursor)),!idle),
+      body.append(h("div.ast-toolbar",null,action("Resample…","RENDER A TRACK OR BUS RANGE INTO A REGION OR SAMPLER",openResample,!idle),
+        action("Import audio…","PLACE FILES CONSECUTIVELY AT THE CURSOR",()=>App.pickFile("audio/*",files=>importFiles(files,track,cursor)),!idle),
         sourceCtl, action(capture?.mode==="region"?"Stop recording":"Record region","CAPTURE AUDIO INTO THE SELECTED LANE",()=>capture?finishCapture():record("region"),!!capture && capture.mode!=="region","rec"+(capture?.mode==="region"?".on":"")),
         action("Record take","RECORD ONE ALTERNATE PASS OF THE SELECTED REGION",()=>record("take"),!idle || !r,"rec"),
         action(App.Seq.playing?"Stop transport":"Play transport","PLAY TIMELINE WITH THE SONG OR CURRENT PATTERN",()=>{stopLoop();App.Seq.toggle();render();},!!capture)));
@@ -447,6 +449,7 @@
     body.append(h("div.ast-inspect",null,select("Region",[["","SELECT REGION"],...opts],r?.id || "",v=>{selected=v;const x=find();if(x){track=x.track;cursor=x.at;}render();}),
       r? select("Take",r.takes.map((t,i)=>[i,(i+1)+" · "+(App.samples.get(t.sample)?.name || "MISSING")]),r.take,v=>edit(()=>r.take=+v)):null,
       r?action("Audition","PLAY SELECTED TAKE THROUGH ITS OUTPUT STRIP",()=>{const E=App.audio();if(E)voice(E,{...r,mute:false},E.ctx.currentTime+.02);}):null,
+      r?action("Spectrum…","EDIT A TIME AND FREQUENCY SELECTION IN THIS TAKE",()=>App.SignalWorkshop.openSpectral(r),!idle):null,
       r?action("Transcribe…","CONVERT THIS SINGLE-NOTE MELODY TO EDITABLE NOTES",openTranscription,!idle):null));
     if(r) {
       const source=r.takes[r.take],end=source.offset+r.len;
@@ -617,5 +620,14 @@
     const take=r.takes[r.take];
     App.Transcription.open({sample:take.sample,offset:take.offset,seconds:r.len,name:r.name,track:r.track,at:r.at});
   }
-  App.AudioStudio={open,editSample,openTranscription,reset,sync:render,durationSteps,schedule,stopSources};
+  function openSpectral(){
+    const r=find();
+    if(r && r.track===App.P.sel.t){App.SignalWorkshop.openSpectral(r);return;}
+    open();notice="SELECT A REGION TO EDIT ITS SPECTRUM";render();
+  }
+  function openResample(){
+    const r=find(),ti=App.P.sel.t;
+    App.SignalWorkshop.openResample(ti,cursor,r?.track===ti?r:null);
+  }
+  App.AudioStudio={open,openResample,openSpectral,addRegion:add,refreshPlayback,editSample,openTranscription,reset,sync:render,durationSteps,schedule,stopSources};
 })();

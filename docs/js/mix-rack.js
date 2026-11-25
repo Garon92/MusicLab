@@ -4,7 +4,8 @@
   const waves = ["sine","triangle","sawtooth","square"];
   const divisions = [[0,"Free · Hz"],[.25,"1/16"],[.5,"1/8"],[1,"1/4"],[2,"1/2"],[4,"1/1"],[8,"2/1"]];
   const effects = {lowpass:"Low-pass",highpass:"High-pass",lowshelf:"Low shelf",highshelf:"High shelf",saturate:"Saturation",compress:"Compressor"};
-  const targets = {cutoff:"Voice cutoff",pitch:"Voice pitch",tone:"Strip filter",drive:"Distortion",release:"Amp release",level:"Strip level",pan:"Pan",dly:"Delay send",rev:"Reverb send"};
+  const branchEffects = {...effects,room:"Room reverb"};
+  const targets = {scan:"Wavetable position",cutoff:"Voice cutoff",pitch:"Voice pitch",tone:"Strip filter",drive:"Distortion",release:"Amp release",level:"Strip level",pan:"Pan",dly:"Delay send",rev:"Reverb send"};
   const trackIds = Array.from({length:8}, (_,i) => "track"+i);
   const kickIds = trackIds.map((_,i) => "kick"+i);
   const macroIds = ["macro1","macro2","macro3","macro4"];
@@ -12,11 +13,23 @@
   const limit = (n,lo,hi,fallback) => Number.isFinite(n) ? App.clamp(n,lo,hi) : fallback;
   const choice = (x,list,otherwise) => list.includes(x) ? x : otherwise;
   const items = (x,max) => Array.isArray(x) ? x.slice(0,max) : [];
-  function channel(raw) {
-    const chain = items(raw?.chain,8).filter(f => f && Object.hasOwn(effects,f.type)).map(f => ({
+  function cleanChain(raw,types=effects) {
+    return items(raw,8).filter(f => f && Object.hasOwn(types,f.type)).map(f => ({
       type:f.type, value:limit(f.value,0,1,.5), on:f.on !== false
     }));
-    return {chain, key:choice(raw?.key,[...trackIds,...kickIds,"mic"],"off"),
+  }
+  const splitModes = {off:"Serial",parallel:"Parallel A / B",bands:"Three bands",ms:"Mid / Side"};
+  const branchNames = {parallel:["A","B"],bands:["Low","Mid","High"],ms:["Mid","Side"]};
+  function cleanSplit(raw) {
+    const low=limit(raw?.low,30,8000,180);
+    return {mode:choice(raw?.mode,Object.keys(splitModes),"off"),low,high:limit(raw?.high,low+20,18000,Math.max(3200,low+20)),
+      paths:Array.from({length:3},(_,i)=>{
+        const p=raw?.paths?.[i];
+        return {chain:cleanChain(p?.chain,branchEffects),db:limit(p?.db,-60,12,0),solo:p?.solo===true};
+      })};
+  }
+  function channel(raw) {
+    return {chain:cleanChain(raw?.chain),split:cleanSplit(raw?.split), key:choice(raw?.key,[...trackIds,...kickIds,"mic"],"off"),
       threshold:limit(raw?.threshold,-60,0,-30), ratio:limit(raw?.ratio,1,20,6),
       depth:limit(raw?.depth,0,1,.75), release:limit(raw?.release,.012,.6,.09)};
   }
@@ -134,13 +147,38 @@
       return [settings,section("Macros",macros),section("Routes",list,add,help)];
     });
   }
+  function insertEditor(chain,draw,extra,branch=false) {
+    const types=branch?branchEffects:effects;
+    const inserts = h("div.rack-list");
+    chain.forEach((f,j) => {
+      const move = d => { [chain[j+d],chain[j]] = [f,chain[j+d]]; change(); draw(); };
+      const up = btn("↑","Move insert earlier",() => move(-1)), down = btn("↓","Move insert later",() => move(1));
+      up.disabled = j === 0; down.disabled = j === chain.length-1;
+      const enabled = btn(f.on ? "On" : "Bypass","Toggle insert "+(j+1),() => {f.on=!f.on; change(); draw();});
+      enabled.setAttribute("aria-pressed",String(f.on));
+      const filter = ["lowpass","highpass"].includes(f.type), shelf = f.type.endsWith("shelf");
+      const db = f.type === "compress";
+      const label = filter ? "Hz" : shelf || db ? "dB" : "%";
+      const physical = v => filter ? Math.round(30*600**v) : shelf ? Math.round((v*30-15)*10)/10 : db ? -Math.round(48*v) : Math.round(v*100);
+      const normalized = x => filter ? Math.log(x/30)/Math.log(600) : shelf ? (x+15)/30 : db ? -x/48 : x/100;
+      inserts.append(h("div.rack-insert",null,enabled,h("span",{text:(j+1)+" · "+types[f.type]}),
+        number("Insert "+(j+1)+" "+label,physical(f.value),Math.min(physical(0),physical(1)),Math.max(physical(0),physical(1)),shelf ? .1 : 1,
+          v => {f.value=normalized(v); change();}),h("small",{text:label}),up,down,
+        btn("×","Remove insert "+(j+1),() => {chain.splice(j,1); change(); draw();})));
+    });
+    const type = select(branch ? "New branch effect" : "New insert effect",options(types),"lowpass",() => {});
+    const add = btn(branch ? "Add branch effect" : "Add insert","Append the selected processor to this path",() => {
+      chain.push({type:type.value,value:.5,on:true}); change(); draw();
+    }); add.disabled=chain.length>=8;
+    return [inserts,h("div.rack-row",null,type,add,extra)];
+  }
   function mixer(track = App.P.sel.t) {
-    let path = "t"+track;
+    let path = "t"+track, branch=0;
     editor("Mixer routing",draw => {
       const isTrack = path[0] === "t", i = +path.slice(1);
       const r = App.P.rack, c = isTrack ? r.strips[i] : r.groups[i];
       const pick = [...trackOptions().map(([k,v]) => ["t"+k,v]),...groupOptions().map(([k,v]) => ["b"+k,v])];
-      const controls = h("div.rack-row",null,field("Channel", select("Mixer channel",pick,path,v => {path=v; draw();})));
+      const controls = h("div.rack-row",null,field("Channel", select("Mixer channel",pick,path,v => {path=v; branch=0; draw();})));
       if (isTrack) controls.append(field("Output",select("Track output",[["-1","Master"],...groupOptions()],c.bus,v => {c.bus=+v; change(); draw();})));
       else {
         const name = h("input",{"aria-label":"Bus name",maxlength:20,value:c.name});
@@ -150,28 +188,27 @@
         };
         controls.append(field("Bus name",name),field("Level %",number("Bus level",Math.round(c.level*100),0,100,1,v => {c.level=v/100; change();})));
       }
-      controls.append(btn("Scenes…","Capture or morph selected device and mix settings",() => App.Scenes.open()));
-      const inserts = h("div.rack-list");
-      c.chain.forEach((f,j) => {
-        const move = d => { [c.chain[j+d],c.chain[j]] = [f,c.chain[j+d]]; change(); draw(); };
-        const up = btn("↑","Move insert earlier",() => move(-1)), down = btn("↓","Move insert later",() => move(1));
-        up.disabled = j === 0; down.disabled = j === c.chain.length-1;
-        const enabled = btn(f.on ? "On" : "Bypass","Toggle insert "+(j+1),() => {f.on=!f.on; change(); draw();});
-        enabled.setAttribute("aria-pressed",String(f.on));
-        const filter = ["lowpass","highpass"].includes(f.type), shelf = f.type.endsWith("shelf");
-        const db = f.type === "compress";
-        const label = filter ? "Hz" : shelf || db ? "dB" : "%";
-        const physical = v => filter ? Math.round(30*600**v) : shelf ? Math.round((v*30-15)*10)/10 : db ? -Math.round(48*v) : Math.round(v*100);
-        const normalized = x => filter ? Math.log(x/30)/Math.log(600) : shelf ? (x+15)/30 : db ? -x/48 : x/100;
-        inserts.append(h("div.rack-insert",null,enabled,h("span",{text:(j+1)+" · "+effects[f.type]}),
-          number("Insert "+(j+1)+" "+label,physical(f.value),Math.min(physical(0),physical(1)),Math.max(physical(0),physical(1)),shelf ? .1 : 1,
-            v => {f.value=normalized(v); change();}),h("small",{text:label}),up,down,
-          btn("×","Remove insert "+(j+1),() => {c.chain.splice(j,1); change(); draw();})));
-      });
-      const type = select("New insert effect",options(effects),"lowpass",() => {});
-      const add = btn("Add insert","Append the selected processor to this channel",() => {
-        c.chain.push({type:type.value,value:.5,on:true}); change(); draw();
-      }); add.disabled=c.chain.length>=8;
+      controls.append(btn("Scenes…","Capture or morph selected device and mix settings",() => App.Scenes.open(isTrack?i:8+i)));
+      const split=c.split;
+      const topology=h("div.rack-row",null,field("Topology",select("Rack topology",options(splitModes),split.mode,v=>{
+        split.mode=v; branch=0; change(); draw();
+      })));
+      const paths=[];
+      if(split.mode!=="off"){
+        const names=branchNames[split.mode];
+        branch=Math.min(branch,names.length-1);
+        const active=split.paths[branch];
+        if(split.mode==="bands"){
+          topology.append(field("Low split · Hz",number("Low crossover",split.low,30,Math.min(8000,split.high-20),1,v=>{split.low=v;change();draw();})),
+            field("High split · Hz",number("High crossover",split.high,split.low+20,18000,1,v=>{split.high=v;change();draw();})));
+        }
+        const solo=btn("Solo","Hear this branch alone at its mix level",()=>{active.solo=!active.solo;change();draw();});
+        solo.setAttribute("aria-pressed",String(active.solo));solo.classList.toggle("on",active.solo);
+        paths.push(h("div.rack-row",null,
+          field("Branch",select("Edit branch",names.map((name,j)=>[j,name+(split.paths[j].solo?" · solo":"")]),branch,v=>{branch=+v;draw();})),
+          field("Gain · dB",number("Branch gain",active.db,-60,12,.5,v=>{active.db=v;change();})),solo),
+          ...insertEditor(active.chain,draw,null,true));
+      }
       const side = h("div.rack-row",null,field("Key input",select("Sidechain key",[["off","Off"],...sourceOptions()],c.key,v => {c.key=v; change(); draw();})),
         field("Threshold · dB",number("Sidechain threshold",c.threshold,-60,0,.5,v => {c.threshold=v; change();})),
         field("Ratio",number("Sidechain ratio",c.ratio,1,20,.1,v => {c.ratio=v; change();})),
@@ -179,7 +216,8 @@
         field("Response · ms",number("Sidechain response",Math.round(c.release*1000),12,600,1,v => {c.release=v/1000; change();})));
       const members = isTrack ? "" : App.P.tracks.map((t,j) => r.strips[j].bus === i ? t.name : "").filter(Boolean).join(" + ");
       return [controls,...(isTrack?[]:[h("p.rack-note",{text:"Inputs · "+(members || "No tracks assigned")})]),
-        section("Insert chain",inserts,h("div.rack-row",null,type,add,isTrack && btn("Parametric EQ…","Edit the post-insert spectrum and parametric bands",() => App.ParametricEQ.open(i)))),
+        section("Insert chain",...insertEditor(c.chain,draw,isTrack && btn("Parametric EQ…","Edit the post-insert spectrum and parametric bands",() => App.ParametricEQ.open(i)))),
+        section("Split after inserts",topology,...paths),
         section("Sidechain compressor",side,...(c.key === "mic" ? [h("p.rack-note",{text:"Open IN in Signal analysis to supply a live microphone key."})] : []))];
     });
   }
@@ -279,5 +317,5 @@
     if (!s.routes.some(r => r.target === "release")) return 0;
     const t=P.tracks[i]; return t.kind === "kit" ? 0 : 6*t[t.kind].ar+.04;
   }));
-  App.Rack={model,getMacro,macroLabel,setMacro,modulate,mixer,stems,renderStems,tailSeconds};
+  App.Rack={model,cleanSplit,getMacro,macroLabel,setMacro,modulate,mixer,stems,renderStems,tailSeconds};
 })();

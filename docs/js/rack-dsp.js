@@ -16,7 +16,7 @@
       wires.length = 0;
     };
     const connect = (wires, from, to) => { from.connect(to); wires.push([from, to]); };
-    const graph = () => ({input:gain(), output:gain(), wires:[], sig:"", detector:[], key:"", bus:null});
+    const graph = () => ({input:gain(), splitInput:gain(), output:gain(), detector:[], key:"", bus:null});
     const buses = Array.from({length:4}, graph);
     const strips = tracks.map(graph);
     const mic = gain(), followers = new Map();
@@ -41,6 +41,21 @@
     };
     const makeEffect = fx => {
       const v = fx.value;
+      if (fx.type === "room") {
+        // A repeatable mono impulse preserves M/S encoding and stereo independence.
+        const reverb=ctx.createConvolver(), length=Math.ceil(ctx.sampleRate*.75);
+        const ir=ctx.createBuffer(1,length,ctx.sampleRate), data=ir.getChannelData(0);
+        let seed=11621, energy=0;
+        for(let i=Math.floor(ctx.sampleRate*.008);i<length;i++) {
+          seed=(Math.imul(seed,1664525)+1013904223)>>>0;
+          const tap=(seed/2147483648-1)*Math.exp(-7*i/length);
+          data[i]=tap; energy+=tap*tap;
+        }
+        const scale=v/Math.sqrt(energy);
+        for(let i=1;i<length;i++)data[i]*=scale;
+        data[0]=1-v; reverb.normalize=false; reverb.buffer=ir;
+        return reverb;
+      }
       if (fx.type === "saturate") return shape(curve(x => Math.tanh((1 + 18 * v) * x) / Math.tanh(1 + 18 * v)));
       if (fx.type === "compress") {
         const n = ctx.createDynamicsCompressor(); n.threshold.value = -48 * v;
@@ -52,16 +67,109 @@
       } else { n.frequency.value = Math.min(ctx.sampleRate / 2, 30 * 600 ** v); n.Q.value = -3; }
       return n;
     };
-    const syncChain = (g, cfg) => {
-      const sig = JSON.stringify(cfg.chain);
-      if (sig !== g.sig) {
-        clear(g.wires);
-        let last = g.input;
-        for (const fx of cfg.chain) if (fx.on) {
-          const node = makeEffect(fx); connect(g.wires, last, node); last = node;
+    // The crossover outputs are complementary at each sample (low + high = input).
+    // Splitting the first high band again produces three bands that sum at unity.
+    function buildSplit(source, output, cfg, own) {
+      if (!cfg || cfg.mode === "off") { source.connect(output); return; }
+      const level = value => own(gain(value));
+      const crossover = (input, hz) => {
+        const k = Math.tan(Math.PI * Math.min(hz,ctx.sampleRate*.48) / ctx.sampleRate);
+        const b = 1 / (1+k), a = [1,(k-1)*b];
+        const low = own(ctx.createIIRFilter([k*b,k*b],a)), high = own(ctx.createIIRFilter([b,-b],a));
+        input.connect(low); input.connect(high); return [low,high];
+      };
+      let inputs, merger;
+      if (cfg.mode === "bands") {
+        const [low,upper] = crossover(source,cfg.low);
+        inputs = [low,...crossover(upper,cfg.high)];
+      } else if (cfg.mode === "ms") {
+        const stereo = level(1), split = own(ctx.createChannelSplitter(2));
+        stereo.channelCount=2; stereo.channelCountMode="explicit";
+        source.connect(stereo).connect(split);
+        const mid=level(.5), side=level(.5), negative=level(-1);
+        split.connect(mid,0); split.connect(mid,1);
+        split.connect(side,0); split.connect(negative,1); negative.connect(side);
+        inputs=[mid,side]; merger=own(ctx.createChannelMerger(2)); merger.connect(output);
+      } else inputs = [source,source];
+      const solo = inputs.some((_,i) => cfg.paths[i].solo);
+      inputs.forEach((input,i) => {
+        const path=cfg.paths[i];
+        if (solo && !path.solo) return;
+        let last=input;
+        for (const fx of path.chain) if (fx.on) last=last.connect(own(makeEffect(fx)));
+        const branch=level(10 ** (path.db/20) * (cfg.mode === "parallel" ? .5 : 1));
+        last.connect(branch);
+        if (merger) {
+          branch.connect(merger,0,0);
+          (i===1 ? branch.connect(level(-1)) : branch).connect(merger,0,1);
+        } else branch.connect(output);
+      });
+    }
+    function buildSerial(source,output,chain,own) {
+      let last=source;
+      for (const fx of chain) if (fx.on) last=last.connect(own(makeEffect(fx)));
+      last.connect(output);
+    }
+    // Two independently crossfaded banks keep serial inserts and split routing
+    // editable as separate scene properties. Each completed path owns its wires.
+    function pathBank(input,output,build) {
+      const paths=new Map();
+      let baseId,sceneActive=false;
+      function path(id,config) {
+        if (!paths.has(id)) {
+          const inlet=gain(), fader=gain(0), nodes=[inlet,fader];
+          const own=node=>{nodes.push(node);return node;};
+          input.connect(inlet);build(inlet,fader,config,own);fader.connect(output);
+          paths.set(id,{fader,retire:0,dispose(){
+            input.disconnect(inlet);for(const node of nodes)node.disconnect();
+          }});
         }
-        connect(g.wires, last, g.basePath || g.output); g.sig = sig;
+        const current=paths.get(id);current.retire++;return current;
       }
+      function base(config,reset=false) {
+        const id=JSON.stringify(config), first=baseId===undefined;
+        if (id===baseId && !(reset && sceneActive))return;
+        baseId=id;sceneActive=false;path(id,config);
+        const now=ctx.currentTime, fade=first || now===0?0:.032;
+        // Main-thread currentTime can trail the render thread by several quanta.
+        // Schedule both sides together in the future so neither ramp starts late.
+        const start=fade?now+.020:now;
+        for (const [key,current] of paths) {
+          const p=current.fader.gain, target=key===id?1:0;
+          if (p.cancelAndHoldAtTime) p.cancelAndHoldAtTime(start);
+          else p.cancelScheduledValues(start);
+          // Matched exponential gains sum to unity and start from their current
+          // values even when a second edit interrupts a still-running fade.
+          if(fade)p.setTargetAtTime(target,start,.003);else p.setValueAtTime(target,start);
+          if(key===id)continue;
+          const mark=++current.retire;
+          const remove=()=>{if(current.retire===mark){current.dispose();paths.delete(key);}};
+          // Dispose after the AUDIO clock crosses the end of the fade, including
+          // suspended contexts. A revived scene invalidates this retirement.
+          if(!fade)remove();else {
+            const clock=ctx.createConstantSource();clock.onended=remove;clock.start();clock.stop(start+fade);
+          }
+        }
+      }
+      function scene(from,to,start,end) {
+        sceneActive=true;
+        const weights=new Map();
+        for(const [index,bank] of [from,to].entries())for(const item of bank){
+          const id=JSON.stringify(item.chain);
+          if(!weights.has(id)){weights.set(id,[0,0]);path(id,item.chain);}
+          weights.get(id)[index]=item.weight;
+        }
+        for(const [id,current] of paths){
+          const [a,b]=weights.get(id)||[0,0], p=current.fader.gain;
+          p.setValueAtTime(a,start);if(a!==b)p.linearRampToValueAtTime(b,end);
+        }
+      }
+      return {base,scene};
+    }
+    const syncChain = (g, cfg) => {
+      g.serialBank ||= pathBank(g.input,g.splitInput,buildSerial);
+      g.splitBank ||= pathBank(g.splitInput,g.eq?.input || g.output,buildSplit);
+      g.serialBank.base(cfg.chain);g.splitBank.base(cfg.split);
       const key = [cfg.key,cfg.depth,cfg.release,cfg.threshold,cfg.ratio].join("/");
       if (key !== g.key) {
         if (g.env) { clear(g.detector); g.env.dispose(); g.env = null; }
@@ -80,7 +188,6 @@
     strips.forEach((g, i) => {
       const t = tracks[i];
       g.eq = App.ParametricEQ.graph(ctx,g.output);
-      g.basePath=gain();g.basePath.connect(g.eq.input);g.alternates=new Map();
       // Modulated distortion adds wet-minus-dry signal to a parallel dry path.
       g.modFx = gain(); t.filter.connect(g.modFx).connect(t.trem);
       g.wet = null; g.level = gain(); t.pan.connect(g.level).connect(g.input);
@@ -91,7 +198,7 @@
       const levelOffset = shape(new Float32Array([-1,1])); levelOffset.connect(g.level.gain);
       const releaseCV = shape(new Float32Array([-1,1])); g.releaseRate = gain(-4800);
       releaseCV.connect(g.releaseRate);
-      g.targets = {release:[releaseCV,1],pitch:[t.pitch, 2400], cutoff:[t.cut, 6000], tone:[t.filter.detune,6000],
+      g.targets = {release:[releaseCV,1],scan:[t.scan,1],pitch:[t.pitch, 2400], cutoff:[t.cut, 6000], tone:[t.filter.detune,6000],
         pan:[t.pan.pan,1], level:[levelOffset,1]};
       // Clamp the sum of static send and bipolar modulation to a usable send level.
       for (const [name, send] of [["dly",t.sd],["rev",t.sr]]) {
@@ -158,10 +265,19 @@
         g.base = cfg.macros.slice();
       });
     };
+    const pickTap = (type,index,point="post") => {
+      if (type === "track") return point === "pre" ? tracks[index].tin : point === "rack-in" ? strips[index].input : strips[index].output;
+      if (type === "group") return point === "pre" || point === "rack-in" ? buses[index].input : buses[index].fader;
+      return returns;
+    };
     if (stems?.length) {
+      const included=stems.find(s=>s.type==="returns")?.onlyTracks;
+      if (Array.isArray(included)) strips.forEach((s,i)=>{
+        if (!included.includes(i)) {s.output.disconnect(tracks[i].sd); s.output.disconnect(tracks[i].sr);}
+      });
       const merger = ctx.createChannelMerger(stems.length * 2); merger.connect(ctx.destination);
-      stems.forEach(({type,index}, i) => {
-        const tap = type === "track" ? strips[index].output : type === "group" ? buses[index].fader : returns;
+      stems.forEach(({type,index,point}, i) => {
+        const tap = pickTap(type,index,point);
         const stereo = gain(), split = ctx.createChannelSplitter(2);
         stereo.channelCount = 2; stereo.channelCountMode = "explicit";
         tap.connect(stereo).connect(split); split.connect(merger,0,i*2); split.connect(merger,1,i*2+1);
@@ -219,34 +335,15 @@
       const old = g.lfo; old.stop(time); old.onended = () => old.disconnect();
       g.lfo = oscillator(g,cfg,time);
     });
-    // A cue crossfades complete insert chains. Every parallel path receives the
-    // same input, so tails are retained and neutral processors stay at unity.
-    const sceneChain = (i,from,to,start,end) => {
-      const g=strips[i], weights=new Map();
-      for(const [index,bank] of [from,to].entries()) for(const item of bank) {
-        const id=JSON.stringify(item.chain);
-        if(!weights.has(id))weights.set(id,{chain:item.chain,level:[0,0]});
-        weights.get(id).level[index]=item.weight;
-      }
-      for(const [id,item] of weights) {
-        if(id===g.sig || g.alternates.has(id))continue;
-        let last=g.input;const wires=[];
-        for(const fx of item.chain)if(fx.on){const node=makeEffect(fx);connect(wires,last,node);last=node;}
-        const fader=gain(0);connect(wires,last,fader);connect(wires,fader,g.eq.input);
-        g.alternates.set(id,{fader,wires});
-      }
-      const volume=(fader,id)=>{
-        const [a,b]=weights.get(id)?.level || [0,0];
-        fader.gain.setValueAtTime(a,start);if(a!==b)fader.gain.linearRampToValueAtTime(b,end);
-      };
-      volume(g.basePath,g.sig);
-      for(const [id,path] of g.alternates)volume(path.fader,id);
-    };
+    const sceneStrip=i=>i<8?strips[i]:buses[i-8];
+    const sceneChain=(i,from,to,start,end)=>sceneStrip(i).serialBank.scene(from,to,start,end);
+    const sceneSplit=(i,from,to,start,end)=>sceneStrip(i).splitBank.scene(from,to,start,end);
     function endScenes() {
       const now=ctx.currentTime;
-      for(const [i,g] of strips.entries()) {
-        for(const path of g.alternates.values())clear(path.wires);
-        g.alternates.clear();g.basePath.gain.cancelScheduledValues(now);g.basePath.gain.setValueAtTime(1,now);
+      for(const [i,g] of [...strips,...buses].entries()) {
+        const cfg=i<8?getP().rack.strips[i]:getP().rack.groups[i-8];
+        g.serialBank?.base(cfg.chain,true);g.splitBank?.base(cfg.split,true);
+        if(i>=8)continue;
         g.eq.cancel(now);
         g.macros.forEach((macro,j)=>{macro.offset.cancelScheduledValues(now);macro.offset.setValueAtTime(getP().rack.strips[i].macros[j],now);});
       }
@@ -259,7 +356,7 @@
       const beats=getP().rack.strips[i].lfoBeats;
       if (beats && g.lfo) g.lfo.frequency.setValueAtTime(bpm/(60*beats),time);
     });
-    return {sync, automate, stop, macro, mic, restart, tempo, sceneMacro, sceneChain, endScenes, releaseVoice, eq:i=>strips[i].eq, tap:i => strips[i].output,
+    return {sync, automate, stop, macro, mic, restart, tempo, sceneMacro, sceneChain, sceneSplit, endScenes, releaseVoice, eq:i=>strips[i].eq, pickTap, tap:i => strips[i].output,
       velocity:(i,v,t) => strips[i].velocity.offset.setValueAtTime(v,t)};
   };
 })();

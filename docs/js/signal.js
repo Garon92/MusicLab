@@ -44,7 +44,7 @@
       fRd = h("span.ov.r");
       wG.append(h("span.ov", { text: "SPECTROGRAM" }), fRd);
       el.append(
-        h("div.hd", null, h("span.tg", { text: "SIGNAL" }), h("span.grp", null, srcB.out, srcB.trk, srcB.in), monB, h("span.sp"), holdB),
+        h("div.hd", null, h("span.tg", { text: "SIGNAL" }), h("span.grp", null, srcB.out, srcB.trk, srcB.in), monB, h("span.sp"), btn("BENCH…","Measure the transfer, distortion and delay of an insert path",() => App.SignalBench.open()),holdB),
         wS,
         h("div.pt", { tip: "PITCH · DETECTED NOTE, CENTS OFF AND FREQUENCY · WORKS AS A TUNER ON INPUT" }, h("span.tg", { text: "PITCH" }), ptN, h("span.cb", null, ptM), ptC, ptH),
         wF, wG, h("div.sg-bt", null, wP, wM),
@@ -222,7 +222,7 @@
       for (let x = 0; x < W; x += 2) xF.fillRect(x, Math.round((peakHold[x] / DBMIN) * H), 1, l);
       let rd = "";
       if (cur && cur.kind === "f") {
-        const x = Math.round(cur.x * W), y = Math.round(cur.y * H), f = xf(x, W), m = 69 + 12 * Math.log2(f / 440), n = Math.round(m);
+        const x = Math.round(cur.x * W), y = Math.round(cur.y * H), f = xf(x, W), n = App.InstrumentLab.nearest(f).note;
         xF.fillStyle = C.am; xF.fillRect(x, 0, l, H); xF.fillRect(0, y, W, l);
         rd = App.fHz(f) + " HZ  " + App.noteName(n) + "  " + Math.round(cur.y * DBMIN) + " DB";
         UI.hint("SPECTRUM    " + rd + "    SIGNAL HERE " + Math.round(clamp(spec[Math.min(nb - 1, Math.round(binOf[clamp(x, 0, W)]))], -200, 0)) + " DB");
@@ -247,7 +247,7 @@
     }
     const overlaySpectrogram = () => {
       if (cur && cur.kind === "g") {
-        const f = xf((1 - cur.y) * cvG.height, cvG.height), n = Math.round(69 + 12 * Math.log2(f / 440));
+        const f = xf((1 - cur.y) * cvG.height, cvG.height), n = App.InstrumentLab.nearest(f).note;
         const t = App.fHz(f) + " HZ  " + App.noteName(n);
         fRd.textContent = t;
         UI.hint("SPECTROGRAM · TIME RUNS LEFT, PITCH RUNS UP, BRIGHTNESS = LEVEL    " + t);
@@ -322,11 +322,11 @@
       if (tick % 4 === 0) {
         const hz = pitch(mono, sr);
         if (hz) {
-          const m = 69 + 12 * Math.log2(hz / 440), n = Math.round(m), ct = Math.round((m - n) * 100);
+          const pitch = App.InstrumentLab.nearest(hz), n = pitch.note, ct = Math.round(pitch.cents);
           ptN.textContent = App.noteName(n);
           ptC.textContent = (ct > 0 ? "+" : "") + ct + " C";
           ptH.textContent = hz.toFixed(1) + " HZ";
-          ptM.style.left = 50 + ct + "%"; ptM.style.display = "block";
+          ptM.style.left = clamp(50 + ct,0,100) + "%"; ptM.style.display = "block";
           ptM.classList.toggle("ok", Math.abs(ct) <= 5);
         } else if (lastHz) { ptN.textContent = "--"; ptC.textContent = ""; ptH.textContent = ""; ptM.style.display = "none"; }
         lastHz = hz;

@@ -113,5 +113,91 @@
     }
     return out;
   }
-  App.AudioDSP = {sliceEdges, transients, warp};
+  // A quarter-hop Hann transform reconstructs the selected bins by overlap-add.
+  // All channels use the same mask and retain their independent complex phases.
+  const N=4096, hop=N/4;
+  const windowFn=Float64Array.from({length:N},(_,i)=>.5-.5*Math.cos(2*Math.PI*i/N));
+  const reverseBits=new Uint16Array(N), cos=new Float64Array(N/2), sin=new Float64Array(N/2);
+  for(let i=1;i<N;i++)reverseBits[i]=(reverseBits[i>>1]>>1)|((i&1)*N/2);
+  for(let k=0;k<N/2;k++){cos[k]=Math.cos(2*Math.PI*k/N);sin[k]=Math.sin(2*Math.PI*k/N);}
+  function transform(re,im,inverse=false) {
+    for(let i=0;i<N;i++) {
+      const j=reverseBits[i];
+      if(j>i){const r=re[j],m=im[j];re[j]=re[i];im[j]=im[i];re[i]=r;im[i]=m;}
+    }
+    for(let size=2;size<=N;size*=2){
+      const half=size/2, stride=N/size;
+      for(let a=0;a<N;a+=size) for(let j=0;j<half;j++){
+        const k=j*stride, i=a+j, b=i+half, c=cos[k], sn=inverse?sin[k]:-sin[k];
+        const r=re[b]*c-im[b]*sn, m=re[b]*sn+im[b]*c;
+        re[b]=re[i]-r;im[b]=im[i]-m;re[i]+=r;im[i]+=m;
+      }
+    }
+    if(inverse)for(let i=0;i<N;i++){re[i]/=N;im[i]/=N;}
+  }
+  function windowAt(data,start,re,im){
+    im.fill(0);
+    for(let i=0;i<N;i++)re[i]=(data[start+i]||0)*windowFn[i];
+    transform(re,im);
+  }
+  async function spectralEdit(buffer,offset,len,box,mode,db,valid=()=>true){
+    const sr=buffer.sampleRate, start=Math.max(0,Math.round(offset*sr));
+    const count=Math.min(buffer.length-start,Math.round(len*sr));
+    if(count<=0 || !Number.isFinite(db) || ![box.from,box.to,box.low,box.high].every(Number.isFinite) ||
+      box.to<=box.from || box.high<=box.low || !["gain","isolate","removed"].includes(mode))throw Error("INVALID SPECTRAL SELECTION");
+    const a=clamp(Math.round(box.from*sr),0,count), b=clamp(Math.round(box.to*sr),0,count);
+    if(a>=b)throw Error("EMPTY TIME RANGE");
+    const out=new AudioBuffer({numberOfChannels:buffer.numberOfChannels,sampleRate:sr,length:count});
+    const re=new Float64Array(N),im=new Float64Array(N), weights=new Float64Array(N);
+    const resolution=sr/N, feather=Math.min(2*resolution,(box.high-box.low)/4);
+    const low=box.low-resolution/2, high=box.high+resolution/2;
+    for(let k=0;k<N;k++){
+      const f=Math.min(k,N-k)*resolution;
+      const l=clamp((f-low+feather)/feather,0,1),h=clamp((high-f+feather)/feather,0,1);
+      weights[k]=(.5-.5*Math.cos(Math.PI*Math.min(l,h)));
+    }
+    const fade=Math.max(1,Math.min(Math.round(sr*.004),(b-a)/4));
+    const scale=10**(db/20)-1;
+    let yielded=performance.now();
+    for(let c=0;c<out.numberOfChannels;c++){
+      const source=buffer.getChannelData(c).subarray(start,start+count),dest=out.getChannelData(c);
+      if(mode==="gain")dest.set(source);
+      for(let i=(Math.floor(a/hop)-3)*hop;i<b;i+=hop){
+        if(performance.now()-yielded>20){
+          await new Promise(resolve=>setTimeout(resolve,0));if(!valid())throw Error("EDIT CANCELLED");
+          yielded=performance.now();
+        }
+        windowAt(source,i,re,im);
+        for(let k=0;k<N;k++){re[k]*=weights[k];im[k]*=weights[k];}
+        transform(re,im,true);
+        for(let j=Math.max(a,i);j<Math.min(b,i+N);j++){
+          const edge=Math.min(1,(j-a)/fade,(b-j)/fade), w=(.5-.5*Math.cos(Math.PI*edge))*windowFn[j-i]/1.5;
+          const band=re[j-i]*w;
+          dest[j]+=band*(mode==="gain"?scale:mode==="removed"?-scale:1);
+        }
+      }
+    }
+    return out;
+  }
+  function spectrogram(buffer,offset,len,width,height){
+    const sr=buffer.sampleRate,low=20,nyquist=sr/2;
+    const bins=Array.from({length:height+1},(_,i)=>Math.max(1,Math.round((low*(nyquist/low)**(1-i/height))*N/sr)));
+    const out=new Uint8ClampedArray(width*height*4),re=new Float64Array(N),im=new Float64Array(N),power=new Float64Array(N/2+1);
+    for(let x=0;x<width;x++){
+      const at=Math.round((offset+(x+.5)*len/width)*sr)-N/2;power.fill(0);
+      for(let c=0;c<Math.min(2,buffer.numberOfChannels);c++){
+        windowAt(buffer.getChannelData(c),at,re,im);
+        for(let k=1;k<power.length;k++)power[k]+=re[k]**2+im[k]**2;
+      }
+      for(let j=0;j<height;j++){
+        let peak=0;
+        for(let k=bins[j+1];k<=bins[j];k++)peak=Math.max(peak,power[k]);
+        const db=10*Math.log10(1e-14+peak/(N*N/16*Math.min(2,buffer.numberOfChannels)));
+        const value=clamp((db+84)/84,0,1), i=(j*width+x)*4;
+        out[i]=6+104*value**3;out[i+1]=13+226*value;out[i+2]=9+135*value**1.5;out[i+3]=255;
+      }
+    }
+    return new ImageData(out,width,height);
+  }
+  App.AudioDSP = {sliceEdges, transients, warp, spectralEdit, spectrogram};
 })();

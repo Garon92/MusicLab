@@ -65,6 +65,21 @@ A pattern can span up to 16 bars within a 256-sixteenth-note limit. Longer patte
 | Change a mix over several bars | In **Master → Routing → Scenes…**, save named snapshots of selected tracks and settings. Recall a scene live or place a song cue and set its transition in bars. |
 | Hear an individual frequency range | **Master → Routing → Parametric EQ…** offers four draggable bands per track. Drag for frequency and gain, use the wheel or the Q control for bandwidth and switch the monitor between band solo, dry reference and EQ output. **Level match A/B** compares dry and processed audio at matched levels. |
 
+## Sound design and measurement
+
+| Task | Console control |
+| --- | --- |
+| Build a playable instrument | On a synth track, choose **Device → Voice → Modular** and open the patch graph. Add oscillators, noise, impulses, envelopes, amplifiers, filters or resonators. Connect module outputs to audio or modulation inputs, route the result to the output and save the instrument under **Patch**. |
+| Record the result of a chain | In **Audio → Resample**, choose a track, bus or master, a musical range and the tail in seconds. Tracks and buses offer before/after FX taps. Send the print to a region at the original position or to a sampler. |
+| Edit a sound in time and frequency | Select a timeline region and open **Spectrum**. Drag a rectangle on the spectrogram, then isolate the selection or change its gain. Listen to the original, processed or removed signal. Save a new take, or send an isolated selection directly to a sampler. |
+| Sequence independent cycles | **Edit → Cycles** has separate clocks, phases and directions for pitch, accent and gate. Enter MIDI keys or note names, use a dash for a rest, and audition on the current instrument. **Print range** writes the chosen time span. **Capture last** keeps the recently heard events, including edits made during audition. Both create editable notes in an empty clip. |
+| Automate across pattern boundaries | In **Arrange → Song automation**, choose a track and parameter, then click or drag points on the ruler. Adjust each outgoing bend, hold a value, repeat a range or stretch it to a new length. **Apply arrangement** commits the draft. In Song mode, this lane takes priority over the matching clip lane. Ripple edits carry it with the section. |
+| Process signals in parallel | **Master → Routing → Split after inserts** offers parallel paths, three frequency bands or Mid/Side. Select a branch to set its gain, solo it and edit its own effects. The branches recombine before the output. |
+| Resynthesize a sample | Choose **Wavetable** in the synth's Voice section. Import a recording or pick a project sample, set its fundamental and extract cycles from different positions. Edit the sine and cosine harmonics per frame, then sweep through frames manually or route a modulation source to wavetable scan. |
+| Measure an effects path | **Signal → Bench** sends a calibrated tone or stepped frequency sweep through a track or bus rack and compares the input and output. Choose the input level and stereo stimulus, inspect transfer gain, harmonics or impulse peak delay, and use **Hold A** to overlay a measurement with matching test settings. |
+| Use a recorded impulse | **Master → Reverb → IR** accepts an impulse-response file or a project sample. The selected response is embedded in the portable project and used by the live return and offline render. |
+| Change instrument tuning | **File → Project tuning** imports Scala `.scl` files or accepts ratios and cents directly. Set the root, reference key and frequency. Sustain a chord to switch between standard and project tuning. Project JSON and rendered audio preserve the tuning. Standard MIDI export carries note numbers. |
+
 ## Editing and playing
 
 - **Draw** places notes. Drag a note to move it or its end to change its length. Right-click deletes it. **Select** lets you drag a box around a phrase. Shift-click adds or removes individual notes.

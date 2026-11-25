@@ -59,7 +59,7 @@
     const clipLength=!chain && source==="arrangement" && P.performance ? Math.max(...P.performance.loops.map(row=>row[pattern])) : 0;
     const harmony=source==="arrangement" && !chain ? App.Harmony?.duration(P)||0 : 0;
     const sceneEnd=source==="arrangement" ? (P.scenes?.cues||[]).reduce((end,c)=>Math.max(end,C().barsAfter(P,c.at,c.bars||0)),0) : 0;
-    const total=Math.max(music,clipLength,harmony,sceneEnd,App.AudioStudio?.durationSteps(P)||0);
+    const total=Math.max(music,clipLength,harmony,sceneEnd,chain ? App.SongCurves.end(P) : 0,App.AudioStudio?.durationSteps(P)||0);
     return {source,chain,list,slots,ends,music,total};
   }
   function position(P,layout,at,realtime=false) {
@@ -95,7 +95,7 @@
       const changed=options.changes?.includes(ti);
       if(changed)sink.cut(ti,t);
       if(options.lanes && !lane) {
-        if(changed) E.automate?.(ti,P.tracks[ti],null,0,t,t+sd);
+        if(changed || songOn(P)) App.SongCurves.schedule(E,P,ti,null,0,absolute,t,t+sd,songOn(P));
         continue;
       }
       const bank=lane?.p ?? pi, n=lane?.n || App.Live?.length(P,ti,bank) || App.patSteps(P,bank), s=lane?.s ?? gridStep%n;
@@ -126,7 +126,7 @@
           if(E===App.E)App.Rules?.hit?.(ti,bank,s,pass,key,e.velocity,time,duration,e);
         }
       };
-      E.automate?.(ti,T,T.automation?.[bank],s,t,at(s+1));
+      App.SongCurves.schedule(E,P,ti,T.automation?.[bank],s,absolute,t,at(s+1),songOn(P));
       if (!clip.length) continue;
       for(const nt of clip)if(nt.fixed && nt.s===s) {
         const repeats=countOf(nt), gate=nt.fixed.gate*nt.l/(nt.fixed.base||nt.l);
@@ -302,42 +302,56 @@
   };
 
   /* Offline and file events share the same clip clocks, timing offsets and chords. */
-  async function renderSong({stems,project}={}) {
-    const P=JSON.parse(JSON.stringify(project || App.P)),layout=plan(P),steps=layout.total, span=seconds(P,steps), scenes=App.Scenes?.session?.(P);
-    const sr = App.E ? App.E.ctx.sampleRate : 48000, tail = Math.max(Math.min(12,1.5+P.fx.rsize),App.Rack?.tailSeconds?.(P)||0);
+  async function renderSong({stems,project,range}={}) {
+    const P=JSON.parse(JSON.stringify(project || App.P)), layout=plan(P), scenes=App.Scenes?.session?.(P);
+    const end=range ? range.to : layout.total, from=range ? range.from : 0;
+    if (![from,end].every(Number.isFinite) || from<0 || end<=from || end>layout.total+1e-6) throw Error("SELECT A RANGE INSIDE THE ARRANGEMENT");
+    const steps=Math.ceil(end), span=seconds(P,end), sr=App.E?.ctx.sampleRate || 48000;
+    const naturalTail=Math.max(Math.min(12,1.5+P.fx.rsize),App.Rack?.tailSeconds?.(P)||0,App.SignalWorkshop?.impulseDuration(P)||0);
+    const tail=range ? clamp(Number(range.tail)||0,0,30) : naturalTail;
     if (span > 1200) throw Error("LONGER THAN 20 MIN");
-    // The browser's compressor fades in during its first ~150 ms. Render a silent lead-in for it, then cut it off.
-    const PRE=.3, channels=stems?.length ? stems.length*2 : 2, frames=Math.ceil((PRE+span+tail)*sr);
+    // Start at project zero to reconstruct previous sounding notes, envelopes and effects.
+    const PRE=.3, until=PRE+span, channels=stems?.length ? stems.length*2 : 2, frames=Math.ceil((until+tail)*sr);
     if(stems?.length && frames*channels*4>768*1024*1024)throw Error("SELECT FEWER STEMS OR SHORTEN ARRANGEMENT");
     const ctx=new OfflineAudioContext(channels,frames,sr);
     const E=App.Engine(ctx,()=>P,{offline:true,stems});
+    if(range)E.renderUntil=until;
     E.syncAll();
     const events=eventQueue(E,P);
+    const output=range ? {
+      cut:(ti,t)=>{if(t<until)events.cut(ti,t);},
+      note:e=>{if(e.time<until)events.note({...e,duration:Math.min(e.duration,until-e.time)});}
+    } : events;
     E.restartLfos(PRE); // same alignment as live playback: LFOs begin with the first step
     // Feed a long render in musical order through ONE context. A short lead
     // before each suspension leaves room for render-quantum rounding. Voices,
     // envelopes, delay lines and convolution tails live across every window.
     let t = PRE, windowEnd = PRE + 8, rendering;
     const canSuspend = typeof ctx.suspend === "function" && typeof ctx.resume === "function";
-    for(let at=0;at<steps;at++) {
+    // A negative groove offset can place a note from the next grid cell before
+    // the selection end. Read that cell's events without advancing FX into the tail.
+    const windows=steps+Number(!!range && steps<layout.total);
+    for(let at=0;at<windows;at++) {
+      const engine=at<steps?E:{};
       const sd=duration(P,at);
-      if(canSuspend && t>=windowEnd) {
+      if(at<steps && canSuspend && t>=windowEnd) {
         const paused=ctx.suspend(t-.25);
         if(!rendering)rendering=ctx.startRendering();else await ctx.resume();
         await Promise.race([paused,rendering]);E.collectEnded();windowEnd=t+8;
       }
       const frame=position(P,layout,at);
-      E.tempo?.(C().bpm(P,at),C().meter(P,at).width,t);
-      App.Scenes?.schedule?.(E,scenes,at,t,t+sd,frame.lanes);
-      emit(E,App.Scenes?.projectAt?.(scenes,at)||P,frame.pat,frame.step,t+swingOf(P,at+(layout.source==="take"?P.performance.take.origin:0),sd),sd,{slots:layout.chain?layout.slots:null,arrangementSteps:layout.total,mapTime:true,runStep:at,absoluteStep:at,lanes:frame.lanes,changes:frame.changes,output:events,floor:PRE});
-      App.AudioStudio?.schedule(E,P,at,t,sd,at===0);
+      engine.tempo?.(C().bpm(P,at),C().meter(P,at).width,t);
+      if(at<steps)App.Scenes?.schedule?.(E,scenes,at,t,t+sd,frame.lanes);
+      emit(engine,App.Scenes?.projectAt?.(scenes,at)||P,frame.pat,frame.step,t+swingOf(P,at+(layout.source==="take"?P.performance.take.origin:0),sd),sd,{slots:layout.chain?layout.slots:null,arrangementSteps:layout.total,mapTime:true,runStep:at,absoluteStep:at,lanes:frame.lanes,changes:frame.changes,output,floor:PRE});
+      if(at<steps)App.AudioStudio?.schedule(E,P,at,t,sd,at===0);
       events.flush(t+sd-.5*duration(P,at+1));t+=sd;
     }
-    if(layout.source==="take")P.tracks.forEach((_,ti)=>events.cut(ti,t));
+    if(layout.source==="take")P.tracks.forEach((_,ti)=>events.cut(ti,range?until:t));
     events.flush();
     if (!rendering) rendering = ctx.startRendering(); else await ctx.resume();
-    return {full:await rendering, cut:Math.round(PRE * sr)};
+    return {full:await rendering, cut:Math.round((PRE+seconds(P,from)) * sr)};
   }
+  Seq.projectSteps=P=>plan(P).total;
   Seq.renderSong=renderSong;
   Seq.bounce = async () => {
     const {full,cut} = await renderSong();
@@ -391,10 +405,10 @@
     const channels = P.tracks.map(T => T.kind === "kit" ? 9 : channel++);
     const CC = {vol:7, pan:10, filter:74, rev:91, dly:94};
     const previous = P.tracks.map(() => ({}));
-    const mapped = P.tracks.map(T => App.automationKeys.filter(k => list.some(pi => T.automation?.[pi]?.[k]?.points.length)));
+    const mapped = P.tracks.map((T,ti) => App.automationKeys.filter(k => (layout.chain && P.songCurves?.[ti]?.[k]?.length) || list.some(pi => T.automation?.[pi]?.[k]?.points.length)));
     // Drum kits share MIDI channel 10. When they carry independent controller
     // streams, the port meta event keeps their controls on separate drum parts.
-    const kitAutomation = P.tracks.some(T => T.kind === "kit" && list.some(pi => Object.keys(T.automation?.[pi] || {}).length));
+    const kitAutomation = P.tracks.some((T,ti) => T.kind === "kit" && mapped[ti].length);
     let kitPort = 0;
     const ports = P.tracks.map(T => T.kind === "kit" && kitAutomation ? kitPort++ : 0);
     const ccAt = (ti, key, tick, v) => {

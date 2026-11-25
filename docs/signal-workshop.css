@@ -1,0 +1,6 @@
+.sw-dialog {width:min(780px,94vw);}
+.sw-spectrum {width:100%;height:clamp(145px,32vh,310px);cursor:crosshair;touch-action:none;}
+.sw-check {display:inline-flex;align-items:center;gap:.5em;min-height:2em;color:var(--t2);}
+.sw-check input {accent-color:var(--am);}
+
+.sw-dialog [hidden] {display:none;}

@@ -78,7 +78,7 @@
       h("div.hd.ed-actions", null,
         h("span.grp", null, h("span.tg", { text: "NOTES" }), hd.count, hd.nudge, hd.dup, hd.remove),
         h("span.grp", null, h("span.tg", { text: "CLIP" }),
-          btn("<", "SHIFT CLIP ONE STEP EARLIER", () => rotate(-1)), btn(">", "SHIFT CLIP ONE STEP LATER", () => rotate(1)), hd.dn, hd.up, hd.euc,btn("GROOVE","GROOVE TEMPLATE · NOTE TIMING · RECORD QUANTIZATION",()=>App.Groove.open()),btn("RULES","NOTE CONDITIONS, RANDOM SEED AND PRINTING A PLAYED PASS",()=>App.Rules.open()),App.Rules.fillButton())));
+          btn("<", "SHIFT CLIP ONE STEP EARLIER", () => rotate(-1)), btn(">", "SHIFT CLIP ONE STEP LATER", () => rotate(1)), hd.dn, hd.up, hd.euc,btn("CYCLES","INDEPENDENT PITCH, ACCENT AND GATE CLOCKS · AUDITION AND PRINT",()=>App.Cycles.open()),btn("GROOVE","GROOVE TEMPLATE · NOTE TIMING · RECORD QUANTIZATION",()=>App.Groove.open()),btn("RULES","NOTE CONDITIONS, RANDOM SEED AND PRINTING A PLAYED PASS",()=>App.Rules.open()),App.Rules.fillButton())));
       cv = h("canvas", { tabindex: "0", "aria-label": "Note editor. In Select mode drag a box or Shift-click notes. Use arrow keys to move a selection.", role: "application" }); ph = h("div.ed-ph");
       el.addEventListener("keydown", shortcuts);
       el.addEventListener("click", e => {
