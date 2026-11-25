@@ -105,7 +105,7 @@
       const old=target.value;target.replaceChildren(...App.ClipWrite.targets(ti).map(([p,l])=>h("option",{value:p,text:l})));if([...target.options].some(o=>o.value===old))target.value=old;
       play.disabled=!data;insert.disabled=!data || !target.options.length;
       summary.textContent=data?data.notes.length+" notes · "+data.steps+" steps · "+data.seconds.toFixed(1)+" s":"No recent notes on this track";
-      status.textContent=!data?"Play notes on the computer keyboard or a MIDI input, then open Capture.":!target.options.length?"All eight clips on this track are occupied.":"";
+      status.textContent=data && !target.options.length?"All eight clips on this track are occupied":"";
       const d=App.UI.fit(graphic),ctx=graphic.getContext("2d"),width=graphic.clientWidth,height=graphic.clientHeight;
       ctx.setTransform(d,0,0,d,0,0);ctx.fillStyle=App.C.pn;ctx.fillRect(0,0,width,height);if(!data)return;
       const low=Math.min(...data.notes.map(n=>n.n))-1,high=Math.max(...data.notes.map(n=>n.n))+1,nh=height/(high-low+1);
@@ -117,7 +117,7 @@
     }
     track.onchange=range.onchange=align.onchange=refresh;
     body.append(h("h2",{text:"Capture recent notes"}),h("div.tool-fields",null,field("Source",track),field("Range",range),field("Start",align)),summary,graphic,
-      h("div.tool-fields",null,field("Empty clip",target),play,insert),status,h("div.dlg-buttons",null,btn("Close","Return to the console",()=>node.close())));
+      h("div.tool-fields",null,field("Empty clip",target),play,insert),status,h("p.dlg-tip",{text:"CAPTURE RECOVERS WHAT WAS PLAYED ON THE KEYS OR MIDI WITHOUT RECORDING"}),h("div.dlg-buttons",null,btn("Close","Return to the console",()=>node.close())));
     node.append(body);node.showModal();refresh();node.addEventListener("close",clearPreview,{once:true});
   }
   App.Retrospective={start,end,open,mark(){if(records.length && App.E)clock();},rebind(){clearPreview();for(const r of records)r.P=App.P;},reset(){clearPreview();records=[];previousPoint=null;}};

@@ -140,8 +140,8 @@
 
   function plot(canvas,fn){
     const w=canvas.width,hg=canvas.height,ctx=canvas.getContext("2d");
-    ctx.fillStyle="#090f0b";ctx.fillRect(0,0,w,hg);ctx.strokeStyle="#28432d";ctx.beginPath();ctx.moveTo(0,hg/2);ctx.lineTo(w,hg/2);ctx.stroke();
-    ctx.strokeStyle="#78e896";ctx.beginPath();
+    ctx.fillStyle=App.C.r1;ctx.fillRect(0,0,w,hg);ctx.strokeStyle=App.C.ln2;ctx.beginPath();ctx.moveTo(0,hg/2);ctx.lineTo(w,hg/2);ctx.stroke();
+    ctx.strokeStyle=App.C.t1;ctx.beginPath();
     for(let x=0;x<w;x++){const y=(.5-.45*clamp(fn(x/(w-1)),-1,1))*hg;if(x===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}
     ctx.stroke();
   }
@@ -213,10 +213,10 @@
       }catch(e){if(ui.dlg.open)ui.status.textContent=e.message;}
       file.value="";
     };
-    const intervals=h("textarea",{"aria-label":"Scale intervals",rows:6,spellcheck:false});
+    const intervals=h("textarea",{"aria-label":"Scale intervals",rows:5,spellcheck:false});
     function draw(){
       preset.value="custom";
-      intervals.value=t.cents.map(c=>Number(c.toFixed(5)).toFixed(5).replace(/0+$/,"").replace(/\.$/,".0")).join("\n");
+      intervals.value=t.cents.map(c=>Number(c.toFixed(5)).toFixed(5).replace(/0+$/,"").replace(/\.$/,".0")).join("  ");
       const mode=select("Active temperament",[["off","Standard 12-TET · A4 440"],["on","Project scale"]],t.enabled?"on":"off",v=>{t.enabled=v==="on";update();});
       const ref=numeric("Reference frequency",t.hz,10,20000,.01,v=>{t.hz=v;update();});
       const listen=action(held.length?"Stop chord":"Sustain chord",()=>{
@@ -234,7 +234,7 @@
         row(field("Preset",preset),action("Import Scala…",()=>file.click()),file),
         row(field("Degree zero",select("Scale root note",names,t.root,v=>{t.root=+v;update();})),
           field("Reference key",select("Reference MIDI note",names,t.reference,v=>{t.reference=+v;update();})),field("Reference · Hz",ref)),
-        field("Scale name",scaleName),field("Intervals · cents with a decimal or ratios · final value repeats the scale",intervals),
+        field("Scale name",scaleName),field("Intervals",intervals),h("p.dlg-tip",{text:"CENTS WITH A DECIMAL POINT OR RATIOS · THE LAST VALUE REPEATS THE SCALE"}),
         row(apply,action("Close",()=>ui.dlg.close())));
     }
     draw();

@@ -176,15 +176,15 @@
         };
         list.append(h("div.tool-item",null,h("div",null,title,h("small",{text:m.scope+" · "+m.bpm+" BPM · "+m.tracks.length+" track"+(m.tracks.length===1?"":"s")+" · "+m.notes+" notes"+(m.tags ? " · "+m.tags : "")+" → "+destText(m)})),play,add,remove));
       }
-      if(!matches.length)list.append(h("p.tool-status",{text:rows.length?"No matching material.":"The library is empty. Capture a clip or pattern to reuse it in another project."}));
+      if(!matches.length)list.append(h("p.tool-status",{text:rows.length?"No match":"Library empty"}));
     }
     function suggest(){name.value=(scope.value==="clip" ? project.tracks[project.sel.t].name+" " : "PATTERN ")+App.PATS[project.sel.p];}
     suggest();scope.onchange=suggest;search.oninput=low.oninput=high.oninput=render;
     const captureButton=btn("Save material","Store notes, curves, instruments and their samples",()=>action(async()=>{const m=await save(scope.value,name.value,tags.value);rows.unshift(m);render();status.textContent="Saved "+m.name;}));
     body.append(h("h2",{text:"Material library"}),h("div.tool-fields",null,field("Capture",scope),field("Name",name),field("Tags",tags),captureButton),
       h("h3",{text:"Saved material"}),h("div.tool-fields",null,field("Search",search),field("Min BPM",low),field("Max BPM",high)),list,
-      h("label.tool-check",null,sound," Apply saved sounds to occupied tracks"),h("p.tool-status",{text:"Drag a material name onto the matrix to choose its destination. Unused tracks receive the stored instrument. Applying a sound to an occupied track changes its other clips."}),
-      status,h("div.dlg-buttons",null,btn("Stop audition","Stop preview audio",()=>{stop();status.textContent="Audition stopped";}),btn("Done","Close library",()=>node.close())));
+      h("label.tool-check",null,sound," Apply saved sounds to occupied tracks"),h("p.dlg-tip",{text:"DRAG A NAME ONTO THE MATRIX · FREE TRACKS TAKE THE STORED SOUND"}),
+      status,h("div.dlg-buttons",null,btn("Stop audition","Stop preview audio",()=>{stop();status.textContent="Audition stopped";}),btn("Close","Return to the console",()=>node.close())));
     node.append(body);node.addEventListener("close",stop,{once:true});node.showModal();
     action(async()=>{rows=(await read("index")).sort((a,b)=>b.date-a.date);render();status.textContent="";});
   }

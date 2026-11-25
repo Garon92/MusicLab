@@ -141,9 +141,9 @@
       const add = btn("Add route","Connect another source to an instrument, insert or mixer parameter",() => {
         s.routes.push({source:"macro1",target:App.P.tracks[ti].kind === "kit" ? "rev" : "cutoff",low:0,high:1}); change(); draw();
       }); add.disabled = s.routes.length >= 16;
-      const help = h("p.rack-note",{text:s.routes.some(r => r.source === "mic")
-        ? "Mic follows the live input. Open IN in Signal analysis. Offline renders use silence for the mic."
-        : "Endpoints are offsets from the control. Reverse the endpoints to invert a route."});
+      const help = h("p.dlg-tip",{text:s.routes.some(r => r.source === "mic")
+        ? "MIC = LIVE INPUT · OPEN IN IN SIGNAL · OFFLINE RENDERS HEAR SILENCE"
+        : "START AND END ARE OFFSETS FROM THE CONTROL · SWAP THEM TO INVERT A ROUTE"});
       return [settings,section("Macros",macros),section("Routes",list,add,help)];
     });
   }
@@ -218,7 +218,7 @@
       return [controls,...(isTrack?[]:[h("p.rack-note",{text:"Inputs · "+(members || "No tracks assigned")})]),
         section("Insert chain",...insertEditor(c.chain,draw,isTrack && btn("Parametric EQ…","Edit the post-insert spectrum and parametric bands",() => App.ParametricEQ.open(i)))),
         section("Split after inserts",topology,...paths),
-        section("Sidechain compressor",side,...(c.key === "mic" ? [h("p.rack-note",{text:"Open IN in Signal analysis to supply a live microphone key."})] : []))];
+        section("Sidechain compressor",side,...(c.key === "mic" ? [h("p.dlg-tip",{text:"A MIC KEY NEEDS THE LIVE INPUT · OPEN IN IN SIGNAL"})] : []))];
     });
   }
   const crcTable = Uint32Array.from({length:256},(_,i) => {
@@ -308,8 +308,8 @@
         list.append(h("label",null,cb,h("span",{text:s.name})));
       });
       return [field("Render outputs",modePick),section("Stereo WAV · 24 bit",list),
-        h("p.rack-note",{text:mode==="tracks" ? "Post-insert, pre-bus tracks. Shared delay and reverb are on FX RETURNS."
-          : "Post-fader buses, ungrouped tracks and shared FX. All files begin together, before master processing."}),
+        h("p.dlg-tip",{text:mode==="tracks" ? "POST-INSERT, PRE-BUS TRACKS · SHARED DELAY AND REVERB ARE ON FX RETURNS"
+          : "POST-FADER BUSES, UNGROUPED TRACKS AND SHARED FX · ALL FILES START TOGETHER, PRE-MASTER"}),
         h("div.dlg-buttons",null,status,exportBtn)];
     });
   }

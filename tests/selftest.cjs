@@ -241,11 +241,11 @@ async function run(browserName, url) {
     await confirmIfAsked(page, name);
     assert.deepEqual(await project(page), original);
     assert.deepEqual(errors, []);
-    for (const suite of ["workstation", "operations", "phrases", "automation", "performance", "audio-studio", "mix-rack", "material-midi", "capture-rules-finder", "conductor", "sampler-lab", "scenes-eq", "composition-lab", "rack-laboratory", "signal-workshop", "instrument-lab"]) {
+    for (const suite of ["workstation", "operations", "phrases", "automation", "performance", "audio-studio", "mix-rack", "material-midi", "capture-rules-finder", "conductor", "sampler-lab", "scenes-eq", "composition-lab", "rack-laboratory", "signal-workshop", "instrument-lab", "console-rules"]) {
       await require("./" + suite + ".cjs")(page);
     }
     assert.deepEqual(errors, []);
-    console.log(browserName + " " + browser.version() + " — passed 6 viewports, input/undo, transport, tape, WAV/MIDI, JSON, recovery, batch operations, phrases, automation, patches, arrangement, live performance, audio studio, stems, library, MIDI devices, capture, conductor, granular and multisampling, transcription, scenes, EQ, command search, cycle capture, song curves, modular and wavetable synthesis, Scala, spectral editing, resampling, convolution, branched racks and signal measurement");
+    console.log(browserName + " " + browser.version() + " — passed 6 viewports, input/undo, transport, tape, WAV/MIDI, JSON, recovery, batch operations, phrases, automation, patches, arrangement, live performance, audio studio, stems, library, MIDI devices, capture, conductor, granular and multisampling, transcription, scenes, EQ, command search, cycle capture, song curves, modular and wavetable synthesis, Scala, spectral editing, resampling, convolution, branched racks and signal measurement, console rules in every dialog");
   } finally { await browser.close(); }
 }
 

@@ -134,13 +134,13 @@
         const r=s.result, p=r.points[0], delay=r.latency===null?"—":r.latency.toFixed(2)+" ms";
         readout.textContent="Impulse peak delay "+delay+(r.mode==="tone"?"   |   Fundamental "+p.db.toFixed(2)+" dB   |   THD (H2–H"+r.points.length+") "+(r.thd===null?"—":r.thd.toFixed(3)+"%"):"   |   Readout in dB relative to measured input");
         legend.append(h("span",{text:"Current · "+format(r)}));
-      } else readout.textContent="Choose a path and measure its response.";
+      } else readout.textContent="No measurement";
       if(s.reference)legend.append(h("span.ref",{text:"A · "+format(s.reference)+(compatible(s.result,s.reference)?"":" · match stimulus to overlay")}));
       plot(canvas,s.result,s.reference);
     }
     dialog.append(h("div.dlg-body",null,h("div.rack-head",null,h("h2",{text:"Signal bench"}),btn("Close","Return to the console",()=>dialog.close())),form,
       h("div.rack-row.bench-actions",null,run,reference,clear),canvas,legend,readout,
-      h("p.rack-note",{text:"Offline insert input → output, measured on L. An impulse precedes each test. External sidechain keys are silent."})));
+      h("p.dlg-tip",{text:"OFFLINE · INSERT INPUT → OUTPUT ON L · EXTERNAL SIDECHAIN KEYS ARE SILENT"})));
     dialog.showModal();refresh();
     canvas.onpointermove=e=>{
       if(!s.result)return;

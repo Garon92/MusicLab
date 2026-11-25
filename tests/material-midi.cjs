@@ -26,15 +26,15 @@ module.exports = async function materialAndMidi(main) {
     const command=async(name)=>{await page.getByRole("button",{name:"File",exact:true}).click();await page.getByText(name,{exact:true}).click();};
     await command("Material library…");
     const dialog=page.getByRole("dialog");
-    await dialog.getByText("The library is empty.",{exact:false}).waitFor();
+    await dialog.getByText("Library empty",{exact:false}).waitFor();
     await dialog.getByLabel("Capture scope").selectOption("pattern");
     await dialog.getByLabel("Material name").fill("Two voices");await dialog.getByLabel("Tags",{exact:true}).fill("break metal");
     await dialog.getByRole("button",{name:"Save material"}).click();
     await dialog.getByText("Saved Two voices",{exact:true}).waitFor();
     await dialog.getByLabel("Minimum BPM").fill("140");
-    await dialog.getByText("No matching material.").waitFor();
+    await dialog.getByText("No match").waitFor();
     await dialog.getByLabel("Minimum BPM").fill("");await dialog.getByLabel("Search library").fill("metal");
-    await dialog.getByRole("button",{name:"Done"}).click();
+    await dialog.getByRole("button",{name:"Close"}).click();
     await page.reload();await page.waitForFunction(()=>App.P?.tracks[6].clips[0].length);
     await page.evaluate(()=>{App.P=App.newProject(); App.select(0,3);App.P.bpm=144;App.commit();App.refresh();App.samples.clear();});
     await command("Material library…");await dialog.getByRole("button",{name:"Audition",exact:true}).click();
@@ -77,7 +77,7 @@ module.exports = async function materialAndMidi(main) {
     });
     assert.deepEqual(check,[2,true,2,true,true,2,2,true,true]);
     await page.getByRole("button",{name:/^MIDI 1$/}).click();
-    await dialog.getByLabel("Clock",{exact:true}).selectOption("follow");await dialog.getByRole("button",{name:"Done"}).click();
+    await dialog.getByLabel("Clock",{exact:true}).selectOption("follow");await dialog.getByRole("button",{name:"Close"}).click();
     await page.evaluate(()=>{window.pulse([0xfa]); const start=performance.now();for(let i=0;i<31;i++)window.pulse([0xf8],start+i*25);});
     assert.deepEqual(await page.evaluate(()=>[App.Seq.playing,App.P.bpm]),[true,100]);
     await page.evaluate(()=>window.pulse([0xfc]));assert.equal(await page.evaluate(()=>App.Seq.playing),false);

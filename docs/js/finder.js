@@ -81,26 +81,33 @@
     return rows;
   }
   function search(entries,query){
-    const text=normal(query);if(!text)return entries.slice(0,12);
+    const text=normal(query);if(!text)return entries;
     const words=text.split(" ");
     return entries.map((r,i)=>{
       const label=normal(r.label),path=normal(r.path),alias=normal(r.aliases);
       if(!words.every(w=>label.includes(w)||path.includes(w)||alias.includes(w)))return null;
       const score=(label===text?150:0)+(label.startsWith(text)?60:0)+(label.includes(text)?30:0)+words.reduce((s,w)=>s+(label.includes(w)?10:0)+(alias.split(" ").includes(w)?4:0),0);
       return {r,score,i};
-    }).filter(Boolean).sort((a,b)=>b.score-a.score||a.i-b.i).slice(0,30).map(x=>x.r);
+    }).filter(Boolean).sort((a,b)=>b.score-a.score||a.i-b.i).map(x=>x.r);
   }
   function open(){
     if(finder?.open){finder.querySelector("input").focus();return;}
     App.UI.closeMenu();App.releaseAll();
     const last=document.activeElement, sourceDialog=document.querySelector("dialog[open]"), entries=catalogue();
     const node=finder=h("dialog.console-dialog.find-dialog",{"aria-label":"Find command"}),body=h("div.dlg-body");
-    const input=h("input.find-input",{type:"search","aria-label":"Search commands",placeholder:"Search commands, controls or tracks",autocomplete:"off",spellcheck:"false",role:"combobox","aria-controls":"find-results","aria-expanded":"true"});
+    const input=h("input.find-input",{type:"search","aria-label":"Search commands",placeholder:"Command, control or track",autocomplete:"off",spellcheck:"false",role:"combobox","aria-controls":"find-results","aria-expanded":"true"});
     const list=h("div.find-list",{role:"listbox",id:"find-results","aria-label":"Matching commands"}),count=h("output.find-count",{"aria-live":"polite"});
-    let matches=[],index=0,navigating=false;
+    // One screen of matches and no scrolling: the list is a window of ROWS that follows the selection.
+    const ROWS=10;
+    let matches=[],index=0,first=0,navigating=false;
     function highlight(){
-      [...list.children].forEach((el,i)=>el.setAttribute("aria-selected",String(i===index)));
-      const el=list.children[index];if(el){input.setAttribute("aria-activedescendant",el.id);el.scrollIntoView({block:"nearest"});}else input.removeAttribute("aria-activedescendant");
+      first=Math.max(0,Math.min(first,index,matches.length-ROWS));if(index>=first+ROWS)first=index-ROWS+1;
+      list.replaceChildren(...matches.slice(first,first+ROWS).map((r,k)=>{
+        const i=first+k,option=h("div.find-option",{role:"option",id:"find-option-"+i,"aria-selected":String(i===index)},h("strong",{text:r.label}),h("small",{text:r.path}));
+        option.onmousedown=e=>e.preventDefault();option.onclick=()=>go(i);return option;
+      }));
+      if(matches.length)input.setAttribute("aria-activedescendant","find-option-"+index);else input.removeAttribute("aria-activedescendant");
+      count.textContent=matches.length?(index+1)+" / "+matches.length:"NO MATCH";
     }
     function go(i){
       const row=matches[i];if(!row)return;
@@ -109,16 +116,16 @@
       try{row.run();}catch(e){App.UI.msg(e.message || "CONTROL UNAVAILABLE");}
     }
     function update(){
-      index=0;matches=search(entries,input.value);list.replaceChildren();
-      matches.forEach((r,i)=>{const option=h("div.find-option",{role:"option",id:"find-option-"+i},h("strong",{text:r.label}),h("small",{text:r.path}));option.onmousedown=e=>e.preventDefault();option.onclick=()=>go(i);list.append(option);});
-      count.textContent=matches.length?"↑ ↓ Select · Enter open · Esc close":"No matching controls";highlight();
+      index=0;first=0;matches=search(entries,input.value);highlight();
     }
     node.onkeydown=e=>{
       if(["ArrowUp","ArrowDown","Home","End"].includes(e.key) && matches.length){e.preventDefault();index=e.key==="Home"?0:e.key==="End"?matches.length-1:(index+(e.key==="ArrowDown"?1:-1)+matches.length)%matches.length;highlight();}
       if(e.key==="Enter"){e.preventDefault();go(index);}
     };
     input.oninput=update;
-    body.append(h("h2",{text:"Find in console"}),input,list,count);node.append(body);document.body.append(node);node.showModal();update();input.focus();
+    list.addEventListener("wheel",e=>{e.preventDefault();if(!matches.length)return;index=Math.min(Math.max(0,index+(e.deltaY>0?1:-1)),matches.length-1);highlight();},{passive:false});
+    body.append(h("h2",{text:"Find in console"}),input,list,count,h("p.dlg-tip",{text:"↑ ↓ OR WHEEL = SELECT · ENTER = OPEN · ESC = CLOSE"}));
+    node.append(body);document.body.append(node);node.showModal();update();input.focus();App.Workspace.attend(node);
     node.onclick=e=>{if(e.target===node)node.close();};
     node.addEventListener("close",()=>{node.remove();if(finder===node)finder=null;if(!navigating && last?.isConnected)last.focus({preventScroll:true});},{once:true});
   }

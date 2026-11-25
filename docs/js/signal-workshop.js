@@ -80,7 +80,7 @@
     body.ondrop=e=>{const file=e.dataTransfer.files[0];if(file){e.preventDefault();e.stopPropagation();load(file);}};
     selector.onchange=()=>{request++;choose(selector.value);};
     body.append(toolbar(field("Impulse source",selector),btn("Import impulse…","LOAD A ROOM RESPONSE OR USE ANY SOUND AS A CONVOLUTION KERNEL",()=>App.pickFile("audio/*",files=>{if(files[0])load(files[0]);}))),
-      h("small",{text:"Drop audio or choose a project sample. Up to the first 30 s feed the stereo reverb return."}),status);show();
+      h("p.dlg-tip",{text:"DROP AUDIO OR CHOOSE A PROJECT SAMPLE · ITS FIRST 30 S FEED THE STEREO REVERB RETURN"}),status);show();
   }
 
   // The scheduler reconstructs history from zero. Only the requested interval and
@@ -173,16 +173,16 @@
       g.drawImage(image,0,0,w,h);g.font='14px "IBM Plex Mono",monospace';g.textBaseline="top";
       for(const hz of [50,100,500,1000,5000,10000])if(hz<top){
         const y=Math.round(fy(hz)*h)+.5;g.strokeStyle="#64897460";g.beginPath();g.moveTo(0,y);g.lineTo(w,y);g.stroke();
-        g.fillStyle="#b3d2ba";g.fillText(hz>=1000?hz/1000+"k":String(hz),4,y+1);
+        g.fillStyle=App.C.t1;g.fillText(hz>=1000?hz/1000+"k":String(hz),4,y+1);
       }
       const tickUnit=10**Math.floor(Math.log10(seconds/6));
       const tick=([1,2,5,10].find(f=>f*tickUnit>=seconds/6)||10)*tickUnit;
       for(let t=0;t<seconds;t+=tick){
         const x=Math.round(w*t/seconds)+.5;g.strokeStyle="#64897450";g.beginPath();g.moveTo(x,0);g.lineTo(x,h);g.stroke();
-        g.fillStyle="#b3d2ba";g.fillText(Number(t.toPrecision(4))+" s",x+4,h-17);
+        g.fillStyle=App.C.t1;g.fillText(Number(t.toPrecision(4))+" s",x+4,h-17);
       }
       const x=box.from/seconds*w,y=fy(box.high)*h, ww=(box.to-box.from)/seconds*w,hh=(fy(box.low)-fy(box.high))*h;
-      g.fillStyle="#ffbb4020";g.fillRect(x,y,ww,hh);g.strokeStyle="#ffc454";g.lineWidth=2;g.strokeRect(x+1,y+1,Math.max(1,ww-2),Math.max(1,hh-2));g.lineWidth=1;
+      g.fillStyle="#ffbb4020";g.fillRect(x,y,ww,hh);g.strokeStyle=App.C.am;g.lineWidth=2;g.strokeRect(x+1,y+1,Math.max(1,ww-2),Math.max(1,hh-2));g.lineWidth=1;
     }
     function invalidate(){change++;cache=null;stop();status.textContent="";redraw();}
     function read(){

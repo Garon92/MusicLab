@@ -183,15 +183,16 @@
       const chart=h("canvas.zone-map",{"aria-label":"Mapped notes (horizontal) and velocity (vertical)","role":"img"});
       const status=h("output.ast-status",{role:"status",text:info});
       body.replaceChildren(h("div.ast-head",null,h("h2",{text:"Multisample zones"}),h("span.sp"),close),
-        h("div.ast-toolbar",null,add,use, d.mode!==3 && zones.length?btn("Play zones","Switch this sampler to zone playback",()=>commit("Zone playback enabled")):null, h("small",{text:"File names such as Glass_C4_v80_rr1.wav set the root and velocity layer."})),chart);
+        h("div.ast-toolbar",null,add,use, d.mode!==3 && zones.length?btn("Play zones","Switch this sampler to zone playback",()=>commit("Zone playback enabled")):null, h("p.dlg-tip",{text:"FILE NAMES LIKE GLASS_C4_V80_RR1.WAV SET ROOT AND VELOCITY LAYER"})),chart);
       if(z){
         const hear=btn("Audition sample","Play the original recording for this zone",()=>audition(z));
         const remove=btn("Remove zone","Remove this assignment from the instrument",()=>{zones.splice(at,1);at=Math.max(0,Math.min(at,zones.length-1));commit("Removed zone");});
         body.append(h("div.ast-toolbar",null,field("Zone",list),hear,remove),
           h("div.ast-toolbar",null,number("Root note","root",0,127,z),number("Low key","lo",0,z.hi,z),
             number("High key","hi",z.lo,127,z),number("Low velocity","vl",1,z.vh,z),number("High velocity","vh",z.vl,127,z)),
-          h("small",{text:App.noteName(z.lo)+" – "+App.noteName(z.hi)+" · root "+App.noteName(z.root)+" · Identical ranges play round robin. Narrower overlaps take priority."}));
-      }else body.append(h("p.tool-status",{text:"Import recordings or map the loaded sample, then play the instrument with your keyboard."}));
+          h("small",{text:App.noteName(z.lo)+" – "+App.noteName(z.hi)+" · root "+App.noteName(z.root)}),
+          h("p.dlg-tip",{text:"SAME RANGES PLAY ROUND ROBIN · NARROWER OVERLAPS WIN"}));
+      }else body.append(h("p.dlg-tip",{text:"IMPORT RECORDINGS OR MAP THE LOADED SAMPLE"}));
       body.append(status);
       requestAnimationFrame(()=>{
         if(!chart.isConnected)return;

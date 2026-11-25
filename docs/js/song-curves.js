@@ -115,11 +115,11 @@
       const g=canvas.getContext("2d");g.scale(d,d);const w=r.width,ht=r.height;
       const x=s=>9+(w-18)*s/span,y=v=>ht-19-(ht-28)*v;
       const ps=points(), active=picked==null?null:ps.find(p=>p.s===picked);
-      g.fillStyle="#060c08";g.fillRect(0,0,w,ht);g.font="10px 'IBM Plex Mono',monospace";
+      g.fillStyle=App.C.r1;g.fillRect(0,0,w,ht);g.font="10px 'IBM Plex Mono',monospace";
       const n=App.Conductor.position(D,span).bar+1,stride=Math.max(1,Math.ceil(n/(w/68)));
-      for(let bar=0;bar<n;bar+=stride){const s=App.Conductor.barStart(D,bar);g.fillStyle="#23372b";g.fillRect(x(s),4,1,ht-20);g.fillStyle="#92ad9d";if(x(s)<w-24)g.fillText("B"+(bar+1),x(s)+3,ht-4);}
-      if(ps.length){g.strokeStyle="#6ce497";g.lineWidth=2;g.beginPath();for(let px=0;px<=w-18;px++){const yy=y(value(ps,span*px/(w-18)));if(px)g.lineTo(9+px,yy);else g.moveTo(9,yy);}g.stroke();}
-      for(const p of ps){if(p.s>span)break;g.fillStyle=p.s===picked?"#ffbd5b":"#8adb9f";g.fillRect(x(p.s)-3,y(p.v)-3,7,7);}
+      for(let bar=0;bar<n;bar+=stride){const s=App.Conductor.barStart(D,bar);g.fillStyle=App.C.ln2;g.fillRect(x(s),4,1,ht-20);g.fillStyle=App.C.t2;if(x(s)<w-24)g.fillText("B"+(bar+1),x(s)+3,ht-4);}
+      if(ps.length){g.strokeStyle=App.C.t1;g.lineWidth=2;g.beginPath();for(let px=0;px<=w-18;px++){const yy=y(value(ps,span*px/(w-18)));if(px)g.lineTo(9+px,yy);else g.moveTo(9,yy);}g.stroke();}
+      for(const p of ps){if(p.s>span)break;g.fillStyle=p.s===picked?App.C.am:App.C.t1;g.fillRect(x(p.s)-3,y(p.v)-3,7,7);}
       read.textContent=ps.length+" points · "+(active?"step "+active.s+" · "+(active.v*100).toFixed(1)+"%":"click to add a point");
     }
     function focusPoint(p){picked=p?.s??null;if(p){pos.value=p.s;level.value=tidy(p.v*100);bend.value=tidy(p.bend*100);mode.value=p.hold?"hold":"curve";}draw();}
@@ -161,7 +161,7 @@
         btn("Set point","Add or update this point at its musical position",()=>{if([pos,level,bend].every(el=>el.reportValidity())){const p=parsePoint();span=Math.max(span,p.s);view.value=span;put(p,p.s);}}),btn("Delete point","Remove selected point",del)),
       row(field("Range from",start),field("To step",stop),field("Copies",repeat),btn("Repeat range","Repeat the range and shift later points",()=>range(true)),
         field("Length",scaled),btn("Stretch range","Fit range to this many steps and shift later points",()=>range(false))),
-      h("small.arr-legend",{text:"Song playback follows these lanes across patterns. A song lane takes priority over clip automation for its target."}),status);
+      h("p.dlg-tip",{text:"SONG LANES RUN ACROSS PATTERNS · A SONG LANE OVERRIDES CLIP AUTOMATION FOR ITS TARGET"}),status);
     selectLane();requestAnimationFrame(draw);
     const observer=new ResizeObserver(()=>canvas.isConnected?draw():observer.disconnect());observer.observe(canvas);
   }

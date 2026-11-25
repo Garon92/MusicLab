@@ -43,31 +43,31 @@
     const margin=83,span=width-margin-3,rh=height/13, x=s=>margin+span*s/end;
     const rect=(a,b,y,h,color)=>{ctx.fillStyle=color;ctx.fillRect(x(a),y,Math.max(1,x(b)-x(a)-1),h);};
     ctx.clearRect(0,0,width,height);ctx.font="10px 'IBM Plex Mono', monospace";ctx.textBaseline="middle";
-    const line=(r,text)=>{ctx.fillStyle="#91ac9d";ctx.fillText(text,2,(r+.5)*rh,margin-4);ctx.fillStyle="#203429";ctx.fillRect(margin,(r+1)*rh-1,span,1);};
+    const line=(r,text)=>{ctx.fillStyle=App.C.t2;ctx.fillText(text,2,(r+.5)*rh,margin-4);ctx.fillStyle=App.C.ln2;ctx.fillRect(margin,(r+1)*rh-1,span,1);};
     line(0,"BARS");line(1,"SECTIONS");line(2,"CHORDS");P.tracks.forEach((t,i)=>line(i+3,t.name));line(11,"LAUNCHES");line(12,"TEMPO / METER");
-    for(const s of P.arrangement.sections){const a=slots[s.first],b=slots[s.first+s.count-1];if(!a||!b)continue;rect(a.from,b.end,rh+1,rh-2,"#294938");ctx.fillStyle="#c7f6d8";ctx.fillText(s.name,x(a.from)+2,rh*1.5,Math.max(1,x(b.end)-x(a.from)-4));}
+    for(const s of P.arrangement.sections){const a=slots[s.first],b=slots[s.first+s.count-1];if(!a||!b)continue;rect(a.from,b.end,rh+1,rh-2,App.C.ln2);ctx.fillStyle=App.C.t1;ctx.fillText(s.name,x(a.from)+2,rh*1.5,Math.max(1,x(b.end)-x(a.from)-4));}
     for(const c of App.Arrangement.chordList(P))if(!c.ch.rest){
-      rect(c.from,c.end,2*rh+1,rh-2,"#344237");ctx.fillStyle="#c7e9c4";ctx.fillText(App.NOTES[c.ch.root]+" "+c.ch.type,x(c.from)+2,2.5*rh,Math.max(1,x(c.end)-x(c.from)-4));
+      rect(c.from,c.end,2*rh+1,rh-2,App.C.ln2);ctx.fillStyle=App.C.t1;ctx.fillText(App.NOTES[c.ch.root]+" "+c.ch.type,x(c.from)+2,2.5*rh,Math.max(1,x(c.end)-x(c.from)-4));
     }
     const thumbnails=new Map();
     for(const [i,s] of slots.entries()){
-      ctx.fillStyle="#345241";ctx.fillRect(x(s.from),rh,1,rh*11);
+      ctx.fillStyle=App.C.ln3;ctx.fillRect(x(s.from),rh,1,rh*11);
       if(i>=first&&i<=last){ctx.fillStyle="rgba(245,185,81,.12)";ctx.fillRect(x(s.from),0,x(s.end)-x(s.from),height);}
       if(s.rest)continue;
       for(let ti=0;ti<8;ti++){
         const t=P.tracks[ti], y=(3+ti)*rh;
         const notes=t.clips[s.p], curves=Object.values(t.automation[s.p]), n=P.performance.loops[ti][s.p] || (s.offset?App.patSteps(P,s.p):s.end-s.from);
         if(notes.length){
-          rect(s.from,s.end,y+1,rh*.4,"#173728");
+          rect(s.from,s.end,y+1,rh*.4,App.C.ln2);
           let hits=thumbnails.get(notes);
           if(!hits){hits=new Float32Array(App.MAX_STEPS);for(const nt of notes)for(let j=nt.s;j<Math.min(hits.length,nt.s+nt.l);j++)hits[j]=Math.max(hits[j],nt.v);thumbnails.set(notes,hits);}
           for(let step=s.from;step<s.end;step++){
-            const v=hits[(s.offset+step-s.from)%n];if(v)rect(step,step+1,y+1+rh*.15*(1-v),Math.max(2,rh*.19),"#71c993");
+            const v=hits[(s.offset+step-s.from)%n];if(v)rect(step,step+1,y+1+rh*.15*(1-v),Math.max(2,rh*.19),App.C.t1);
           }
         }
         if(curves.length){
           const lane=curves[0], x0=Math.round(x(s.from)),x1=Math.round(x(s.end));
-          ctx.strokeStyle="#e0b96c";ctx.beginPath();
+          ctx.strokeStyle=App.C.am;ctx.beginPath();
           for(let px=x0;px<=x1;px+=2){
             const step=((px-margin)/span*end-s.from+s.offset)%n, v=App.curveValue(lane,Math.max(0,step));
             const py=y+rh*(.94-.34*v);if(px===x0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
@@ -77,16 +77,16 @@
     }
     for(const [ti,bank] of (P.songCurves||[]).entries()){
       const points=Object.values(bank)[0];if(!points)continue;
-      const y=(3+ti)*rh;ctx.strokeStyle="#ffc063";ctx.beginPath();
+      const y=(3+ti)*rh;ctx.strokeStyle=App.C.am;ctx.beginPath();
       for(let px=0;px<=span;px+=2){const py=y+rh*(.94-.34*App.SongCurves.value(points,px/span*end));if(px)ctx.lineTo(margin+px,py);else ctx.moveTo(margin,py);}
       ctx.stroke();
     }
-    for(const r of P.audio.regions)rect(r.at,C.step(P,C.time(P,r.at)+r.len*r.repeats),(3+r.track)*rh+rh*.49,rh*.28,r.mute?"#485751":"#67b9a6");
-    for(const e of P.performance.take.events)rect(e.at,Math.min(end,e.at+1),rh*11+2,rh-4,e.p<0?"#627269":"#75a483");
-    for(const e of P.scenes?.cues||[])rect(e.at,e.at+1,rh*11+2,3,"#efc076");
-    for(const e of [...P.arrangement.tempo,...P.arrangement.meters])rect(e.at,e.at+1,rh*12+2,rh-4,"#d8ae6a");
+    for(const r of P.audio.regions)rect(r.at,C.step(P,C.time(P,r.at)+r.len*r.repeats),(3+r.track)*rh+rh*.49,rh*.28,r.mute?App.C.ln3:App.C.t3);
+    for(const e of P.performance.take.events)rect(e.at,Math.min(end,e.at+1),rh*11+2,rh-4,e.p<0?App.C.t3:App.C.t2);
+    for(const e of P.scenes?.cues||[])rect(e.at,e.at+1,rh*11+2,3,App.C.am);
+    for(const e of [...P.arrangement.tempo,...P.arrangement.meters])rect(e.at,e.at+1,rh*12+2,rh-4,App.C.am);
     const stride=Math.max(1,Math.ceil((C.position(P,end).bar+1)/(span/48)));
-    for(let b=0;C.barStart(P,b)<end;b+=stride){const a=C.barStart(P,b);ctx.fillStyle="#a7cfb7";ctx.fillText(String(b+1),x(a)+2,rh*.5);}
+    for(let b=0;C.barStart(P,b)<end;b+=stride){const a=C.barStart(P,b);ctx.fillStyle=App.C.t1;ctx.fillText(String(b+1),x(a)+2,rh*.5);}
     const locate=e=>{const at=(e.clientX-canvas.getBoundingClientRect().left-margin)/span*end;return slots.findIndex(s=>at>=s.from&&at<s.end);};
     canvas.onpointerdown=e=>{
       const i=locate(e);if(i<0 || e.button!==0)return;
@@ -108,7 +108,7 @@
     const grid=h("div.song-slots",{role:"group","aria-label":"Song slots"}), cv=h("canvas.arr-timeline",{role:"img","aria-label":"Song timeline with sections, chords, eight tracks, launches and conductor",title:"Select or Shift-select slots. Drag a section or selected range to move it across all lanes."});
     const gap=selector("Insert position",[["after","After selection"],["before","Before selection"]]);
     const copies=num("Additional copies",1,31,1), blank=num("Empty bars",1,16,4), cut=num("Split at bar",2,8192,2);
-    const name=h("input",{type:"text",maxlength:32,placeholder:"e.g. Chorus","aria-label":"Section name"});
+    const name=h("input",{type:"text",maxlength:32,placeholder:"Name","aria-label":"Section name"});
     const sections=selector("Named section",[]),sectionPicker=label("Section",sections);
     const at=num("Conductor bar",1,8192,1),tempo=num("Conductor BPM",40,300,D.bpm,.01);
     const shape=selector("Tempo transition",[["hold","Hold"],["ramp","Ramp to next point"]]);const signature=selector("Conductor meter",App.SIGS.map((v,i)=>[i,v.join("/")]));signature.value=D.sig;
@@ -203,7 +203,7 @@
       requestAnimationFrame(()=>chart(cv,D,first,last,select,dragRange));
     }
     copies.oninput=render;
-    body.append(h("h2",{text:"Song arrangement"}),summary,cv,h("small.arr-legend",{text:"GREEN  notes    TEAL  audio    AMBER  automation"}),row(...tabs),center,status,h("div.dlg-buttons",null,btn("Cancel","Discard pending arrangement edits",()=>node.close()),save));
+    body.append(h("h2",{text:"Song arrangement"}),summary,cv,h("p.dlg-tip",{text:"BRIGHT = NOTES · DIM = AUDIO · AMBER = AUTOMATION, CUES, TEMPO AND METER"}),row(...tabs),center,status,h("div.dlg-buttons",null,btn("Cancel","Discard pending arrangement edits",()=>node.close()),save));
     node.classList.add("arr-dialog","arr-full");node.append(body);render();node.showModal();
     resize=new ResizeObserver(()=>chart(cv,D,first,last,select,dragRange));resize.observe(cv);node.addEventListener("close",()=>resize.disconnect(),{once:true});
   }

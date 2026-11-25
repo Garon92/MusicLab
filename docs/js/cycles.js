@@ -128,7 +128,7 @@
     written.disabled=!targets.length;recent.disabled=true;
     body.append(h("h2",{text:"Cycle sequencer · "+T.name}),col,h("div.arr-row",null,field("Start step",from),play,read),
       h("div.arr-row",null,field("Length · steps",len),field("Empty clip",dest),written,recent),
-      status,h("div.dlg-buttons",null,btn("Done","Close the cycle sequencer",()=>node.close())));
+      status,h("div.dlg-buttons",null,btn("Close","Return to the console",()=>node.close())));
     if(!targets.length)status.textContent="All eight clips on this track contain material.";
     node.append(body);node.addEventListener("close",stop,{once:true});node.showModal();
   }

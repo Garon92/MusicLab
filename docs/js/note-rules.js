@@ -150,8 +150,8 @@
       print.disabled=!available.length || !dest.options.length;
     }
     body.append(h("h2",{text:"Note rules · "+P.tracks[t].name+" / "+App.PATS[p]}),h("div.tool-fields",null,field("Target",scope),field("Every N passes",every),field("Play on pass",phase),field("Fill",condition),apply),
-      h("p.tool-status",{text:"Hold FILL or the backslash key while playing to trigger fill notes."}),h("h3",{text:"Repeatable chance"}),h("div.tool-fields",null,field("Project seed",seed),btn("New seed","Choose another sequence of chance and arpeggio decisions",()=>setSeed(crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff))),
-      h("h3",{text:"Print a heard pass"}),h("div.tool-fields",null,field("Performance",passes),field("Empty clip",dest),print),status,h("div.dlg-buttons",null,btn("Done","Close note rules",()=>node.close())));
+      h("p.dlg-tip",{text:"HOLD FILL OR \\ WHILE PLAYING TO TRIGGER FILL NOTES"}),h("h3",{text:"Repeatable chance"}),h("div.tool-fields",null,field("Project seed",seed),btn("New seed","Choose another sequence of chance and arpeggio decisions",()=>setSeed(crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff))),
+      h("h3",{text:"Print a heard pass"}),h("div.tool-fields",null,field("Performance",passes),field("Empty clip",dest),print),status,h("div.dlg-buttons",null,btn("Close","Return to the console",()=>node.close())));
     node.append(body);update();node.showModal();const timer=setInterval(update,250);node.addEventListener("close",()=>clearInterval(timer),{once:true});
   }
   App.Rules={fields,random,pass,allow,step,hit,filling:()=>pressed||keyHeld,fillButton,open,reset,stop};

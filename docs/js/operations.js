@@ -32,16 +32,16 @@
       list("rhythm","Rhythm",[["downbeat","Bar downbeat"],["pulse","Every beat"],["backbeat","Backbeat"],["offbeat","Offbeats"],["tresillo","Tresillo · 3+3+2"]]),
       percent("blend","Blend",75), percent("accent","Accented velocity",100,2), percent("ghost","Other velocity",55,2)
     ] },
-    normalize: { group:"Notes", label:"Normalize velocity", hint:"Set the loudest selected note in each clip to the target and scale the others proportionally.", fields:() => [
+    normalize: { group:"Notes", label:"Normalize velocity", hint:"Set each clip's loudest selected note to the target and scale the rest with it.", fields:() => [
       percent("peak","Peak velocity",90,2)
     ] },
     humanize: { group:"Notes", label:"Humanize velocity", hint:"Vary each note by up to the chosen number of percentage points.", fields:() => [
       number("depth","Variation (± points)",12,0,60)
     ] },
-    legato: { group:"Notes", label:"Legato", hint:"Set each duration to the following attack. The last attack runs to the pattern end.", fields:() => [
+    legato: { group:"Notes", label:"Legato", hint:"Set each duration to the next attack. The last attack runs to the pattern end.", fields:() => [
       list("voice","Next attack", [["any","Any pitch"],["same","Same pitch"]]), number("gap","Gap (steps)",0,0,8)
     ] },
-    duplicates: { group:"Clean up", label:"Remove duplicate notes", hint:"Keep the loudest note on each identical pitch and step. An unselected note takes priority." },
+    duplicates: { group:"Clean up", label:"Remove duplicate notes", hint:"Keep the loudest note per pitch and step. An unselected note takes priority." },
     overlaps: { group:"Clean up", label:"Trim overlapping notes", hint:"Shorten a note where a later attack on the same pitch starts." },
     silent: { group:"Clean up", label:"Remove zero-chance notes", hint:"Remove notes whose probability is zero." },
     clear: { group:"Clean up", label:"Clear material", hint:"Erase the chosen material in the target.", fields:v => [
@@ -62,7 +62,7 @@
     mixDefaults: { group:"Defaults", label:"Track mixer", kind:"tracks", hint:"Restore the chosen mixer section to its original track settings.", fields:() => [
       list("section","Section",[["all","Whole mixer strip"],["levels","Level + pan"],["sends","Sends + drive"],["switches","Mute + solo"]])
     ] },
-    device: { group:"Defaults", label:"Instrument patch", kind:"tracks", hint:"Restore the active device on each track. Loaded samples and their pad assignments stay in place." },
+    device: { group:"Defaults", label:"Instrument patch", kind:"tracks", hint:"Restore the active device on each track. Loaded samples and pad assignments stay." },
     master: { group:"Defaults", label:"Master effects", kind:"master", hint:"Restore the selected section of the master effects rack.", fields:() => [
       list("section","Section",[["all","Whole master rack"],["delay","Delay"],["reverb","Reverb"],["eq","Equalizer"],["output","Compression + output"]])
     ] }
@@ -297,7 +297,7 @@
     const action = h("select", {"aria-label":"Operation"});
     const scope = h("select", {"aria-label":"Target"});
     const fields = h("div.ops-fields"), scopeControls = h("div.ops-masks");
-    const description = h("p.ops-description");
+    const description = h("p.ops-description.dlg-tip");
     const preview = h("strong"), example = h("span");
     const previewBox = h("div.ops-preview",{role:"status","aria-live":"polite"},preview,example);
     const cancel = btn("Cancel", "Close without applying", () => node.close());

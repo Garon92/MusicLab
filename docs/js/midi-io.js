@@ -159,7 +159,7 @@
     const redraw=()=>{
       const cfg=App.P.midiIO, ports=m=>[...(m?.values() || [])].filter(connected).map(p=>[p.id,p.name || p.id]);
       body.replaceChildren(h("h2",{text:"MIDI connections"}));
-      const message=h("p.tool-status",{role:"status",text:status || (access ? App.midiN+" active inputs" : navigator.requestMIDIAccess ? "Connect devices to enable MIDI input and output." : "Web MIDI is unavailable in this browser.")});
+      const message=h("p.tool-status",{role:"status",text:status || (access ? App.midiN+" active inputs" : navigator.requestMIDIAccess ? "No devices connected" : "Web MIDI is unavailable in this browser.")});
       if (!access && navigator.requestMIDIAccess) body.append(btn("Connect devices","Request MIDI permission",async()=>{status=await connect() ? "" : "MIDI access was denied or is unavailable."; redraw();}));
       body.append(message,h("div.tool-fields",null,
         select("Input",[["*","All inputs"],["","Off"],...ports(access?.inputs)],inputId,v=>{inputId=v;resetClock();if(access)hook();}),
@@ -182,8 +182,8 @@
         const remove=btn("Remove","Remove this assignment",()=>{cfg.bindings=cfg.bindings.filter(x=>x!==b);App.commit();redraw();});
         list.append(h("div.tool-item",null,h("span",{text:(access?.inputs.get(b.port)?.name || "Input")+" · CH "+(b.ch+1)+" · CC "+b.cc+" → "+App.P.tracks[b.ti].name+" / "+label(b.ti,b.key)}),remove));
       }
-      body.append(list,h("p.tool-status",{text:"Arm REC and play to write controller movements into the playing clip’s automation lanes."}),
-        h("div.dlg-buttons",null,btn("Done","Close MIDI connections",()=>node.close())));
+      body.append(list,h("p.dlg-tip",{text:"ARM REC AND PLAY · CONTROLLER MOVES ARE WRITTEN INTO THE PLAYING CLIP’S AUTOMATION"}),
+        h("div.dlg-buttons",null,btn("Close","Return to the console",()=>node.close())));
     };
     draw=(message="")=>{status=message;redraw();}; redraw();
     node.addEventListener("close",()=>{draw=null;if(!picking)cancelLearn();},{once:true}); node.showModal();

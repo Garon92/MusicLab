@@ -59,7 +59,7 @@
     const P = App.P, ti = P.sel.t, T = P.tracks[ti], kind = T.kind;
     const node = App.Workspace.begin("Instrument patches"), library = readLibrary();
     const body = h("div.dlg-body.patch-editor");
-    const list = h("select",{"aria-label":"Instrument patch"}), caption = h("p.patch-description");
+    const list = h("select",{"aria-label":"Instrument patch"}), caption = h("p.patch-description.dlg-tip");
     const name = h("input", {type:"text", maxlength:32, placeholder:"Patch name", "aria-label":"New patch name"});
     let entries = [];
     function populate() {

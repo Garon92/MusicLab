@@ -21,7 +21,7 @@ A single-screen music workstation for a desktop browser. Start with an empty gri
 | Device | Synth, drum machine or sampler on the selected track, drive and effect sends |
 | Signal | Scope, pitch, spectrum, spectrogram, phase and levels of the output, selected track or input. Hold freezes the display |
 | Master | Delay, reverb, EQ, compressor, limiter and output gain |
-| Status line | The full name of the control under the pointer, its gestures and feedback for the last action |
+| Status line | The full name of the control under the pointer, its gestures and feedback for the last action. An open dialog carries the same line along its lower edge |
 
 ## Change a phrase, a group of tracks or a whole section
 

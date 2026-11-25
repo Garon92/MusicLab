@@ -139,7 +139,7 @@
       h("div.rack-row",null,field("Channel",track),enable,play), cv,
       h("div.rack-row",null,field("Band",pick),read,bandOn),
       h("div.rack-row.eq-monitor",null,field("Monitor",mode),h("label",null,match," Level match A/B"),status),
-      h("p.rack-note",{text:"Drag a band for frequency and gain. Wheel or use Q for bandwidth. Green shows the input, pale green the output, amber the filter response."}));
+      h("p.dlg-tip",{text:"DRAG A BAND = FREQUENCY, GAIN · WHEEL = Q · DIM IN · BRIGHT OUT · AMBER RESPONSE"}));
     dialog.append(body);dialog.showModal();attach();
     const cx=cv.getContext("2d"), lowHz=20, highHz=Math.min(maxHz,E.ctx.sampleRate*.49), span=Math.log(highHz/lowHz);
     const xFrom=hz=>Math.log(clamp(hz,lowHz,highHz)/lowHz)/span;
@@ -149,23 +149,23 @@
       if(!dialog.open || App.P!==P){if(dialog.open)dialog.close();return;}
       const w=Math.max(1,cv.clientWidth),hh=Math.max(1,cv.clientHeight),dpr=Math.min(2,devicePixelRatio);
       if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(hh*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(hh*dpr);}
-      cx.setTransform(dpr,0,0,dpr,0,0);cx.fillStyle="#07110c";cx.fillRect(0,0,w,hh);
+      cx.setTransform(dpr,0,0,dpr,0,0);cx.fillStyle=App.C.r1;cx.fillRect(0,0,w,hh);
       const yDb=db=>(.5-clamp(db,-20,20)/40)*hh;
       cx.font="10px monospace";cx.lineWidth=1;
       for(const hz of [50,100,200,500,1000,2000,5000,10000]){
-        const x=xFrom(hz)*w;cx.strokeStyle="#1c3328";cx.beginPath();cx.moveTo(x,0);cx.lineTo(x,hh);cx.stroke();cx.fillStyle="#76a28b";cx.fillText(hz>=1000?hz/1000+"k":String(hz),x+3,hh-4);
+        const x=xFrom(hz)*w;cx.strokeStyle=App.C.ln2;cx.beginPath();cx.moveTo(x,0);cx.lineTo(x,hh);cx.stroke();cx.fillStyle=App.C.t2;cx.fillText(hz>=1000?hz/1000+"k":String(hz),x+3,hh-4);
       }
-      for(const db of [-12,0,12]){cx.strokeStyle="#284134";cx.beginPath();cx.moveTo(0,yDb(db));cx.lineTo(w,yDb(db));cx.stroke();}
+      for(const db of [-12,0,12]){cx.strokeStyle=App.C.ln2;cx.beginPath();cx.moveTo(0,yDb(db));cx.lineTo(w,yDb(db));cx.stroke();}
       const m=active.measure();
       function spectrum(an,data,color){an.getFloatFrequencyData(data);cx.strokeStyle=color;cx.beginPath();
         for(let i=0;i<freq.length;i++){const j=clamp(Math.round(freq[i]*fft/E.ctx.sampleRate),0,data.length-1);
           const y=hh*(1-clamp((data[j]+96)/96,0,1));if(i===0)cx.moveTo(0,y);else cx.lineTo(i*w/255,y);}
         cx.stroke();}
-      spectrum(monitor.pre,binA,"#387a59");spectrum(monitor.post,binB,"#99d9ad");
+      spectrum(monitor.pre,binA,App.C.t3);spectrum(monitor.post,binB,App.C.t1);
       response.fill(0);
       for (const f of active.bands){f.getFrequencyResponse(freq,mag,phase);for(let i=0;i<mag.length;i++)response[i]+=20*Math.log10(Math.max(.001,mag[i]));}
-      cx.strokeStyle="#ecbc62";cx.beginPath();response.forEach((db,i)=>i?cx.lineTo(i*w/255,yDb(db)):cx.moveTo(0,yDb(db)));cx.stroke();
-      get().bands.forEach((b,i)=>{const x=xFrom(b.hz)*w,y=yDb(b.db);cx.fillStyle=!b.on?"#587264":i===band?"#ffe2a0":"#97b99f";cx.fillRect(x-5,y-5,10,10);cx.fillStyle="#c7d9cb";cx.fillText(String(i+1),x+7,y-5);});
+      cx.strokeStyle=App.C.am;cx.beginPath();response.forEach((db,i)=>i?cx.lineTo(i*w/255,yDb(db)):cx.moveTo(0,yDb(db)));cx.stroke();
+      get().bands.forEach((b,i)=>{const x=xFrom(b.hz)*w,y=yDb(b.db);cx.fillStyle=!b.on?App.C.t3:i===band?App.C.am:App.C.t2;cx.fillRect(x-5,y-5,10,10);cx.fillStyle=App.C.t1;cx.fillText(String(i+1),x+7,y-5);});
       const info=match.checked && mode.value!=="band" && m?.prePower?"Match "+(20*Math.log10(m.factor)).toFixed(1)+" dB":"";
       if(status.textContent!==info)status.textContent=info;
       const text=App.Seq.playing?"Stop":"Play";if(play.textContent!==text)play.textContent=text;

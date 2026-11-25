@@ -350,7 +350,7 @@
       h("section.rack-section",null,h("h3",{text:"Recall scope"}),tx,gx),
       h("div.rack-row",null,field("Transition",bars),call,play),
       h("section.rack-section",null,h("h3",{text:"Song cues"}),h("div.rack-row",null,field("Start at bar",start),add),list),
-      h("p.rack-note",{text:"Recall uses checked controls. Song cues use the saved scope. Instrument switches apply at the end of a morph. Oscillator and envelope changes shape new notes."}),status);
+      h("p.dlg-tip",{text:"RECALL USES THE CHECKED SCOPE · CUES KEEP THEIR SAVED SCOPE · SWITCHES FLIP AT MORPH END"}),status);
     render();node.showModal();
     const timer=setInterval(()=>{if(P!==App.P){node.close();return;}play.textContent=App.Seq.playing?"Stop":"Play";if(!manual && status.textContent.startsWith("Morphing to "))message("Recall complete");},180);
     node.addEventListener("close",()=>clearInterval(timer),{once:true});

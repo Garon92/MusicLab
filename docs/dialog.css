@@ -1,0 +1,119 @@
+/* MUSICLAB · dialogs are console panels. Loaded last: the feature stylesheets lay their dialogs out,
+   this one decides how every control in them looks and behaves.
+   One control style, palette only, no radius, nothing scrolls, and the status strip is the only place that spells things out. */
+
+/* The dialog scales with the console (rem follows the window), so a small window shows an exact miniature
+   and every state that fits at one size fits at all of them. */
+dialog.console-dialog {
+  max-height: calc(100vh - 2rem); overflow: hidden;
+  font: 500 clamp(9px, 1.25rem, 15px)/1.4 var(--f); letter-spacing: 0.03em; text-transform: uppercase;
+  color: var(--t1); background: var(--r2); border: 1px solid var(--ln3); border-radius: 0;
+}
+dialog.console-dialog[open] { display: flex; flex-direction: column; }
+/* Feature widths hold up to the size they were drawn at; above it a dialog grows with its type, like the console. */
+dialog.console-dialog { width: min(max(470px, 36em), 92vw); }
+dialog.console-dialog.tool-dialog { width: min(max(720px, 55.4em), 94vw); }
+dialog.console-dialog.phrase-dialog { width: min(max(510px, 39.2em), 94vw); }
+dialog.console-dialog.find-dialog { width: min(max(580px, 44.6em), 92vw); }
+dialog.console-dialog.arr-dialog { width: min(max(620px, 47.7em), 94vw); }
+dialog.console-dialog.process-dialog { width: min(max(640px, 49.2em), 94vw); }
+dialog.console-dialog.cycle-dialog { width: min(max(680px, 52.3em), 94vw); }
+dialog.console-dialog:is(.rack-dialog, .prod-dialog, .pf-dialog) { width: min(max(700px, 53.8em), 94vw); }
+dialog.console-dialog.il-dialog { width: min(76rem, 94vw); }
+dialog.console-dialog.ast-dialog { width: min(max(970px, 74.6em), 95vw); }
+dialog.console-dialog.sw-dialog { width: min(max(780px, 60em), 94vw); }
+dialog.console-dialog.arr-full { width: min(max(1000px, 77em), 96vw); }
+dialog.console-dialog > * { flex: 0 1 auto; min-height: 0; min-width: 0; }
+
+/* ── the status strip: the hovered or focused control, else what this dialog is for ── */
+dialog.console-dialog::after {
+  content: attr(data-st); flex: none; display: block; height: 2.2em; padding: 0 clamp(12px, 1.8rem, 24px);
+  border-top: 1px solid var(--ln2); background: var(--pn); color: var(--t2);
+  font-size: 0.86em; line-height: 2.2em; letter-spacing: 0.06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Explanations are written into the dialog as .dlg-tip and shown by the strip, never as a paragraph. */
+.dlg-tip { display: none !important; }
+
+/* ── headings and captions ── */
+dialog.console-dialog h2 { margin: 0; color: var(--t1); font: 600 1.08em var(--f); letter-spacing: 0.16em; }
+dialog.console-dialog h3 { color: var(--t3); font: 500 0.9em var(--f); letter-spacing: 0.14em; }
+dialog.console-dialog label { color: var(--t3); }
+dialog.console-dialog label:has(> input[type=checkbox]) { color: var(--t2); cursor: pointer; }
+dialog.console-dialog label:has(> input[type=checkbox]:checked) { color: var(--t1); }
+dialog.console-dialog :is(.arr-field, .arr-legend, .arr-status, .ast-field span, .ast-dialog small, .rack-labels, .rack-note,
+  .ops-field > span, .ops-mask > span, .pf-field, .il-field, .inst-overview, .song-envelope-controls .arr-field) { font-size: 0.88em; }
+dialog.console-dialog :is(p, small, output, .tool-status, .rack-note, .ast-status, .cycle-status, .il-status, .arr-status, .patch-description) { line-height: 1.35; }
+dialog.console-dialog :is(.tool-status, .rack-note, .arr-legend, .patch-description, .ops-description) { color: var(--t2); }
+
+/* ── one field: selects, numbers and text ── */
+dialog.console-dialog :is(select, textarea, input:not([type=range], [type=checkbox], [type=radio], [type=file], [type=hidden])) {
+  appearance: none; -webkit-appearance: none; box-sizing: border-box; min-width: 0; height: 2.25em; margin: 0; padding: 0 0.55em;
+  border: 1px solid var(--ln3); border-radius: 0; background-color: var(--r0); color: var(--t1);
+  font: inherit; letter-spacing: inherit; text-transform: uppercase; color-scheme: dark; cursor: pointer;
+}
+dialog.console-dialog :is(input[type=text], input[type=search], input[type=number], textarea) { cursor: text; }
+dialog.console-dialog :is(select, textarea, input):hover { border-color: var(--t2); }
+dialog.console-dialog :is(select, textarea, input, button):focus-visible { outline: 1px solid var(--am); outline-offset: -1px; border-color: var(--am); }
+dialog.console-dialog :is(select, textarea, input):disabled { color: var(--t3); border-color: var(--ln2); cursor: default; }
+dialog.console-dialog ::placeholder { color: var(--t3); opacity: 1; text-transform: uppercase; }
+dialog.console-dialog input[type=number] { appearance: textfield; -moz-appearance: textfield; }
+dialog.console-dialog input[type=number]::-webkit-inner-spin-button,
+dialog.console-dialog input[type=number]::-webkit-outer-spin-button,
+dialog.console-dialog input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; margin: 0; }
+/* A list opens from a flat corner mark, like the console's value lists. */
+dialog.console-dialog select:not([size]) {
+  padding-right: 1.7em; background-repeat: no-repeat; background-size: 0.36em 0.36em, 0.36em 0.36em;
+  background-position: calc(100% - 0.92em) 54%, calc(100% - 0.56em) 54%;
+  background-image: linear-gradient(45deg, transparent 50%, var(--t2) 50%), linear-gradient(135deg, var(--t2) 50%, transparent 50%);
+}
+dialog.console-dialog select[size] { height: auto; padding: 0; overflow: hidden; cursor: default; }
+dialog.console-dialog select[size] option { padding: 0.28em 0.55em; color: var(--t1); }
+dialog.console-dialog select[size] option:checked { background: var(--am2) linear-gradient(var(--am2), var(--am2)); color: var(--am); }
+dialog.console-dialog option { background: var(--r0); color: var(--t1); }
+dialog.console-dialog textarea:not([hidden]) { height: auto; padding: 0.45em 0.55em; line-height: 1.45; resize: none; overflow: hidden; }
+
+/* ── a slider is a flat track with a square amber mark ── */
+dialog.console-dialog input[type=range] {
+  appearance: none; -webkit-appearance: none; font: inherit; height: 1.5em; margin: 0; padding: 0; border: 0; border-radius: 0;
+  background: transparent; cursor: ew-resize; accent-color: var(--am);
+}
+dialog.console-dialog input[type=range]::-webkit-slider-runnable-track { height: 2px; border: 0; border-radius: 0; background: var(--ln3); }
+dialog.console-dialog input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 0.5em; height: 1.2em; margin-top: calc(1px - 0.6em); border: 0; border-radius: 0; background: var(--am);
+}
+dialog.console-dialog input[type=range]::-moz-range-track { height: 2px; border: 0; border-radius: 0; background: var(--ln3); }
+dialog.console-dialog input[type=range]::-moz-range-thumb { width: 0.5em; height: 1.2em; border: 0; border-radius: 0; background: var(--am); }
+
+/* ── a switch is a square that fills ── */
+dialog.console-dialog input[type=checkbox] {
+  appearance: none; -webkit-appearance: none; flex: none; font: inherit; width: 1.05em; height: 1.05em; margin: 0; padding: 0;
+  border: 1px solid var(--ln3); border-radius: 0; background: var(--r0); cursor: pointer; vertical-align: -0.16em;
+}
+dialog.console-dialog input[type=checkbox]:hover { border-color: var(--t2); }
+dialog.console-dialog input[type=checkbox]:checked { border-color: var(--am); background: var(--am); box-shadow: inset 0 0 0 2px var(--r0); }
+
+/* ── buttons ── */
+dialog.console-dialog .bt { color: var(--t1); border-color: var(--ln3); font-size: 0.92em; }
+dialog.console-dialog .bt:hover { border-color: var(--t2); }
+dialog.console-dialog .bt:disabled { color: var(--t3); border-color: var(--ln2); opacity: 0.6; }
+
+/* ── nothing scrolls: a list longer than its box shows one page of rows and a pager (workspace.js) ── */
+dialog.console-dialog :is(.tool-list, .rack-list, .il-cables, .scene-cues, .transcript-scroll, .find-list) { overflow: hidden; }
+.pg-off { display: none !important; }
+.pg { display: flex; align-items: center; justify-content: flex-end; gap: 0.5em; color: var(--t3); font-size: 0.88em; }
+.pg[hidden] { display: none; }
+.pg b { min-width: 4.2em; color: var(--t2); font-weight: 500; text-align: center; }
+dialog.console-dialog .pg .bt { height: 1.8em; min-height: 0; min-width: 2.2em; padding: 0 0.5em; }
+
+/* ── the patch board draws its grid and cables in the palette ── */
+.il-board { background-image: radial-gradient(var(--ln2) 1px, transparent 1px); }
+.il-board path { stroke: var(--t2); }
+.il-board path.control { stroke: var(--am); }
+
+/* ── find: one screen of matches, the rest one keystroke away ── */
+.find-dialog .find-list { max-height: none; margin-top: 0.6em; border-top: 1px solid var(--ln2); }
+.find-dialog .find-option { height: 2.1em; align-items: center; padding: 0 0.7em; white-space: nowrap; }
+.find-dialog .find-option strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.find-dialog .find-option small { flex: none; color: var(--t3); font-size: 0.88em; }
+.find-dialog .find-count { margin: 0.6em 0 0; color: var(--t3); font-size: 0.88em; }
+dialog.console-dialog .find-input { height: 2.6em; border-color: var(--t2); }

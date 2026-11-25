@@ -37,7 +37,7 @@ module.exports=async function performanceTools(main){
     await dialog.getByLabel("Play on pass").selectOption("2");
     await dialog.getByRole("button",{name:"Apply rule"}).click();
     await dialog.getByLabel("Random seed").fill("734");await dialog.getByLabel("Random seed").press("Tab");
-    await dialog.getByRole("button",{name:"Done"}).click();
+    await dialog.getByRole("button",{name:"Close"}).click();
     assert.ok(await page.evaluate(()=>App.P.tracks[1].clips[0].every(n=>n.when.every===2 && n.when.phase===2)));
     const decisions=await page.evaluate(()=>{
       const P=App.P, notes=P.tracks[1].clips[0];

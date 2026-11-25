@@ -38,8 +38,14 @@
     UI.tip();
   };
   UI.tip = () => {
-    const el = UI.tipEl;
-    if (hintEl) hintEl.textContent = fixed ?? (el ? (el._tip ? el._tip() : el.dataset.tip) : IDLE);
+    const el = UI.tipEl?.isConnected ? UI.tipEl : (UI.tipEl = null);
+    const text = fixed ?? (el ? (el._tip ? el._tip() : el.dataset.tip) : null);
+    if (hintEl) hintEl.textContent = text ?? IDLE;
+    // An open dialog covers the status line, so it carries its own strip: the same hint, else what the dialog is for.
+    const dlg = [...document.querySelectorAll("dialog.console-dialog[open]")].pop();
+    if (!dlg) return;
+    const own = (el && dlg.contains(el) && text) || [...dlg.querySelectorAll(".dlg-tip")].map(n => n.textContent.trim()).filter(Boolean).join(" · ") || "ESC = CLOSE · CTRL/CMD K = FIND";
+    if (dlg.dataset.st !== own) dlg.dataset.st = own;
   };
   // Canvases describe what is under the cursor themselves.
   UI.hint = (t) => { fixed = t; UI.tip(); };
@@ -53,6 +59,14 @@
   document.addEventListener("pointerover", (e) => {
     const el = e.target.closest ? e.target.closest("[data-tip]") : null;
     if (el === UI.tipEl) return;
+    UI.tipEl = el;
+    UI.tip();
+  });
+  // In a dialog the keyboard reaches controls the pointer is not on; its strip follows the focus too.
+  document.addEventListener("focusin", (e) => {
+    // Only focus the keyboard moved: the focus a dialog takes when it opens says nothing about intent.
+    const el = e.target.closest?.("dialog.console-dialog") && e.target.matches(":focus-visible") ? e.target.closest("[data-tip]") : null;
+    if (!el || el === UI.tipEl) return;
     UI.tipEl = el;
     UI.tip();
   });
