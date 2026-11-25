@@ -38,11 +38,12 @@
   ];
   const SIGS = [[2, 4], [3, 4], [4, 4], [5, 4], [6, 4], [7, 4], [5, 8], [6, 8], [7, 8], [9, 8], [12, 8]];
   const PATS = "ABCDEFGH";
+  const MAX_STEPS = 256, MAX_BARS = 16;
 
   // One step is always a 16th note. Signature only decides how steps group into beats and bars.
   const spb = (P) => SIGS[P.sig][0] * (SIGS[P.sig][1] === 8 ? 2 : 4);
   const beatSteps = (P) => (SIGS[P.sig][1] === 4 ? 4 : SIGS[P.sig][0] % 3 === 0 ? 6 : 2);
-  const maxBars = (P) => clamp(Math.floor(64 / spb(P)), 1, 4);
+  const maxBars = (P) => Math.min(MAX_BARS, Math.floor(MAX_STEPS / spb(P)));
   const patSteps = (P, pi) => Math.min(P.pats[pi].bars, maxBars(P)) * spb(P);
   const inScale = (P, m) => SCALES[P.scale][1].includes(pc(m - P.key));
 
@@ -248,6 +249,37 @@
   };
   const defs = (d) => Object.fromEntries(Object.values(d).map((x) => [x.k, x.def]));
 
+  // A lane belongs to one clip. Values are normalized fader positions; points
+  // include the end boundary so a fade can reach its target on the final beat.
+  const automationKeys = ["vol", "pan", "filter", "dly", "rev"];
+  const curveBase = (T, key) => key === "filter" ? 1 : key === "pan" ? (T.pan + 1) / 2 : T[key];
+  const pointAt = (points, step) => {
+    let lo = 0, hi = points.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (points[mid].s <= step) lo = mid + 1; else hi = mid;
+    }
+    return lo - 1;
+  };
+  const curveShape = (lane, step) => {
+    const p = lane?.points || [];
+    return p[pointAt(p, step)]?.shape || lane?.mode || "linear";
+  };
+  function curveValue(lane, step, fallback = 0, side = "right") {
+    const p = lane?.points;
+    if (!p?.length) return fallback;
+    const i = pointAt(p, step);
+    if (i < 0) return p[0].in ?? p[0].v;
+    const a = p[i], b = p[i + 1];
+    if (step === a.s) {
+      if (side !== "left") return a.v;
+      if (i && (p[i-1].shape || lane.mode) === "step") return p[i-1].v;
+      return a.in ?? a.v;
+    }
+    if (!b || (a.shape || lane.mode) === "step") return a.v;
+    return a.v + ((b.in ?? b.v) - a.v) * (step - a.s) / (b.s - a.s);
+  }
+
   /* ── project ──────────────────────────────────────────────────── */
   // Init sounds only. No notes ship with a new project.
   const KIT = [
@@ -284,6 +316,7 @@
       smp: { ...defs(DEF.smp), id: null },
       kit: newKit(),
       clips: Array.from({ length: 8 }, () => []),
+      automation: Array.from({ length: 8 }, () => ({})),
     })),
     fx: defs(DEF.fx),
     sel: { t: 0, p: 0, pad: 0 },
@@ -306,8 +339,26 @@
   const notes = (a) =>
     Array.isArray(a)
       ? a.filter((n) => n && Number.isInteger(n.s) && Number.isInteger(n.n)).slice(0, 4000)
-          .map((n) => ({ s: clamp(n.s, 0, 63), n: clamp(n.n, 0, 127), l: num(n.l, 1, 64, 1, 1), v: num(n.v, 0.02, 1, 0.8), p: num(n.p, 0, 1, 1), ...(n.r > 1 ? { r: num(n.r, 1, 8, 1, 1) } : {}) }))
+          .map((n) => ({ s: clamp(n.s, 0, MAX_STEPS - 1), n: clamp(n.n, 0, 127), l: num(n.l, 1, MAX_STEPS, 1, 1), v: num(n.v, 0.02, 1, 0.8), p: num(n.p, 0, 1, 1), ...(n.r > 1 ? { r: num(n.r, 1, 8, 1, 1) } : {}) }))
       : [];
+
+  function loadCurves(src) {
+    const out = {};
+    for (const k of automationKeys) {
+      const lane = src?.[k];
+      if (!Array.isArray(lane?.points)) continue;
+      const mode = lane.mode === "step" ? "step" : "linear", byStep = new Map();
+      for (const pt of lane.points.slice(0, 1024)) {
+        if (!pt || !Number.isInteger(pt.s) || pt.s < 0 || pt.s > MAX_STEPS || !Number.isFinite(pt.v)) continue;
+        const p = {s:pt.s, v:clamp(pt.v, 0, 1)};
+        if (Number.isFinite(pt.in) && pt.in !== p.v) p.in = clamp(pt.in, 0, 1);
+        if (["step","linear"].includes(pt.shape) && pt.shape !== mode) p.shape = pt.shape;
+        byStep.set(p.s, p);
+      }
+      if (byStep.size) out[k] = {mode, points:[...byStep.values()].sort((a,b) => a.s - b.s)};
+    }
+    return out;
+  }
 
   const sanitize = (src) => {
     const P = newProject();
@@ -316,7 +367,7 @@
     Object.assign(P, fit(DEF.top, src));
     for (const k of ["click", "song", "fold"]) P[k] = num(src[k], 0, 1, 0, 1);
     P.chain = Array.isArray(src.chain) ? src.chain.filter((x) => Number.isInteger(x) && x >= 0 && x < 8).slice(0, 32) : [];
-    P.pats = P.pats.map((_, i) => ({ bars: num(src.pats?.[i]?.bars, 1, 4, 1, 1) }));
+    P.pats = P.pats.map((_, i) => ({ bars: num(src.pats?.[i]?.bars, 1, MAX_BARS, 1, 1) }));
     P.tracks = P.tracks.map((d, i) => {
       const s = src.tracks[i];
       if (!s || typeof s !== "object") return d;
@@ -327,6 +378,7 @@
         smp: { ...fit(DEF.smp, s.smp), id: sid(s.smp?.id) },
         kit: { pads: d.kit.pads.map((pd, k) => ({ ...fit(DEF.pad, s.kit?.pads?.[k], pd), name: str(s.kit?.pads?.[k]?.name, pd.name, 8), id: sid(s.kit?.pads?.[k]?.id) })) },
         clips: d.clips.map((_, k) => notes(s.clips?.[k])),
+        automation: d.automation.map((_, k) => loadCurves(s.automation?.[k])),
       };
     });
     P.fx = fit(DEF.fx, src.fx);
@@ -417,8 +469,8 @@
     return out;
   };
 
-  const wav = (buf) => {
-    const ch = Math.min(2, buf.numberOfChannels), n = buf.length, size = n * ch * 3;
+  const wav = (buf, firstSample = 0) => {
+    const ch = Math.min(2, buf.numberOfChannels), n = buf.length - firstSample, size = n * ch * 3;
     const ab = new ArrayBuffer(44 + size), dv = new DataView(ab), u8 = new Uint8Array(ab);
     const tag = (o, s) => { for (let i = 0; i < 4; i++) u8[o + i] = s.charCodeAt(i); };
     tag(0, "RIFF"); dv.setUint32(4, 36 + size, true); tag(8, "WAVE"); tag(12, "fmt ");
@@ -427,7 +479,7 @@
     dv.setUint16(32, ch * 3, true); dv.setUint16(34, 24, true); tag(36, "data"); dv.setUint32(40, size, true);
     const c = []; for (let k = 0; k < ch; k++) c.push(buf.getChannelData(k));
     let o = 44;
-    for (let i = 0; i < n; i++) for (let k = 0; k < ch; k++) {
+    for (let i = firstSample; i < buf.length; i++) for (let k = 0; k < ch; k++) {
       const x = Math.round(clamp(c[k][i], -1, 1) * 8388607);
       u8[o++] = x & 255; u8[o++] = (x >> 8) & 255; u8[o++] = (x >> 16) & 255;
     }
@@ -491,5 +543,6 @@
   Object.assign(App, {
     clamp, NOTES, PATS, SCALES, SIGS, DEF, pc, noteName, mtof, uid, pad2, spb, beatSteps, maxBars, patSteps, inScale,
     chordNotes, chordName, fmt, parse, toN, fromN, UNIT, fHz, fTime, fDb, defs, newProject, newKit, sanitize, wav, peaks, N,
+    automationKeys, curveBase, curveValue, curveShape, MAX_STEPS, MAX_BARS,
   });
 })();

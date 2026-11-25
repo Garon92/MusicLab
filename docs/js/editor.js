@@ -7,6 +7,7 @@
   App.Ed = (() => {
     let cv, cx, ph, rd, hd = {}, W = 0, H = 0, D = 1, R = [], G = {}, hov = null, act = null, raf = 0, wheel = 0;
     let lane = "v", chord = 1, lastLen = 1, lastVel = 0.8, rowNote = null;
+    let page = 0, pagePattern = -1, followTransport = true;
     let tool = "draw", selection = new Set(), selectionClip = null, selectionShape = "";
     let lit = new Set(), litStep = -2; // rows sounding under the playhead
     const live = new Set(); // rows held from the keyboard or MIDI
@@ -35,16 +36,24 @@
       const el = document.getElementById("ed");
       el.innerHTML = "";
       hd.title = h("span.ti");
-      hd.bars = [1, 2, 3, 4].map((n) => btn(String(n), "PATTERN LENGTH · " + n + " BAR", () => edit((c) => { c.P.pats[c.pi].bars = n; })));
+      hd.prev = btn("‹", "PREVIOUS FOUR BARS · MANUAL PAGING HOLDS THIS VIEW UNTIL THE NEXT PLAY", () => turnPage(-1));
+      hd.next = btn("›", "NEXT FOUR BARS · MANUAL PAGING HOLDS THIS VIEW UNTIL THE NEXT PLAY", () => turnPage(1));
+      hd.prev.setAttribute("aria-label", "Previous bars");
+      hd.next.setAttribute("aria-label", "Next bars");
+      hd.bars = h("span.ed-page", {title:"Visible bars / pattern length", tip:"VISIBLE BARS / PATTERN LENGTH · SET LENGTH IN PHRASE"});
       hd.dn = btn("↓", "TRANSPOSE CLIP DOWN · SHIFT = OCTAVE", (e) => transpose(e.shiftKey ? -12 : -1));
       hd.up = btn("↑", "TRANSPOSE CLIP UP · SHIFT = OCTAVE", (e) => transpose(e.shiftKey ? 12 : 1));
-      hd.x2 = btn("×2", "DOUBLE · REPEAT THE CLIP INTO TWICE THE LENGTH", double);
       hd.ch = [1, 3, 4].map((n) => btn(String(n), "NOTES PER CLICK · " + (n === 1 ? "SINGLE NOTE" : n === 3 ? "TRIAD IN SCALE" : "SEVENTH CHORD IN SCALE"), () => { chord = n; sync(); }));
       hd.fold = btn("FOLD", "SHOW ONLY NOTES OF THE SCALE", () => { App.P.fold ^= 1; App.touch(); sync(); });
       hd.od = btn("-", "VIEW ONE OCTAVE DOWN · WHEEL OVER GRID = SCROLL PITCH", () => view(-12));
       hd.ou = btn("+", "VIEW ONE OCTAVE UP · WHEEL OVER GRID = SCROLL PITCH", () => view(12));
       hd.draw = btn("DRAW", "CLICK TO DRAW · SHIFT-CLICK TO SELECT NOTES", () => chooseTool("draw"));
       hd.select = btn("SELECT", "CLICK NOTES OR DRAG A BOX IN EMPTY SPACE · SHIFT ADDS TO THE SELECTION", () => chooseTool("select"));
+      hd.auto = btn("AUTOMATION", "EDIT PARAMETER AUTOMATION FOR THIS CLIP", () => {
+        cancelGesture();
+        App.Automation.open();
+        updateSelection();
+      });
       hd.count = h("span.ed-count", { "aria-live": "polite" });
       hd.remove = btn("DEL", "DELETE SELECTED NOTES · DELETE OR BACKSPACE", removeSelection);
       hd.dup = btn("DUP", "DUPLICATE SELECTED NOTES AFTER THE SELECTION · CTRL/CMD D", duplicate);
@@ -61,26 +70,26 @@
       rd = h("span.rd");
       el.append(h("div.hd.ed-tools", null,
         h("span.tg", { text: "EDIT" }), hd.title,
-        h("span.grp", { role: "group", "aria-label": "Editing tool" }, hd.draw, hd.select),
-        h("span.grp", null, h("span.tg", { text: "BARS" }), hd.bars),
+        h("span.grp", { role: "group", "aria-label": "Editing tool" }, hd.draw, hd.select, hd.auto),
+        h("span.grp.ed-pages", {role:"group", "aria-label":"Visible bars"}, h("span.tg", {text:"BARS"}), hd.prev, hd.bars, hd.next),
         h("span.grp", null, h("span.tg", { text: "CHORD" }), hd.ch),
         h("span.grp", null, h("span.tg", { text: "VIEW" }), hd.od, hd.ou, hd.fold),
         h("span.grp", null, h("span.tg", { text: "LANE" }), hd.lv, hd.lp, hd.lr), h("span.sp"), rd),
       h("div.hd.ed-actions", null,
         h("span.grp", null, h("span.tg", { text: "NOTES" }), hd.count, hd.nudge, hd.dup, hd.remove),
         h("span.grp", null, h("span.tg", { text: "CLIP" }),
-          btn("<", "SHIFT CLIP ONE STEP EARLIER", () => rotate(-1)), btn(">", "SHIFT CLIP ONE STEP LATER", () => rotate(1)), hd.dn, hd.up, hd.x2, hd.euc,
-          btn("CLEAR", "DELETE ALL NOTES OF THIS CLIP", () => edit((c) => { c.clip.length = 0; })))));
+          btn("<", "SHIFT CLIP ONE STEP EARLIER", () => rotate(-1)), btn(">", "SHIFT CLIP ONE STEP LATER", () => rotate(1)), hd.dn, hd.up, hd.euc)));
       cv = h("canvas", { tabindex: "0", "aria-label": "Note editor. In Select mode drag a box or Shift-click notes. Use arrow keys to move a selection.", role: "application" }); ph = h("div.ed-ph");
       el.addEventListener("keydown", shortcuts);
       el.addEventListener("click", e => {
-        if (e.target.closest("button")) queueMicrotask(() => {
+        if (e.target.closest("button") && !App.Automation.active()) queueMicrotask(() => {
           if (!document.querySelector(".mn, .pop, dialog[open], [role=dialog]:not([hidden])")) cv.focus({ preventScroll: true });
         });
       });
       const body = h("div.ed-b", null, cv, ph);
       el.append(body);
       cx = cv.getContext("2d");
+      App.Automation.mount(el);
       const tgt = (e) => {
         const c = ctx(), m = at(e);
         return c.T.kind === "kit" ? { ti: c.ti, pad: m.zone === "lane" ? c.P.sel.pad : R[m.row].pad } : { ti: c.ti };
@@ -120,15 +129,18 @@
       edit((x) => { for (const nt of x.clip) nt.n += d; });
       if (!c.clip.every((nt) => nt.n >= c.T.lo && nt.n < c.T.lo + ROWS)) view(d);
     };
-    function double() {
-      const c = ctx(), bars = Math.min(c.P.pats[c.pi].bars, App.maxBars(c.P));
-      if (bars * 2 > App.maxBars(c.P)) { UI.msg("PATTERN IS AT MAX LENGTH"); return; }
-      edit((x) => {
-        const n = App.patSteps(x.P, x.pi);
-        for (let i = x.clip.length - 1; i >= 0; i--) if (x.clip[i].s >= n) x.clip.splice(i, 1); // notes hidden past the old end would collide with the copy
-        for (const nt of x.clip.slice()) x.clip.push({ ...nt, s: nt.s + n });
-        x.P.pats[x.pi].bars = bars * 2;
-      });
+    function range() {
+      const {P, pi} = ctx(), total = App.patSteps(P, pi), width = 4 * App.spb(P);
+      if (pagePattern !== pi) { pagePattern = pi; page = 0; }
+      page = clamp(page, 0, Math.ceil(total / width) - 1);
+      const start = page * width;
+      return { start, end: Math.min(total, start + width) };
+    }
+    function turnPage(delta) {
+      if (act) cancelGesture();
+      App.Automation.cancel();
+      if (App.Seq.playing) followTransport = false;
+      page += delta; hov = null; rd.textContent = ""; sync();
     }
     function euclid() {
       const row = () => R.find((o) => o.n === rowNote) || R[R.length - 1];
@@ -170,10 +182,11 @@
         if (previous !== selection.size) updateSelection();
       }
       const steps = App.patSteps(P, pi), SPB = App.spb(P), BS = App.beatSteps(P);
+      const { start, end } = range();
       R = rowList();
-      const nr = R.length, cw = (G.cw = G.gw / steps), rh = (G.rh = G.gh / nr), keys = isKeys(T);
-      G.steps = steps;
-      const X = (s) => G.gx + Math.round(s * cw), Y = (r) => G.ry + Math.round(r * rh);
+      const nr = R.length, cw = (G.cw = G.gw / (end - start)), rh = (G.rh = G.gh / nr), keys = isKeys(T);
+      G.steps = steps; G.start = start; G.end = end;
+      const X = (s) => G.gx + Math.round((s - start) * cw), Y = (r) => G.ry + Math.round(r * rh);
       cx.fillStyle = C.pn; cx.fillRect(0, 0, W, H);
 
       // row bands: scale membership is the only thing shading encodes
@@ -191,7 +204,7 @@
         cx.fillStyle = keys && App.pc(R[r].n) === 11 ? C.ln2 : C.ln;
         cx.fillRect(G.gx, Y(r), G.gw, L);
       }
-      for (let s = 0; s <= steps; s++) {
+      for (let s = start; s <= end; s++) {
         cx.fillStyle = s % SPB === 0 ? C.ln3 : s % BS === 0 ? C.ln2 : C.ln;
         cx.fillRect(Math.min(W - L, X(s)), G.ry, L, H - G.ry);
       }
@@ -199,7 +212,7 @@
       // ruler
       cx.textBaseline = "middle"; cx.textAlign = "left";
       cx.font = `500 ${Math.round(rem)}px ${App.FONT}`;
-      for (let s = 0; s < steps; s += BS) {
+      for (let s = start; s < end; s += BS) {
         const beat = (s % SPB) / BS;
         cx.fillStyle = beat ? C.t3 : C.t1;
         cx.fillText(beat ? "." + (beat + 1) : String(Math.floor(s / SPB) + 1), X(s) + 0.45 * rem, G.ry / 2 + L);
@@ -226,10 +239,10 @@
       const idx = new Map(R.map((o, r) => [o.n, r])), top = R[0].n, edge = Math.max(2, Math.round(2 * D));
       const laneV = new Map();
       for (const nt of clip) {
-        if (nt.s >= steps) continue;
+        if (nt.s >= end || nt.s + nt.l <= start) continue;
         const val = laneValue(nt);
-        if ((!selection.size || selection.has(nt)) && !(laneV.get(nt.s) >= val)) laneV.set(nt.s, val);
-        const r = idx.get(nt.n), x = X(nt.s) + L, w = Math.max(edge + L, X(Math.min(steps, nt.s + nt.l)) - X(nt.s) - L);
+        if (nt.s >= start && (!selection.size || selection.has(nt)) && !(laneV.get(nt.s) >= val)) laneV.set(nt.s, val);
+        const r = idx.get(nt.n), x = X(Math.max(start, nt.s)) + L, w = Math.max(edge + L, X(Math.min(end, nt.s + nt.l)) - x);
         if (r == null) { // outside the visible rows: a tick on the edge it lies beyond
           cx.fillStyle = C.am;
           cx.fillRect(x, (keys ? nt.n > top : nt.n < top) ? G.ry + L : G.ly - 3 * L, w, 2 * L);
@@ -242,7 +255,7 @@
         cx.fillRect(x, y, w, hh);
         cx.globalAlpha = 1;
         cx.fillStyle = moving ? C.pn : C.t1;
-        cx.fillRect(x, y, edge, hh); // bright leading edge marks where the note starts
+        if (nt.s >= start) cx.fillRect(x, y, edge, hh); // bright leading edge marks where the note starts
         if (nt.p < 1) { cx.fillRect(x, y, w, L); cx.fillRect(x, y + hh - L, w, L); }
       }
 
@@ -279,11 +292,15 @@
       }
       updateSelection();
       hd.title.textContent = pad2(ti + 1) + " " + T.name + " / " + PATS[pi];
-      hd.bars.forEach((b, i) => { b.classList.toggle("on", i + 1 === bars); b.disabled = i + 1 > mb; });
+      const {start, end} = range(), barSteps = App.spb(P);
+      hd.bars.textContent = bars <= 4 ? String(bars) : (1 + start / barSteps) + "–" + (end / barSteps) + "/" + bars;
+      hd.prev.hidden = hd.next.hidden = bars <= 4;
+      hd.prev.disabled = start === 0;
+      hd.next.disabled = end === App.patSteps(P, pi);
       hd.ch.forEach((b, i) => { b.classList.toggle("on", [1, 3, 4][i] === chord); b.disabled = !keys; });
       hd.fold.classList.toggle("on", !!P.fold);
       for (const b of [hd.fold, hd.od, hd.ou, hd.dn, hd.up]) b.disabled = !keys;
-      hd.x2.disabled = bars * 2 > mb;
+      App.Automation.sync();
       hd.lv.classList.toggle("on", lane === "v"); hd.lp.classList.toggle("on", lane === "p"); hd.lr.classList.toggle("on", lane === "r");
       litStep = -2;
       draw();
@@ -294,7 +311,7 @@
       const r = cv.getBoundingClientRect(), x = ((e.clientX - r.left) / r.width) * W, y = ((e.clientY - r.top) / r.height) * H;
       return {
         x, y,
-        step: clamp(Math.floor((x - G.gx) / G.cw), 0, G.steps - 1),
+        step: clamp(G.start + Math.floor((x - G.gx) / G.cw), G.start, G.end - 1),
         row: clamp(Math.floor((y - G.ry) / G.rh), 0, R.length - 1),
         zone: y >= G.ly ? (x >= G.gx ? "lane" : "") : y < G.ry ? "" : x < G.gx ? "gut" : "grid",
         val: clamp(1 - (y - G.ly - 2 * G.L) / (G.lh - 4 * G.L), 0, 1),
@@ -332,6 +349,7 @@
     };
     function chooseTool(value) {
       if (act) cancelGesture(false);
+      App.Automation.close();
       tool = value;
       updateSelection();
       cv.focus({ preventScroll: true });
@@ -341,9 +359,10 @@
       hd.count.textContent = selection.size;
       hd.count.title = selection.size + " selected";
       for (const b of [...hd.nudge, hd.dup, hd.remove]) b.disabled = !selection.size;
-      for (const [b, value] of [[hd.draw, "draw"], [hd.select, "select"]]) {
-        b.classList.toggle("on", value === tool);
-        b.setAttribute("aria-pressed", String(value === tool));
+      const activeTool = App.Automation.active() ? "auto" : tool;
+      for (const [b, value] of [[hd.draw, "draw"], [hd.select, "select"], [hd.auto, "auto"]]) {
+        b.classList.toggle("on", value === activeTool);
+        b.setAttribute("aria-pressed", String(value === activeTool));
       }
       cv.dataset.tool = tool;
     }
@@ -354,17 +373,34 @@
         selection.clear();
       });
     }
-    function duplicate() {
+    function revealSelection() {
+      if (!selection.size) return;
+      const visible = range(), group = [...selection];
+      if (group.some(nt => nt.s < visible.end && nt.s + nt.l > visible.start)) return;
+      page = Math.floor(Math.min(...group.map(nt => nt.s)) / (4 * App.spb(App.P)));
+      if (App.Seq.playing) followTransport = false;
+    }
+    async function duplicate() {
       if (!selection.size) return;
       const c = ctx(), group = [...selection];
       const start = Math.min(...group.map(nt => nt.s)), end = Math.max(...group.map(nt => nt.s + nt.l));
       const span = end - start, last = end + span, bars = Math.ceil(last / App.spb(c.P));
       if (bars > App.maxBars(c.P)) { UI.msg("NO ROOM AFTER SELECTION · MOVE NOTES EARLIER"); return; }
       const copies = group.map(nt => ({ ...nt, s: nt.s + span }));
+      if (c.clip.length + copies.length > 4000) { UI.msg("CLIP LIMIT · 4,000 NOTES"); return; }
+      const overlaps = c.clip.filter(nt => copies.some(copy =>
+        copy.n === nt.n && nt.s < copy.s + copy.l && nt.s + nt.l > copy.s));
+      if (overlaps.length) {
+        const answer = await App.Workspace.decide({title:"Replace overlapping notes?",
+          rows:[["Copies", String(copies.length)], ["Existing notes affected", String(overlaps.length)]],
+          actions:[{id:"replace",label:"Replace overlaps",primary:true}]});
+        if (answer !== "replace" || c.clip !== ctx().clip) return;
+      }
       edit(({ clip, P, pi }) => {
         P.pats[pi].bars = Math.max(P.pats[pi].bars, bars);
         carve(clip, copies); clip.push(...copies);
         selection = new Set(copies);
+        revealSelection();
       });
     }
     function pitchRows() {
@@ -400,6 +436,7 @@
       if (!selection.size || !shiftGroup(originals(selection), ds, dr, octave)) return;
       edit(({ clip, T }) => {
         carve(clip, selection);
+        if (ds) revealSelection();
         if (!dr || !isKeys(T)) return;
         const ordered = rowList(), pitches = [...selection].map(nt => nt.n);
         const above = Math.min(...pitches) - ordered[0].n;
@@ -408,7 +445,7 @@
       });
     }
     function shortcuts(e) {
-      if (e.target.closest("input, select, textarea, [contenteditable], [role=dialog], dialog") ||
+      if (App.Automation.active() || e.target.closest("input, select, textarea, [contenteditable], [role=dialog], dialog") ||
           document.querySelector(".mn, .pop, dialog[open], [role=dialog]:not([hidden])") || e.altKey) return;
       const mod = e.ctrlKey || e.metaKey;
       let command;
@@ -489,8 +526,8 @@
     }
     function box(m) {
       act.x1 = clamp(m.x, G.gx, W); act.y1 = clamp(m.y, G.ry, G.ly);
-      const left = (Math.min(act.x0, act.x1) - G.gx) / G.cw;
-      const right = (Math.max(act.x0, act.x1) - G.gx) / G.cw;
+      const left = G.start + (Math.min(act.x0, act.x1) - G.gx) / G.cw;
+      const right = G.start + (Math.max(act.x0, act.x1) - G.gx) / G.cw;
       const low = Math.min(act.y0, act.y1), high = Math.max(act.y0, act.y1);
       const pitches = new Set(R.filter((_, row) => G.ry + row * G.rh < high && G.ry + (row + 1) * G.rh > low).map(o => o.n));
       selection = act.add ? new Set(act.previous) : new Set();
@@ -529,7 +566,7 @@
       pickPad(o);
       if (hit) {
         const grab = Math.min(G.cw * 0.34, 0.8 * G.rem);
-        const resize = m.x >= G.gx + Math.min(G.steps, hit.s + hit.l) * G.cw - grab;
+        const resize = hit.s + hit.l <= G.end && m.x >= G.gx + (hit.s + hit.l - G.start) * G.cw - grab;
         const group = selection.has(hit) ? [...selection] : [hit];
         begin(e, resize ? "size" : "move", { note: hit, grp: group, old: originals(group), st0: m.step, r0: m.row });
         selection = new Set(group); lastLen = hit.l; lastVel = hit.v;
@@ -617,21 +654,28 @@
     const key = (n, on) => { if (on) live.add(n); else live.delete(n); lamps(); };
 
     function frame(c) {
-      const { pi, clip } = ctx(), step = c && c.pat === pi ? c.step : -1;
+      const { P, pi, clip } = ctx(), step = c && c.pat === pi ? c.step : -1;
+      if (!c) followTransport = true;
+      if (followTransport && !act && !App.Automation.active() && step >= 0 && (step < G.start || step >= G.end)) {
+        const nextPage = Math.floor(step / (4 * App.spb(P)));
+        if (page !== nextPage) { page = nextPage; hov = null; sync(); }
+      }
+      App.Automation.frame(c);
       if (step !== litStep) {
         litStep = step;
         const next = new Set();
         if (step >= 0) for (const nt of clip) if (nt.s <= step && step < nt.s + nt.l) next.add(nt.n);
         if (next.size || lit.size) { lit = next; lamps(); }
       }
-      if (!c || c.pat !== pi || !G.cw) { if (ph.style.display !== "none") ph.style.display = "none"; return; }
+      if (!c || c.pat !== pi || !G.cw || c.step < G.start || c.step >= G.end) { if (ph.style.display !== "none") ph.style.display = "none"; return; }
       const f = c.step + clamp((App.E.ctx.currentTime - c.t) / c.sd, 0, 1);
       ph.style.display = "block";
-      ph.style.transform = `translateX(${(G.gx + Math.min(f, G.steps) * G.cw) / D}px)`;
+      ph.style.transform = `translateX(${(G.gx + (Math.min(f, G.end) - G.start) * G.cw) / D}px)`;
     }
 
     function reset() {
-      cancelGesture(false);
+      cancelGesture(false); App.Automation.reset();
+      page = 0; pagePattern = -1; followTransport = true;
       cancelAnimationFrame(raf); raf = 0;
       selection.clear(); selectionClip = null; selectionShape = "";
       tool = "draw"; lane = "v"; chord = 1; lastLen = 1; lastVel = 0.8;
@@ -645,6 +689,7 @@
       if (cv) sync();
     }
 
-    return { build, sync, draw, frame, key, reset, cancel: cancelGesture };
+    return { build, sync, draw, frame, key, reset, range, selected: () => new Set(selection),
+      cancel() { cancelGesture(); App.Automation.cancel(); } };
   })();
 })();

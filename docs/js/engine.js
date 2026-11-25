@@ -80,20 +80,78 @@
     const tr = [];
     for (let i = 0; i < 8; i++) {
       const t = {
-        tin: G(), sh: ctx.createWaveShaper(), post: G(), trem: G(), vol: G(0), pan: ctx.createStereoPanner(), sd: G(0), sr: G(0),
+        tin: G(), sh: ctx.createWaveShaper(), post: G(), gate: G(), filter: BQ("lowpass", sr / 2, -3),
+        trem: G(), vol: G(0), pan: ctx.createStereoPanner(), sd: G(0), sr: G(0),
         pitch: G(), cut: G(), // modulation buses in cents, summed into every voice of the track
         lfo: null, lg: G(0), ldest: 0, drive: -1, lastHz: 0, an: null, lv: 0,
       };
-      t.tin.connect(t.sh).connect(t.post).connect(t.trem).connect(t.vol).connect(t.pan).connect(mix);
+      t.tin.connect(t.sh).connect(t.post).connect(t.filter).connect(t.trem).connect(t.gate).connect(t.vol).connect(t.pan).connect(mix);
       t.pan.connect(t.sd).connect(dIn);
       t.pan.connect(t.sr).connect(rIn);
       if (live) { t.an = ctx.createAnalyser(); t.an.fftSize = 512; t.pan.connect(t.an); }
+      t.params = {vol:t.vol.gain, pan:t.pan.pan, filter:t.filter.frequency, dly:t.sd.gain, rev:t.sr.gain};
+      t.written = new Set();
+      t.releaseAt = {};
       tr.push(t);
     }
     E.tracks = tr;
 
     const devOf = (T) => (T.kind === "syn" ? T.syn : T.kind === "smp" ? T.smp : null);
     const qOf = (d) => (d.ftype === 3 ? 0.7 + d.res * 0.6 : d.res); // LP/HP take resonance in dB, BP takes Q
+
+    const audioValue = (key, v) => {
+      if (key === "pan") return 2 * v - 1;
+      if (key === "filter") return 20 * (sr / 40) ** v;
+      return v * v;
+    };
+    E.automate = (ti, T, lanes, step, start, end) => {
+      const t = tr[ti];
+      // Adjacent scheduler windows must agree on the sample at a loop boundary.
+      start = Math.round(start * sr) / sr;
+      end = Math.round(end * sr) / sr;
+      for (const key of App.automationKeys) {
+        const lane = lanes?.[key], param = t.params[key];
+        if (!lane?.points.length) {
+          if (t.written.delete(key)) {
+            t.releaseAt[key] = start;
+            param.setValueAtTime(audioValue(key, App.curveBase(T, key)), start);
+          }
+          continue;
+        }
+        t.written.add(key);
+        const from = App.curveValue(lane, step), to = App.curveValue(lane, step + 1, from, "left");
+        param.setValueAtTime(audioValue(key, from), start);
+        if (to !== from && App.curveShape(lane, step) === "linear") {
+          if (key === "filter") param.exponentialRampToValueAtTime(audioValue(key, to), end);
+          else {
+            // Volume and sends use the squared fader law. Sample that curvature
+            // between step boundaries; pan is already linear in its audio unit.
+            const segments = key === "pan" ? 1 : 4;
+            for (let j = 1; j <= segments; j++) {
+              const x = j / segments;
+              param.linearRampToValueAtTime(audioValue(key, from + (to - from) * x), start + (end - start) * x);
+            }
+          }
+        }
+        // A point at the clip's very end can be discontinuous or stepped. Its
+        // value also controls the note releases after the last offline pattern.
+        const edge = App.curveValue(lane, step + 1);
+        if (edge !== to) param.setValueAtTime(audioValue(key, edge), end);
+      }
+    };
+    E.stopAutomation = () => {
+      const now = ctx.currentTime;
+      tr.forEach((t, i) => {
+        const keys = new Set([...t.written, ...Object.keys(t.releaseAt)]);
+        for (const key of keys) {
+          const param = t.params[key], base = audioValue(key, App.curveBase(getP().tracks[i], key));
+          if (param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(now);
+          else param.cancelScheduledValues(now);
+          param.setTargetAtTime(base, now, .007);
+        }
+        t.written.clear(); t.releaseAt = {};
+      });
+    };
 
     const syncLfo = (t, d, P) => {
       const dest = d ? d.ldest : 0;
@@ -120,10 +178,13 @@
     E.syncTrack = (i) => {
       const P = getP(), T = P.tracks[i], t = tr[i], d = devOf(T);
       const solo = P.tracks.some((x) => x.solo);
-      set(t.vol.gain, !T.mute && (!solo || T.solo) ? T.vol * T.vol : 0);
-      set(t.pan.pan, T.pan);
-      set(t.sd.gain, T.dly * T.dly);
-      set(t.sr.gain, T.rev * T.rev);
+      set(t.gate.gain, !T.mute && (!solo || T.solo) ? 1 : 0);
+      for (const key of App.automationKeys) {
+        if (t.written.has(key)) continue;
+        const base = audioValue(key, App.curveBase(T, key));
+        if (t.releaseAt[key] > ctx.currentTime) t.params[key].setValueAtTime(base, t.releaseAt[key]);
+        else set(t.params[key], base);
+      }
       if (t.drive !== T.drive) {
         t.drive = T.drive;
         if (T.drive < 0.005) { t.sh.curve = null; t.post.gain.value = 1; }
@@ -181,6 +242,9 @@
       if (k >= 0) E.voices.splice(k, 1);
       for (const [a, b] of v.mods) { try { a.disconnect(b); } catch (e) {} }
       for (const n of v.nodes) { try { n.disconnect(); } catch (e) {} }
+    };
+    E.collectEnded = () => {
+      for (const v of E.voices.slice()) if (v.tEnd <= ctx.currentTime) kill(v);
     };
     // Every voice is watched from birth: one whose sample runs out while its key is still held must be collected too.
     const watch = (v) => { E.voices.push(v); v.src[0].onended = () => kill(v); };
@@ -404,6 +468,7 @@
         else cut(v, t, 0.008);
       }
       if (clearReturns) {
+        E.stopAutomation();
         const impulse = conv.buffer;
         for (const node of [dIn, dL, dR, dTone, dFb, rIn, conv]) node.disconnect();
         buildReturns();

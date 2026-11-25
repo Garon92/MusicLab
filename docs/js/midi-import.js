@@ -3,6 +3,8 @@
   "use strict";
 
   const fail = (message) => { throw new Error(message); };
+  const controllers = new Map([[7,"vol"],[10,"pan"],[74,"filter"],[91,"rev"],[94,"dly"]]);
+  const ccValue = (key,v) => key !== "pan" ? v / 127 : v <= 64 ? v / 128 : .5 + (v - 64) / 126;
   const exactDrums = [36, 38, 39, 42, 46, 45, 37, 56];
   const programFamily = ["Piano", "Mallets", "Organ", "Guitar", "Bass", "Strings", "Ensemble", "Brass",
     "Reed", "Pipe", "Synth lead", "Synth pad", "Synth FX", "Ethnic", "Percussion", "Sound FX"];
@@ -48,6 +50,8 @@
     if (!division || ((division & 0x8000) && (!(division & 255) || ![24, 25, 29, 30].includes(frames)))) fail("Invalid MIDI time division.");
     pos = 8 + header;
     const parts = [], tempos = [], signatures = [], keys = [], names = [], markers = [];
+    const messages = new Map();
+    let controlCount = 0, nativeSwing = null;
     let duration = 0, noteCount = 0, usedPrograms = false, expression = false;
     const textDecoder = new TextDecoder();
     for (let ti = 0; ti < count;) {
@@ -58,10 +62,11 @@
       if (id !== "MTrk") { pos = end; continue; }
       limit = end;
       const channels = new Map();
-      let tick = 0, running = 0, name = "";
+      let tick = 0, running = 0, port = 0, name = "";
       const channel = (ch) => {
-        if (!channels.has(ch)) channels.set(ch, { ti, ch, notes: [], pressed: new Map(), sustained: [], pedal: false, program: null });
-        return channels.get(ch);
+        const address = port * 16 + ch;
+        if (!channels.has(address)) channels.set(address, { ti, ch, address, notes: [], pressed: new Map(), sustained: [], pedal: false, program: null });
+        return channels.get(address);
       };
       const releasePedal = (part) => { for (const nt of part.sustained) nt.end = tick; part.sustained.length = 0; };
       const finishNotes = (part) => {
@@ -82,6 +87,11 @@
           if (type === 6 && len === 18 && ti === 0) {
             const marker = /^MusicLab Pattern ([A-H])$/.exec(textDecoder.decode(data.subarray(pos, pos + len)));
             if (marker) markers.push({ tick, pattern: marker[1].charCodeAt(0) - 65 });
+          }
+          if (type === 33 && len === 1) port = data[pos];
+          if (type === 1 && ti === 0 && tick === 0 && len <= 18) {
+            const match = /^MusicLab Swing (\d{1,3})$/.exec(textDecoder.decode(data.subarray(pos,pos+len)));
+            if (match && Number(match[1]) <= 100) nativeSwing = Number(match[1]);
           }
           if (type === 81 && len === 3) {
             const us = data[pos] * 65536 + data[pos + 1] * 256 + data[pos + 2];
@@ -112,6 +122,10 @@
             if (queue.next === queue.notes.length) part.pressed.delete(a);
             if (part.pedal && ch !== 9) part.sustained.push(nt); else nt.end = tick;
           }
+        } else if (op === 11 && controllers.has(a)) {
+          if (++controlCount > 1500000) fail("Too many MIDI controller events to import.");
+          if (!messages.has(part.address)) messages.set(part.address, []);
+          messages.get(part.address).push({tick, key:controllers.get(a), v:b});
         } else if (op === 11 && a === 64) {
           part.pedal = b >= 64;
           if (!part.pedal) releasePedal(part);
@@ -124,12 +138,20 @@
       names.push(name);
       for (const part of channels.values()) {
         finishNotes(part);
-        if (part.notes.length) parts.push({ name, ti, ch: part.ch, program: part.program, notes: part.notes });
+        parts.push({ name, ti, ch:part.ch, address:part.address, program:part.program, notes:part.notes });
       }
       ti++;
     }
-    if (!noteCount && !duration) fail("This MIDI file contains no notes or timed bars.");
-    return { format, division, duration, tempos, signatures, keys, names, markers, parts, usedPrograms, expression };
+    if (!noteCount && !duration && !controlCount) fail("This MIDI file contains no notes or timed bars.");
+    const active = parts.filter(part => part.notes.length);
+    for (const [address,events] of messages) {
+      let matching = active.filter(p => p.address === address);
+      if (!matching.length) { matching = [parts.find(p => p.address === address)]; active.push(matching[0]); }
+      events.sort((a,b) => a.tick-b.tick);
+      for (const part of matching) part.controllers = events;
+    }
+    active.sort((a,b) => a.ti-b.ti || a.ch-b.ch);
+    return { format, division, duration, tempos, signatures, keys, names, markers, parts:active, usedPrograms, expression, nativeSwing };
   }
 
   function initial(events, fallback) {
@@ -187,14 +209,14 @@
 
   // Each bar's signature includes ties across its edges. Identical bar runs can share a pattern,
   // while a held note and separate attacks on adjacent bars remain distinguishable.
-  function arrangement(onsets, carries, bars, spb, maxBars, markers, stepPerTick) {
+  function arrangement(onsets, carries, bars, spb, maxBars, markers, stepPerTick, controllerBars) {
     const dictionary = new Map();
     const barIds = onsets.map((list, bar) => {
       const offset = bar * spb;
       const fragments = list.concat(carries[bar]).map(nt => [
         nt.t, nt.n, nt.v, nt.r, Math.max(-1, nt.s - offset), Math.min(spb + 1, nt.end - offset)
       ].join(",")).sort();
-      const key = fragments.join(";");
+      const key = fragments.join(";") + "|" + controllerBars[bar];
       if (!dictionary.has(key)) dictionary.set(key, dictionary.size);
       return dictionary.get(key);
     });
@@ -224,6 +246,24 @@
       }
       if (chain.length === markers.length && unique.size <= 8) return { chain, covered: bars, cuts };
     }
+    // Try regular phrase lengths first. Long arrangements with an obvious
+    // repeating structure then cost only O(bars × maximum phrase length).
+    let regular = null;
+    for (let len = maxBars; len >= 1; len--) {
+      const chain = [], ids = new Set();
+      let cuts = 0;
+      for (let start = 0; start < bars; start += len) {
+        const word = words[start].find(w => w.len === Math.min(len, bars-start));
+        ids.add(word.id);
+        if (ids.size > 8 || chain.length >= 32) break;
+        chain.push({start,...word}); cuts += carries[start + word.len]?.length || 0;
+        if (start+word.len === bars) {
+          const score = ids.size*2 + chain.length + cuts*2;
+          if (!regular || score < regular.score) regular = {chain,covered:bars,cuts,score};
+        }
+      }
+    }
+    if (regular && !regular.cuts) return regular;
     const schedule = Array.from({ length: bars + 1 }, () => new Map());
     const seed = { ids: [], chain: [], cuts: 0 };
     schedule[0].set("", seed);
@@ -232,22 +272,25 @@
     const rank = (plan, start) => {
       // Reward dictionaries which will also explain upcoming bars. Without look-ahead the
       // first verse might consume all eight slots before its chorus repeats are discovered.
-      const future = new Uint16Array(bars + 1);
-      for (let at = bars - 1; at >= start; at--) {
-        let best = 4 + future[at + 1];
-        for (const w of words[at]) if (plan.ids.includes(w.id)) best = Math.min(best, 1 + future[at + w.len]);
-        future[at] = best;
+      const horizon = Math.min(16, bars - start), future = new Uint16Array(horizon + 1);
+      for (let offset = horizon - 1; offset >= 0; offset--) {
+        let best = 4 + future[offset + 1];
+        for (const w of words[start + offset]) if (plan.ids.includes(w.id)) {
+          best = Math.min(best, 1 + future[Math.min(horizon, offset + w.len)]);
+        }
+        future[offset] = best;
       }
-      return plan.ids.length * 6 + plan.chain.length + plan.cuts * .5 + future[start];
+      return plan.ids.length * 6 + plan.chain.length + plan.cuts * .5 + future[0];
     };
     // Search alternative phrase lengths so pickups, repeats and odd endings need not align
-    // to four-bar boundaries. Bound the search by the fixed eight-pattern/32-entry console.
+    // to a fixed number of bars. Bound the search by the fixed eight-pattern/32-entry console.
     for (let start = 0; start < bars; start++) {
       const candidates = [...schedule[start].values()];
-      if (candidates.length > 96) {
+      const beam = bars > 64 ? 16 : 48;
+      if (candidates.length > beam) {
         for (const plan of candidates) plan.rank = rank(plan, start);
         candidates.sort((a, b) => a.rank - b.rank);
-        candidates.length = 96;
+        candidates.length = beam;
       }
       const plans = candidates;
       schedule[start].clear();
@@ -267,7 +310,65 @@
         }
       }
     }
+    if (regular && (covered < bars || regular.score < cost(best))) return regular;
     return { chain: best.chain, covered, cuts: best.cuts };
+  }
+
+  // MIDI controllers are channel state, including across clip boundaries.
+  // Sample the state at grid boundaries. Dense moves get interpolated segments,
+  // while switches and isolated controller messages keep their stepped shape.
+  function controlLanes(parts, P, steps, stepPerTick, unSwing) {
+    const lanes = [];
+    for (const track of parts) {
+      const groups = new Map();
+      const streams = new Set(track.parts.map(p => p.controllers).filter(Boolean));
+      for (const messages of streams) for (const event of messages) {
+        if (!groups.has(event.key)) groups.set(event.key,[]);
+        groups.get(event.key).push(event);
+      }
+      for (const [key, events] of groups) {
+        const values = new Float64Array(steps+1), smooth = new Uint8Array(steps);
+        const changes = new Map(), arrivals = new Map();
+        const epsilon = Math.min(.06,stepPerTick / (2 - P.swing / 100)) + .00001;
+        let boundary = -1, firstValue = 0;
+        if (streams.size > 1) events.sort((a,b) => a.tick-b.tick);
+        for (const e of events) {
+          const at = unSwing(e.tick*stepPerTick);
+          if (at > steps+epsilon) break;
+          const index = Math.max(0,Math.ceil(at-epsilon)), v = ccValue(key,e.v);
+          changes.set(index,v);
+          if (Math.abs(index-at) <= epsilon) {
+            // The last point of one pattern and first of the next may share a
+            // MIDI tick. Keep the arriving level as well as the outgoing one.
+            if (boundary === index) arrivals.set(index,firstValue);
+            else { boundary = index; firstValue = v; }
+          } else if (index > 0) smooth[index-1] = Math.min(2, smooth[index-1] + 1);
+        }
+        if (!changes.size) continue;
+        let value = App.curveBase(P.tracks[track.index],key);
+        for (let i=0; i<=steps; i++) {
+          if (changes.has(i)) value = changes.get(i);
+          values[i] = value;
+        }
+        lanes.push({t:track.index,key,values,smooth,arrivals});
+      }
+    }
+    return lanes;
+  }
+  function cutLane(lane, from, to) {
+    const points = [];
+    for (let i=from; i<to; i++) {
+      const next = lane.arrivals.get(i+1) ?? lane.values[i+1];
+      const v = lane.values[i], linear = lane.smooth[i] >= 2 && next !== v;
+      if (i === from || v !== lane.values[i-1] || linear || lane.smooth[i-1] >= 2) {
+        const point = {s:i-from,v};
+        if (i > from && lane.arrivals.has(i) && lane.smooth[i-1] >= 2) point.in = lane.arrivals.get(i);
+        if (linear) point.shape = "linear";
+        points.push(point);
+      }
+    }
+    if (lane.smooth[to-1] >= 2) points.push({s:to-from,v:lane.arrivals.get(to) ?? lane.values[to]});
+    return {mode:"step",points};
   }
 
   function read(arrayBuffer, filename) {
@@ -295,6 +396,7 @@
       const matches = candidates.filter(v => Math.abs(v - center) <= .025).length;
       if (center >= .06 && center <= .52 && matches / (candidates.length + atypical) >= .95) P.swing = App.clamp(Math.round(center * 200), 0, 100);
     }
+    if (file.nativeSwing !== null) P.swing = file.nativeSwing;
     const swing = P.swing / 200;
     const gridTime = s => s + (s % 2 ? swing : 0);
     function nearestStep(raw) {
@@ -378,7 +480,12 @@
       if (fragments > 4100000) fail("Overlapping held notes exceed the console’s import capacity.");
       for (let b = start + 1; b < end; b++) carries[b].push(note);
     }
-    const plan = arrangement(onsets, carries, bars, spb, maxBars, file.markers, stepPerTick);
+    const lanes = controlLanes(parts,P,bars*spb,stepPerTick,unSwing);
+    const ccBars = Array.from({length:bars},(_,bar) => lanes.map(lane => {
+      const from = bar*spb, span = cutLane(lane,from,from+spb);
+      return JSON.stringify(span.points);
+    }).join("/"));
+    const plan = arrangement(onsets, carries, bars, spb, maxBars, file.markers, stepPerTick, ccBars);
     const seen = new Map(), reserved = new Set(plan.chain.map(item => item.preferred)), used = new Set();
     for (const item of plan.chain) {
       if (!seen.has(item.id)) {
@@ -390,6 +497,7 @@
         const from = item.start * spb, to = from + item.len * spb;
         seen.set(item.id, index);
         P.pats[index].bars = item.len;
+        for (const lane of lanes) P.tracks[lane.t].automation[index][lane.key] = cutLane(lane,from,to);
         const segment = carries[item.start].concat(...onsets.slice(item.start, item.start + item.len)).sort(noteSort);
         for (const note of segment) {
           const clip = P.tracks[note.t].clips[index];
@@ -407,7 +515,8 @@
     if (quantized) warnings.push(quantized + " note" + (quantized === 1 ? "" : "s") + " quantized to sixteenth notes.");
     if (soft) warnings.push("Very soft velocities raised to the minimum playable level.");
     if (file.usedPrograms) warnings.push("MIDI instrument programs use MusicLab synth and kit sounds.");
-    if (file.expression) warnings.push("Continuous controllers, pitch bend and aftertouch are not represented.");
+    if (lanes.length) warnings.push(lanes.length + " controller lane" + (lanes.length === 1 ? "" : "s") + " mapped to the sixteenth-note automation grid.");
+    if (file.expression) warnings.push("Other controllers, pitch bend and aftertouch are not represented.");
     if (plan.cuts) warnings.push("Held notes crossing pattern boundaries retrigger at the boundary.");
     if (plan.covered < originalBars) warnings.push("Imported the first " + plan.covered + " of " + originalBars + " bars (8 unique patterns, 32 chain entries maximum).");
     if (truncatedClips) warnings.push("Dense clips exceed the 4,000-note limit. " + truncatedClips + " note events omitted from unique patterns.");

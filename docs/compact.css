@@ -24,7 +24,6 @@
   #top .pm.in .v { font-size: 12px; }
   #top .bt { min-height: 23px; padding-inline: 5px; font-size: 10px; letter-spacing: .015em; }
   #top .ic { min-width: 45px; gap: 3px; }
-  #top .reset-project { margin-left: 4px; }
   #top .omb { width: clamp(29px, 3.5vw, 51px); }
   #top .omv { min-width: 29px; font-size: 9px; }
   #top .tc.grp > .bt + .bt { margin-left: -2px; }

@@ -7,21 +7,35 @@ A single-screen music workstation for a desktop browser. Start with an empty gri
 ## First session
 
 1. Click an empty square in **Edit** to add a note. Click **Play** or press Space to loop the selected pattern. The track name and pattern letter above the grid show what you are editing.
-2. Click a different cell in **Clip matrix** to edit another track or pattern. Click a track's **Type** to choose a synth, drum kit or sampler. Click **+** in the song row to append the current pattern to the arrangement.
-3. Click the expand control in any panel to give it the whole workspace. **Full console** brings the panels back. **Commands** at the bottom opens a searchable list of actions. Its shortcut is Ctrl/Cmd+K.
-4. Click **Reset** in the top right to start over. The confirmation shows what the current project contains. **Save a copy** downloads a portable project and keeps you working on it. **Reset project** stops playback and starts a blank project with the default instruments and mixer. **Undo** steps back immediately. **File → Restore last reset** also works after reloading the page in the same browser when local storage is available. The last tape take is recoverable with Restore in the same tab.
+2. Click a different cell in **Clip matrix** to edit another track or pattern. Choose **Synth**, **Drums** or **Sampler** in **Device**. Click **Arrange…** in the song row and insert pattern letters in the order you want to hear them.
+3. Click the expand control in any panel to give it the whole workspace. **Full console** brings the panels back.
+4. Choose **File → Reset project…** to start over. The confirmation shows what the current project contains. **Save a copy** downloads a portable project and keeps you working on it. **Reset project** stops playback and starts a blank project with the default instruments and mixer. **Undo** steps back immediately. **File → Restore last reset** also works after reloading the page in the same browser when local storage is available. The last tape take is recoverable with Restore in the same tab.
 
 ## Workspace
 
 | Area | Controls |
 | --- | --- |
 | Transport | Play, note record, tape, position, tempo, swing, signature, key and scale, metronome, output meter, MIDI input, undo/redo and project files |
-| Clip matrix | Eight tracks × eight patterns, with mute, solo, level, pan, clip and pattern menus and a 32-slot song chain |
-| Edit | Note grid, piano keys, drum pads or sample slices. Velocity, probability and repeat lanes, scale folding, chords and Euclidean rhythms |
+| Clip matrix | Eight tracks × eight patterns, with mute, solo, level, pan, phrase and batch tools, plus a 32-slot song chain |
+| Edit | Note grid, piano keys, drum pads or sample slices. Velocity, probability and repeat lanes, a parameter automation editor, scale folding, chords and Euclidean rhythms |
 | Device | Synth, drum machine or sampler on the selected track, drive and effect sends |
 | Signal | Scope, pitch, spectrum, spectrogram, phase and levels of the output, selected track or input. Hold freezes the display |
 | Master | Delay, reverb, EQ, compressor, limiter and output gain |
 | Status line | The full name of the control under the pointer, its gestures and feedback for the last action |
+
+## Change a phrase, a group of tracks or a whole section
+
+| Musical task | Where to work |
+| --- | --- |
+| Repeat two bars of drums under a longer melody | Select the drum clip. Open **Phrase…**, choose **Clip** and **Repeat a range**. Set the source bars and total copies. The preview shows the resulting length before you apply. |
+| Combine performances | In **Phrase…**, choose the source clip or pattern. Insert, append, overlay or replace a range. Stretch or compress time to change the spacing and durations of notes along with their automation. |
+| Tighten several tracks together | In **Batch edit… → Notes**, choose a timing, pitch or dynamics operation such as backbeat or tresillo accents, then its scope. **Custom** lets you pick tracks and patterns independently. The preview counts the changes and **Undo** reverses the batch. |
+| Clean up or return to a starting point | **Batch edit… → Clean up** removes duplicates, silent notes, overlaps, notes or parameter curves in the chosen scope. **Defaults** restores expression, devices, selected mixer sections or parts of the master effects rack. Loaded sample assignments survive a device reset. |
+| Draw a fade or filter sweep | Select a clip, then **Edit → Automation**. Choose level, pan, track filter, delay send or reverb send. Click to add points and drag to move them. Choose a linear glide or stepped hold. **Shape** generates a rise, fall, triangle, sine or pulse. Select **Draw** or **Select** to return to notes. |
+| Make only the final chorus sound different | In **Arrange…**, select the chorus slot and choose **Make variation**. Apply to copy its notes and curves to a free pattern. For a repeated section, Shift-click the ends of a slot range, set the number of additional copies and choose **Repeat range**. |
+| Reuse a sound | **Device → Patch…** offers factory sounds, instruments from other tracks and named settings saved in this browser. Copying from another track includes its sample assignments. Saved settings use the destination track’s samples. |
+
+A pattern can span up to 16 bars within a 256-sixteenth-note limit. Longer patterns have four-bar pages in the editor. A song contains up to 32 pattern references. Notes and curves belong to the pattern. Independent variations use one of the eight pattern banks.
 
 ## Editing and playing
 
@@ -30,16 +44,16 @@ A single-screen music workstation for a desktop browser. Start with an empty gri
 - **VEL** edits velocity, **PROB** the chance a note sounds and **RPT** the number of attacks across its length (1–8). With notes selected, Shift-drag in a lane to change the whole selection.
 - Click a numeric value to enter it directly. Drag or wheel to adjust it, hold Shift for finer changes, or right-click to restore its default. A focused control also accepts the arrow keys.
 - Play the selected instrument with A–K. W, E, T, Y and U play the black keys on pitched instruments. Z/X changes octave. Keys 1–8 choose a track. Enable **Rec**, then start playback to write your playing into a clip.
-- Drag a clip or pattern to copy it. Drag letters onto the song row to arrange a sequence and drag slots to reorder them. **Song** switches between the arrangement and the current pattern.
+- Drag a clip or pattern to an empty destination to copy it with its curves. Dropping onto existing material opens the Phrase preview. Drag letters onto the song row to arrange a sequence and drag slots to reorder them. **Song** switches between the arrangement and the current pattern.
 - Drop audio onto a track to load a sample. On a drum track, several files fill successive pads. **Tape** captures the live output. Click the finished **Take** to download it or drag it onto a track or pad to play it as a sample.
 
 ## Files
 
 The project autosaves locally, with sample audio in IndexedDB. **File → Save project** downloads a JSON file with the referenced samples embedded. Open it from the File menu or drop it on the console.
 
-**Import MIDI** accepts standard MIDI files of type 0 and 1. Its preview shows the track and pattern mapping, quantization and any limits reached before you replace the open project. **Export MIDI** writes the note performance with swing, arpeggios and repeats. MIDI uses instrument mappings, while a MusicLab JSON file keeps instrument settings, effects and samples.
+**Import MIDI** accepts standard MIDI files of type 0 and 1. Its preview shows the track and pattern mapping, quantization and any limits reached before you replace the open project. **Export MIDI** writes the note performance with swing, arpeggios and repeats. Automation uses MIDI controllers 7, 10, 74, 91 and 94. Incoming controller movements are fitted to the sixteenth-note grid. Use MusicLab JSON for exact curves, instrument settings, effects and embedded samples.
 
-**Export audio** renders the active song or pattern to a 24-bit stereo WAV. Use Tape for a live performance.
+**Export audio** renders the active song or pattern to a 24-bit stereo WAV, up to 20 minutes per render. Use Tape for a live performance.
 
 ## Run locally
 
@@ -59,4 +73,4 @@ npx playwright install chromium
 npm test
 ```
 
-The self-test starts a local server and checks six desktop sizes, editing, playback, tape recording, audio and MIDI export, project files and reset recovery. To run the same suite in all three engines, install them with `npx playwright install chromium firefox webkit`, then run `MUSICLAB_BROWSERS=chromium,firefox,webkit npm test`.
+The self-test starts a local server and checks six desktop sizes, editing, playback, tape recording, audio and MIDI export, project files, scoped edits, extended phrases, automation, patch recall, song variations and reset recovery. To run the same suite in all three engines, install them with `npx playwright install chromium firefox webkit`, then run `MUSICLAB_BROWSERS=chromium,firefox,webkit npm test`.

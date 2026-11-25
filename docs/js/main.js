@@ -58,10 +58,19 @@
 
   /* ── clips, patterns, song ── */
   const redraw = () => { App.Mx.sync(); App.Ed.sync(); };
+  function copyMaterial(source, from, target, to) {
+    target.clips[to] = clone(source.clips[from]);
+    target.automation[to] = clone(source.automation[from]);
+  }
   App.copyClip = (a, b) => {
     if (a.t === b.t && a.p === b.p) return;
     const P = App.P;
-    P.tracks[b.t].clips[b.p] = clone(P.tracks[a.t].clips[a.p]);
+    if (P.tracks[b.t].clips[b.p].length || Object.keys(P.tracks[b.t].automation[b.p]).length) {
+      App.select(b.t,b.p);
+      App.Phrases.open("clip",{op:"overlay",track:a.t,pattern:a.p});
+      return;
+    }
+    copyMaterial(P.tracks[a.t], a.p, P.tracks[b.t], b.p);
     if (P.pats[b.p].bars < P.pats[a.p].bars) P.pats[b.p].bars = P.pats[a.p].bars;
     App.commit();
     redraw();
@@ -70,45 +79,17 @@
   App.copyPattern = (a, b) => {
     if (a === b) return;
     const P = App.P;
-    for (const T of P.tracks) T.clips[b] = clone(T.clips[a]);
+    if (P.tracks.some(t => t.clips[b].length || Object.keys(t.automation[b]).length)) {
+      App.select(P.sel.t,b);
+      App.Phrases.open("pattern",{op:"overlay",pattern:a,track:P.sel.t});
+      return;
+    }
+    for (const T of P.tracks) copyMaterial(T,a,T,b);
     P.pats[b].bars = P.pats[a].bars;
     App.commit();
     redraw();
     App.select(P.sel.t, b);
   };
-  App.clipDo = (t, p, v) => {
-    if (v === "next") { App.copyClip({ t, p }, { t, p: (p + 1) % 8 }); return; }
-    App.P.tracks[t].clips[p] = [];
-    App.commit(); redraw();
-  };
-  App.patternDo = (p, v) => {
-    if (v === "song") { App.songSet(App.P.chain.length, p); return; }
-    if (v === "next") { App.copyPattern(p, (p + 1) % 8); return; }
-    for (const T of App.P.tracks) T.clips[p] = [];
-    App.commit(); redraw();
-  };
-  App.trackClear = (t) => { App.P.tracks[t].clips = App.P.tracks[t].clips.map(() => []); App.commit(); redraw(); };
-  App.songSet = (i, p) => {
-    const P = App.P;
-    if (P.chain.length >= 32) { UI.msg("SONG IS FULL · 32 SLOTS"); return; }
-    if (!P.chain.length) P.song = 1; // the first pattern in the chain switches song mode on
-    P.chain.splice(Math.min(i, P.chain.length), 0, p);
-    App.commit(); App.Mx.sync(); App.Top.sync();
-  };
-  App.songDel = i => {
-    App.P.chain.splice(i,1);
-    if (!App.P.chain.length) { App.P.song = 0; Seq.startAt(0); }
-    else if (Seq.start() >= App.P.chain.length) Seq.startAt(App.P.chain.length-1);
-    App.commit(); App.Mx.sync(); App.Top.sync();
-  };
-  App.songMove = (j, i) => {
-    const ch = App.P.chain;
-    if (j === i || j >= ch.length) return;
-    const [x] = ch.splice(j, 1);
-    ch.splice(Math.min(i, ch.length), 0, x);
-    App.commit(); App.Mx.sync();
-  };
-
   /* ── samples ── */
   const AUDIO = /\.(wav|mp3|ogg|oga|flac|m4a|aac|aif|aiff|webm|opus)$/i;
   const assign = (tg, id) => {
@@ -246,7 +227,7 @@
     return new Blob([bytes], { type: type || "audio/wav" });
   };
   const noteCount = p => p.tracks.reduce((n,t) => n+t.clips.reduce((k,c)=>k+c.length,0),0);
-  const projectStats = p => [[noteCount(p),"note"],[App.sampleIds(p).size,"sample"],[p.chain.length,"song slot"]]
+  const projectStats = p => [[noteCount(p),"note"],[p.tracks.reduce((n,t) => n + t.automation.reduce((sum,lanes) => sum + Object.keys(lanes).length,0),0),"curve"],[App.sampleIds(p).size,"sample"],[p.chain.length,"song slot"]]
     .map(([n,label]) => n + " " + label + (n === 1 ? "" : "s")).join(" · ");
 
   function lastReset() {
@@ -408,9 +389,9 @@
       else if (v === "mid") download(Seq.midi(),name + ".mid");
       else if (v === "wav") {
         UI.msg("RENDERING");
-        const buf = await Seq.bounce();
-        download(App.wav(buf),name + ".wav");
-        UI.msg("WAV EXPORTED · " + buf.duration.toFixed(1) + " S · 24 BIT " + buf.sampleRate/1000 + " KHZ");
+        const {blob,duration,sampleRate} = await Seq.bounceWav();
+        download(blob,name + ".wav");
+        UI.msg("WAV EXPORTED · " + duration.toFixed(1) + " S · 24 BIT " + sampleRate/1000 + " KHZ");
       }
     } catch (e) { UI.msg(e.message || "FILE OPERATION FAILED"); }
   };
@@ -457,7 +438,7 @@
     App.Ed.key(d.note, false);
     App.E && App.E.noteOff(d.ti, d.note);
     if (d.rec) {
-      d.rec.nt.l = clamp(Math.round((App.E.ctx.currentTime - d.rec.t0) / d.rec.sd), 1, 64);
+      d.rec.nt.l = clamp(Math.round((App.E.ctx.currentTime - d.rec.t0) / d.rec.sd), 1, App.MAX_STEPS);
       d.rec.clip.sort((a, b) => a.s - b.s || a.n - b.n);
       App.commit();
       App.Ed.draw(); App.Mx.draw();
@@ -479,9 +460,6 @@
     if (UI.menuOpen() || document.querySelector(".pop,.mn")) {
       if (e.key === "Escape") { e.preventDefault(); UI.closeMenu(true); }
       return;
-    }
-    if (((e.ctrlKey || e.metaKey) && e.code === "KeyK") || e.key === "?") {
-      e.preventDefault(); if (!e.repeat) App.Workspace.commands(); return;
     }
     if (e.target.closest?.("button,[role=slider],[role=switch]") && ["Enter"," "].includes(e.key)) return;
     if (e.ctrlKey || e.metaKey) {

@@ -224,10 +224,10 @@ async function run(browserName, url) {
     await confirmIfAsked(page, name);
     assert.deepEqual(await project(page), original);
 
-    await button(page, "Reset project").click();
+    await menu(page, /^Reset project/i);
     await page.getByRole("dialog").getByRole("button", { name: /cancel/i }).click();
     assert.deepEqual(await project(page), original);
-    await button(page, "Reset project").click();
+    await menu(page, /^Reset project/i);
     await page.locator("dialog[open] .confirm-action").click();
     await waitProject(page, "UNTITLED");
     assert.ok(await page.evaluate(() => App.P.tracks.every(t => t.clips.every(c => !c.length))));
@@ -241,7 +241,10 @@ async function run(browserName, url) {
     await confirmIfAsked(page, name);
     assert.deepEqual(await project(page), original);
     assert.deepEqual(errors, []);
-    console.log(browserName + " " + browser.version() + " — passed 6 viewports, input/undo, transport, tape, WAV/MIDI, JSON and reset recovery");
+    for (const suite of ["workstation", "operations", "phrases", "automation"]) {
+      await require("./" + suite + ".cjs")(page);
+    }
+    console.log(browserName + " " + browser.version() + " — passed 6 viewports, input/undo, transport, tape, WAV/MIDI, JSON, recovery, batch operations, phrases, automation, patches and arrangement");
   } finally { await browser.close(); }
 }
 

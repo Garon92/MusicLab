@@ -30,6 +30,7 @@
     };
     for (let ti = 0; ti < P.tracks.length; ti++) {
       const T = P.tracks[ti], clip = T.clips[pi];
+      E.automate?.(ti, T, T.automation?.[pi], s, t, base + gridTime(P, s + 1, sd));
       if (!clip.length) continue;
       if (T.kind !== "syn" || !T.arp.mode) {
         for (const nt of clip) {
@@ -132,7 +133,7 @@
     const was = Seq.playing;
     Seq.playing = false; Seq.pos = null; q = []; queued = null;
     Seq.skip.clear();
-    if (was && App.E) App.E.panic();
+    if (was && App.E) { App.E.panic(); App.E.stopAutomation(); }
     if (!quiet) App.Top.sync();
   };
   Seq.toggle = () => (Seq.playing ? Seq.stop() : Seq.play());
@@ -156,7 +157,7 @@
   };
 
   /* ── offline bounce: the song (or the selected pattern) rendered faster than real time ── */
-  Seq.bounce = async () => {
+  async function renderSong() {
     const P = JSON.parse(JSON.stringify(App.P));
     const list = songOn(P) ? P.chain : [P.sel.p], sd = 15 / P.bpm;
     let steps = 0;
@@ -168,15 +169,37 @@
     const E = App.Engine(ctx, () => P, { offline: true });
     E.syncAll();
     E.restartLfos(PRE); // same alignment as live playback: LFOs begin with the first step
-    let t = PRE;
+    // Feed a long render in musical order through ONE context. A short lead
+    // before each suspension leaves room for render-quantum rounding. Voices,
+    // envelopes, delay lines and convolution tails live across every window.
+    let t = PRE, windowEnd = PRE + 8, rendering;
+    const canSuspend = typeof ctx.suspend === "function" && typeof ctx.resume === "function";
     for (const pi of list) {
       const n = App.patSteps(P, pi);
-      for (let s = 0; s < n; s++) { emit(E, P, pi, s, t + swingOf(P, s, sd), sd); t += sd; }
+      for (let s = 0; s < n; s++) {
+        if (canSuspend && t >= windowEnd) {
+          const paused = ctx.suspend(t - .25);
+          if (!rendering) rendering = ctx.startRendering();
+          else await ctx.resume();
+          await Promise.race([paused, rendering]);
+          E.collectEnded();
+          windowEnd = t + 8;
+        }
+        emit(E, P, pi, s, t + swingOf(P, s, sd), sd); t += sd;
+      }
     }
-    const full = await ctx.startRendering(), cut = Math.round(PRE * sr);
-    const out = new AudioBuffer({ length: full.length - cut, sampleRate: sr, numberOfChannels: 2 });
+    if (!rendering) rendering = ctx.startRendering(); else await ctx.resume();
+    return {full:await rendering, cut:Math.round(PRE * sr)};
+  }
+  Seq.bounce = async () => {
+    const {full,cut} = await renderSong();
+    const out = new AudioBuffer({ length: full.length - cut, sampleRate: full.sampleRate, numberOfChannels: 2 });
     for (let c = 0; c < 2; c++) out.getChannelData(c).set(full.getChannelData(c).subarray(cut));
     return out;
+  };
+  Seq.bounceWav = async () => {
+    const {full,cut} = await renderSong();
+    return {blob:App.wav(full,cut), duration:(full.length - cut) / full.sampleRate, sampleRate:full.sampleRate};
   };
 
   /* ── standard MIDI file, format 1, one track per console track ── */
@@ -186,9 +209,11 @@
     const be = (n, k) => Array.from({ length: k }, (_, i) => (n >>> (8 * (k - 1 - i))) & 255);
     const txt = (s) => [...s].map((c) => (c.charCodeAt(0) < 128 && c.length === 1 ? c.charCodeAt(0) : 63)); // non-ASCII → "?"
     const chunk = (id, d) => [...txt(id), ...be(d.length, 4), ...d];
-    const track = (name, evs, endTick) => {
-      evs.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const track = (name, evs, endTick, port = 0) => {
+      const order = status => (status & 0xf0) === 0x90 ? 2 : (status & 0xf0) === 0xb0 ? 1 : 0;
+      evs.sort((a, b) => a[0] - b[0] || order(a[1]) - order(b[1]));
       const nb = txt(name).slice(0, 100), d = [0, 0xff, 3, nb.length, ...nb];
+      if (port) d.push(0, 0xff, 0x21, 1, port);
       let last = 0;
       for (const e of evs) { d.push(...vlq(e[0] - last), ...e.slice(1)); last = e[0]; }
       d.push(...vlq(Math.max(0, endTick - last)), 0xff, 0x2f, 0);
@@ -197,6 +222,8 @@
     const [num, den] = App.SIGS[P.sig];
     const endTick = list.reduce((sum, pi) => sum + App.patSteps(P, pi) * TPS, 0);
     const conductor = [[0, 0xff, 0x51, 3, ...be(Math.round(6e7 / P.bpm), 3)], [0, 0xff, 0x58, 4, num, Math.log2(den), 24, 8]];
+    const swingText = txt("MusicLab Swing " + P.swing);
+    conductor.push([0, 0xff, 0x01, swingText.length, ...swingText]);
     let markerTick = 0;
     for (const pi of list) {
       const marker = txt("MusicLab Pattern " + String.fromCharCode(65 + pi));
@@ -207,12 +234,46 @@
     const events = P.tracks.map(() => []);
     let channel = 0;
     const channels = P.tracks.map(T => T.kind === "kit" ? 9 : channel++);
+    const CC = {vol:7, pan:10, filter:74, rev:91, dly:94};
+    const previous = P.tracks.map(() => ({}));
+    const mapped = P.tracks.map(T => App.automationKeys.filter(k => list.some(pi => T.automation?.[pi]?.[k]?.points.length)));
+    // Drum kits share MIDI channel 10. When they carry independent controller
+    // streams, the port meta event keeps their controls on separate drum parts.
+    const kitAutomation = P.tracks.some(T => T.kind === "kit" && list.some(pi => Object.keys(T.automation?.[pi] || {}).length));
+    let kitPort = 0;
+    const ports = P.tracks.map(T => T.kind === "kit" && kitAutomation ? kitPort++ : 0);
+    const ccAt = (ti, key, tick, v) => {
+      const value = key === "pan" && v <= .5 ? Math.round(128 * v) :
+        key === "pan" ? Math.round(64 + (v - .5) * 126) : Math.round(127 * v);
+      if (previous[ti][key] === value) return;
+      previous[ti][key] = value;
+      events[ti].push([tick, 0xb0 | channels[ti], CC[key], value]);
+    };
     const sink = { play(ti, pitch, velocity, time, duration) {
       const note = P.tracks[ti].kind === "kit" ? GM[pitch - 36] : pitch;
       if (note == null) return;
       const c = channels[ti], start = Math.round(time / sd * TPS);
       const stop = Math.max(start + 1, Math.round((time + duration) / sd * TPS));
       events[ti].push([start, 0x90 | c, note, Math.max(1, Math.round(velocity * 127))], [stop, 0x80 | c, note, 0]);
+    }, automate(ti, T, lanes, s, start, end) {
+      const from = Math.round(start / sd * TPS), to = Math.round(end / sd * TPS);
+      for (const key of mapped[ti]) {
+        const lane = lanes?.[key];
+        if (!lane?.points.length) {
+          ccAt(ti, key, from, App.curveBase(T, key));
+          continue;
+        }
+        const linear = App.curveShape(lane, s) === "linear";
+        const slices = linear ? 4 : 1;
+        for (let j = 0; j < slices; j++) {
+          const x = j / slices;
+          ccAt(ti, key, Math.round(from + x * (to-from)), App.curveValue(lane, s + x));
+        }
+        // Preserve both sides of an instantaneous wrap / step within a ramp.
+        const edge = App.curveValue(lane, s + 1), left = App.curveValue(lane, s + 1, edge, "left");
+        if (linear && left !== edge) ccAt(ti, key, to - 1, left);
+        ccAt(ti, key, to, edge);
+      }
     } };
     let offset = 0;
     for (const pi of list) {
@@ -220,7 +281,10 @@
       for (let s = 0; s < count; s++) emit(sink, P, pi, s, (offset + s) * sd + swingOf(P, s, sd), sd);
       offset += count;
     }
-    P.tracks.forEach((T, ti) => { if (events[ti].length) tracks.push(track(T.name, events[ti], endTick)); });
+    P.tracks.forEach((T, ti) => {
+      if (!events[ti].length) return;
+      tracks.push(track(T.name, events[ti], endTick, ports[ti]));
+    });
     return new Blob([new Uint8Array([...chunk("MThd", [0, 1, ...be(tracks.length, 2), ...be(TPS * 4, 2)]), ...tracks.flat()])], { type: "audio/midi" });
   };
 
