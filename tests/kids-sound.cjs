@@ -7,13 +7,14 @@ module.exports=async function kidsSound(reference) {
   const page=await context.newPage(), errors=[];
   page.setDefaultTimeout(9000);page.on("pageerror",e=>errors.push(e.message));
   const url=new URL(reference.url());url.search="?kids";
-  const room=page.locator("#kids-sound"), key=k=>room.locator('[data-sound="'+k+'"]');
+  const room=page.locator("#kids-sound"), inline=page.locator("#kids-inline-sound");
+  const key=(k,host=room)=>host.locator('[data-sound="'+k+'"]');
   const band=(k,i)=>page.locator('#kids-band [data-k="'+k+'"]'+(i===undefined?"":'[data-index="'+i+'"]')).filter({visible:true});
-  const mode=m=>room.locator('[data-sound="mode"][data-mode="'+m+'"]');
+  const mode=(m,host=room)=>host.locator('[data-sound="mode"][data-mode="'+m+'"]');
   const automation=()=>page.evaluate(()=>App.sanitize(App.P).tracks[2].automation[0]);
   const extent=lane=>Math.max(...lane.points.map(p=>p.v))-Math.min(...lane.points.map(p=>p.v));
-  async function paintPath() {
-    const b=await key("pad").boundingBox();assert.ok(b);
+  async function paintPath(host=room) {
+    const b=await key("pad",host).boundingBox();assert.ok(b);
     const pos=(x,y)=>page.mouse.move(b.x+b.width*x,b.y+b.height*y);
     await pos(.05,.94);await page.mouse.down();
     try {
@@ -29,20 +30,15 @@ module.exports=async function kidsSound(reference) {
     await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.down();
     try {await fn();} finally {await page.mouse.up();}
   }
-  try {
-    await page.goto(url.href);await band("sound").waitFor();
-    await band("track",2).click();
-    await page.locator('#kids-band [data-k="note"][data-row="0"][data-col="0"]').click();
-    await band("sound").click();await key("pad").waitFor();
-    assert.equal((await room.innerText()).trim(),"");
-    const scopeCount=await room.locator("canvas[data-kid-screen]").count();assert.equal(scopeCount,2);
+  async function checkBounds(host){
     for(const [width,height] of [[1100,620],[1280,720],[1366,768],[1600,900],[1920,1080],[2560,1080]]){
       await page.setViewportSize({width,height});
-      const issues=await room.evaluate(root=>{
+      const issues=await host.evaluate(root=>{
         const out=[];
         for(const el of [root,root.querySelector(".ks-shell")])
           if(el.scrollWidth>el.clientWidth+1 || el.scrollHeight>el.clientHeight+1)out.push("Overflow");
         for(const el of root.querySelectorAll("[data-sound]")){
+          if(!el.getClientRects().length)continue;
           const b=el.getBoundingClientRect(),hit=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);
           if(b.width<63.9 || b.height<63.9 || b.x<0 || b.y<0 || b.right>innerWidth+.5 || b.bottom>innerHeight+.5 ||
             (!el.disabled && !el.contains(hit)))out.push(el.getAttribute("aria-label"));
@@ -52,6 +48,55 @@ module.exports=async function kidsSound(reference) {
       assert.deepEqual(issues,[],width+"×"+height+" sound controls");
     }
     await page.setViewportSize({width:1280,height:720});
+  }
+  try {
+    await page.goto(url.href);await key("pad",inline).waitFor();
+    // A second touch can open the shelf while the first still holds the effect pad.
+    await holdUntil(key("pad",inline),async()=>{
+      assert.equal(await inline.locator(".ks-pad.held").count(),1);
+      await band("shelf").evaluate(b=>b.click());
+      assert.equal(await inline.locator(".ks-pad.held").count(),0);
+    });
+    await band("back").click();
+    assert.equal((await inline.innerText()).trim(),"");
+    await checkBounds(inline);
+    await band("track",6).click();
+    await page.locator('#kids-band [data-k="pad"][data-row="2"]').click();
+    const objectName=await page.evaluate(()=>App.KidsView.rowName(6,2));
+    assert.ok((await key("pad",inline).getAttribute("aria-label")).includes(objectName));
+    assert.equal(await inline.locator(".ks-sound-token svg").count(),1);
+    // The effects preview plays exactly the picture the child just touched on
+    // the score, even before any note has been put into this kit's pattern.
+    await page.evaluate(()=>{
+      window.previewHit=null;
+      const original=window.priorKidAudition=App.KidsMusic.audition;
+      App.KidsMusic.audition=function(part,row,...args){
+        const track=App.P.tracks[App.KidsMusic.tracks[part]],k=App.KidsMusic.pitch(part,row)-36;
+        window.previewHit={part,row,loaded:App.samples.has(track.kit.pads[k]?.id)};
+        return original.call(this,part,row,...args);
+      };
+    });
+    await holdUntil(key("pad",inline),()=>page.waitForFunction(()=>previewHit?.part===6 && previewHit.row===2 && previewHit.loaded && App.KidsMusic.levels()[6]>.001));
+    await page.evaluate(()=>{App.KidsMusic.audition=window.priorKidAudition;});
+    await band("track",2).click();
+    // Give the meters signal at several positions in the timbre sweep, including its bright half.
+    for(const [r,c] of [[0,0],[2,2],[1,4],[3,6]]){
+      await page.locator('#kids-band [data-k="note"][data-row="'+r+'"][data-col="'+c+'"]').click();
+    }
+    await mode("colour",inline).click();await key("arm",inline).click();await band("sound").click();
+    assert.equal(await mode("colour").getAttribute("aria-pressed"),"true");
+    assert.equal(await key("arm").getAttribute("aria-pressed"),"true");
+    await key("back").click();
+    assert.equal(await mode("colour",inline).getAttribute("aria-pressed"),"true");
+    await paintPath(inline);
+    const first=await automation();
+    for(const k of ["macro1","macro2"])assert.ok(first[k].points.length>=3 && extent(first[k])>.35,"inline colour movement "+k);
+    await band("play").click();
+    await mode("echo",inline).click();await band("sound").click();await key("pad").waitFor();
+    assert.equal((await room.innerText()).trim(),"");
+    assert.equal(await room.locator("canvas[data-kid-screen]").count(),2);
+    assert.deepEqual(await automation(),first);
+    await checkBounds(room);
     await key("play").click();
     await page.waitForFunction(()=>{
       const screens=Array.from(document.querySelectorAll("#kids-sound canvas[data-kid-screen]"));
@@ -73,8 +118,8 @@ module.exports=async function kidsSound(reference) {
       for(let i=0;i<3;i++){await key(action).click();values.push(await page.evaluate(k=>App.P.fx[k],param));}
       assert.equal(new Set(values).size,3);
     }
-    const recordings={};
-    for(const name of ["echo","colour","motion"]) {
+    const recordings={...first};
+    for(const name of ["echo","motion"]) {
       await mode(name).click();
       if(await key("arm").getAttribute("aria-pressed")!=="true")await key("arm").click();
       await paintPath();

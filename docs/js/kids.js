@@ -4,18 +4,31 @@
   const music=App.KidsMusic,store=App.KidsStore;
   let bridge,root,surface,sound,entry,parked=null,switching=false,armed=false,recordSince=0,ready=false;
   let shelves=[],signalFrame=0,feedback="",feedbackTimer=0,noticeEpoch=0;
+  const lastRows=music.tracks.map(()=>0);
   const valid=(n,max)=>Number.isInteger(n) && n>=0 && n<max;
   const part=()=>Math.max(0,music.tracks.indexOf(App.P.sel.t));
   const pattern=()=>App.clamp(App.P.sel.p,0,3);
   function updateShelves(){shelves=store.slots();}
   function state(){
     const P=App.P, grid=music.grid(P,part(),pattern());
-    return {track:part(),pattern:pattern(),grid,expression:grid.map(row=>row.map(v=>Math.max(0,v-1))),
+    const patternMotifs=Array.from({length:4},()=>Array(8).fill(0));
+    const partMotifs=music.tracks.map(ti=>{
+      const partMotif=Array(8).fill(0);
+      const clips=P.tracks[ti].clips;
+      patternMotifs.forEach((motif,p)=>{
+        for(const n of clips[p])if(n.s>=0 && n.s<16){
+          const beat=Math.floor(n.s/2);motif[beat]++;
+          if(p===pattern())partMotif[beat]++;
+        }
+      });
+      return partMotif;
+    });
+    return {track:part(),pattern:pattern(),row:lastRows[part()],patternMotifs,partMotifs,partHasNotes:partMotifs.map(hits=>hits.some(Boolean)),grid,expression:grid.map(row=>row.map(v=>Math.max(0,v-1))),
       costumes:music.costumes(P),tempo:music.tempoIndex(P),playing:App.Seq.playing,song:!!P.song,chain:P.chain.slice(),
       armed,recording:music.recording()!=="idle",hasVoice:!!P.tracks[6].smp.id,canUndo:store.canUndo(),shelf:shelves,
       slot:store.slot,busy:music.recording()==="saving",feedback};
   }
-  function paint(){if(store.active && ready){App.KidsView.render(state());if(!sound.hidden)App.KidsSound.paint();}}
+  function paint(){if(store.active && ready){App.KidsView.render(state());App.KidsSound.paint();}}
   function flash(value){
     clearTimeout(feedbackTimer);feedback=value;paint();
     feedbackTimer=setTimeout(()=>{feedback="";paint();},1100);
@@ -26,8 +39,9 @@
     if(on)url.searchParams.set("kids","");else url.searchParams.delete("kids");
     history.replaceState(history.state,"",url);
   }
-  function prepare(){
+  function prepare(resetRows=true){
     music.prepare(App.P);
+    if(resetRows)lastRows.fill(0);
     if(!music.tracks.includes(App.P.sel.t))App.P.sel.t=0;
     if(!valid(App.P.sel.p,4))App.P.sel.p=0;
     music.sync();App.E?.source("out");App.E?.monitor(false);
@@ -36,18 +50,18 @@
     armed=false;App.Seq.stop(true);App.E?.panic(true);App.Seq.startAt(0);
   }
   function play(){
-    if(App.Seq.playing){armed=false;App.Seq.stop(true);}
+    if(App.Seq.playing){App.KidsSound.release();armed=false;App.Seq.stop(true);}
     else {App.Seq.startAt(0);App.Seq.play();}
     paint();
   }
-  function soundPage(open){
-    if(open){
-      armed=false;surface.hidden=true;sound.hidden=false;
-      App.KidsSound.open(sound,{back:()=>soundPage(false),part,pattern,play,paint,saved:()=>flash("saved")});
-    }else{
-      App.KidsSound.close();sound.hidden=true;surface.hidden=false;paint();
-      surface.querySelector('[data-k="sound"]')?.focus({preventScroll:true});
-    }
+  function soundPage(expanded,restoreFocus=false){
+    const api={part,pattern,row:()=>lastRows[part()],play,paint,expand:()=>soundPage(true),back:()=>soundPage(false,true)};
+    App.KidsSound.release();
+    sound.hidden=!expanded;
+    surface.hidden=expanded;
+    const host=expanded?sound:surface.querySelector("#kids-inline-sound");
+    App.KidsSound.open(host,api,{compact:!expanded});
+    if(restoreFocus)surface.querySelector('[data-k="sound"]')?.focus({preventScroll:true});
   }
   async function hydrate(){
     const P=App.P,epoch=++noticeEpoch;
@@ -61,17 +75,21 @@
     try{
       parked=await bridge.park();
       store.enter(music.newProject);prepare();
+      // A bookmarked studio must be playable on its very first tap, including on a cold cache.
+      let loadError=false;
+      try{await App.KidsWorld.ready(App.P);}catch{loadError=true;}
       root.hidden=false;consoleRoot.hidden=true;
       document.body.classList.add("band-open");updateShelves();
-      App.KidsView.mount(surface,dispatch);surface.hidden=false;sound.hidden=true;
-      ready=true;preference(true);paint();hydrate();
+      App.KidsView.mount(surface,dispatch);App.KidsStamp.mount(surface,dispatch);surface.hidden=false;sound.hidden=true;
+      ready=true;preference(true);paint();soundPage(false);hydrate();
+      if(loadError)flash("error");
       if(!auto)surface.querySelector('[data-k="play"]')?.focus({preventScroll:true});
     }finally{switching=false;if(!store.active)consoleRoot.inert=false;}
   }
   function leave(){
     if(!store.active || switching)return;
     ++noticeEpoch;clearTimeout(feedbackTimer);feedback="";ready=false;
-    App.KidsSound.close();music.dispose();stop();App.KidsView.unmount();store.leave();
+    App.KidsSound.close();music.dispose();stop();App.KidsStamp.unmount();App.KidsView.unmount();store.leave();
     root.hidden=true;const consoleRoot=document.getElementById("app");consoleRoot.hidden=false;consoleRoot.inert=false;
     document.body.classList.remove("band-open");preference(false);
     bridge.resume(parked);parked=null;entry.focus({preventScroll:true});
@@ -113,18 +131,26 @@
       case "import":if(valid(i,8))void toConsole(i);return;
       case "sound":soundPage(true);return;
       case "track":
-        if(!valid(i,4))return;
-        P.sel.t=music.tracks[i];App.touch();paint();return;
+        if(!valid(i,music.tracks.length))return;
+        App.KidsSound.release();P.sel.t=music.tracks[i];App.touch();paint();
+        music.audition(i,lastRows[i]);return;
       case "pattern":
         if(!valid(i,4))return;
-        P.sel.p=i;if(App.Seq.playing && !P.song)App.Seq.cue(i);App.touch();paint();return;
+        App.KidsSound.release();P.sel.p=i;if(App.Seq.playing && !P.song)App.Seq.cue(i);App.touch();paint();return;
+      case "stamp":{
+        if(!valid(i,4)||!valid(j,8))return;
+        lastRows[who]=i;
+        if(music.grid(P,who,pi)[i][j]){paint();return;}
+        music.edit(P,who,pi,i,j);break;
+      }
       case "note":case "expression":{
         if(!valid(i,4)||!valid(j,8))return;
+        lastRows[who]=i;
         const intensity=music.edit(P,who,pi,i,j,action==="expression");
         music.audition(who,i,intensity||1);
         break;
       }
-      case "pad":livePad(i);return;
+      case "pad":if(valid(i,4)){lastRows[who]=i;livePad(i);paint();}return;
       case "arm":
         armed=!armed;if(armed && !App.Seq.playing){App.Seq.startAt(0);App.Seq.play();}paint();return;
       case "disarm":armed=false;paint();return;
@@ -150,9 +176,9 @@
         },()=>{if(store.active){P.sel.t=6;App.commit();App.E?.syncTrack(6);music.audition(3,3);flash("recorded");}});return;
       case "undo":case "new":case "load":{
         if(action==="undo" && !store.canUndo() || action==="load" && !valid(i,8))return;
-        music.cancelRecording();stop();
+        App.KidsSound.release();music.cancelRecording();stop();
         const ok=action==="undo"?store.undo():action==="load"?store.load(i):store.fresh(music.newProject);
-        if(ok){prepare();updateShelves();paint();hydrate();}else flash("error");return;
+        if(ok){prepare(action!=="undo" || App.historyCrossedProject);updateShelves();paint();hydrate();}else flash("error");return;
       }
       case "save":case "saveTo":{
         const slot=action==="saveTo"?i:store.slot>=0?store.slot:shelves.findIndex(x=>!x);
@@ -167,7 +193,8 @@
     if(!ready)return;
     const mic=music.recording(), f={step:c?Math.floor(c.step/2)%8:-1,pattern:c?.pat,slot:c?.si,levels:music.levels(),
       micLevel:music.micLevel(),recordProgress:mic==="recording"?Math.min(1,(now-recordSince)/6000):0};
-    if(sound.hidden)App.KidsView.frame(f);else App.KidsSound.frame(c,f.levels);
+    if(sound.hidden)App.KidsView.frame(f);
+    App.KidsSound.frame(c,f.levels);
     if(now-signalFrame>=32){App.KidsScopes.draw(root);signalFrame=now;}
   }
   function init(api){
@@ -178,7 +205,7 @@
     });
     entry=document.getElementById("kids-entry");entry.addEventListener("click",()=>void enter());
     entry.addEventListener("contextmenu",e=>{e.preventDefault();App.UI.menu(entry,[{label:"Open kids studio",value:"open"}],()=>void enter());});
-    window.addEventListener("kids-storage-error",()=>{if(store.active)flash("error");});
+    for(const event of ["kids-storage-error","kids-audio-error"])window.addEventListener(event,()=>{if(store.active)flash("error");});
     window.addEventListener("storage",e=>{if(store.active && e.key?.includes("kids")){updateShelves();paint();}});
     document.addEventListener("visibilitychange",()=>{if(document.hidden && store.active){music.cancelRecording();App.KidsSound.release();paint();}});
     window.addEventListener("pagehide",()=>{if(store.active){music.cancelRecording();App.KidsSound.release();}});

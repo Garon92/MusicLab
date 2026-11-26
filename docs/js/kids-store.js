@@ -44,18 +44,57 @@
     }
   }
 
-  // Fail a stale undo cleanly if somebody else has since replaced that shelf
-  // space. On a full store, restore the smaller previous record before returning.
-  function changeShelf(edit, forward, project, index) {
-    const key = slotKey(edit.slot), from = forward ? edit.before : edit.after, to = forward ? edit.after : edit.before;
-    try {
-      if (localStorage.getItem(key) !== from) return failure();
-      put(key,to);
-      if (writeDraft(project,index)) return true;
-      if (localStorage.getItem(key) === to) put(key,from);
-    } catch { failure(); }
-    return false;
+  // A saved version is still a regular project for older readers. Undo writes
+  // only to that version's own key. In particular, an old WebKit tab whose
+  // localStorage snapshot is one notification behind cannot erase a newer save.
+  const overridePrefix=prefix+"undo.", writtenOverrides=new Map();
+  const overrideKey=(index,version)=>overridePrefix+index+"."+version;
+  const versionTag=/^\{"_bandShelfVersion":"([a-z0-9-]+)",/;
+  const tag=raw=>raw?.match(versionTag)?.[1];
+  const withoutTag=raw=>raw?.replace(versionTag,"{") ?? null;
+  const versioned=raw=>'{"_bandShelfVersion":"'+crypto.getRandomValues(new Uint32Array(4)).join('-')+'",'+raw.slice(1);
+  function slotState(index) {
+    const base=localStorage.getItem(slotKey(index)), version=tag(base);
+    const key=version ? overrideKey(index,version) : null;
+    const override=key ? localStorage.getItem(key) : null;
+    return {base,key,value:override===null ? base : override==="null" ? null : override};
   }
+  function changeShelf(edit, forward, project, index, saving=false) {
+    const from=forward ? edit.before : edit.after, to=forward ? edit.after : edit.before;
+    try {
+      const state=slotState(edit.slot);
+      if (state.value!==from || (!saving && !state.key)) return failure();
+      const key=saving ? slotKey(edit.slot) : state.key;
+      const value=saving ? to : to===state.base ? null : to??"null";
+      const previousDraft=localStorage.getItem(draftKey), previousLocal=lastDraft, previousVolatile=volatile;
+      // A quota failure writing the draft must leave the shelf untouched. If
+      // the shelf itself is full, put the earlier draft back before returning.
+      if (!writeDraft(project,index)) return false;
+      try { put(key,value); }
+      catch {
+        if (localStorage.getItem(draftKey)===lastDraft) put(draftKey,previousDraft);
+        lastDraft=previousLocal;volatile=previousVolatile;return failure();
+      }
+      const keep=!saving && value!==null ? key : null;
+      // Keep at most one outstanding override made by this tab per shelf space.
+      // A notification also prunes an Undo written during the propagation gap.
+      const previous=writtenOverrides.get(edit.slot);
+      for (const unused of [previous,saving?state.key:null]) {
+        if (unused && unused!==keep) {
+          try { localStorage.removeItem(unused); } catch { /* The exclusive sweep can retry. */ }
+        }
+      }
+      if (keep) writtenOverrides.set(edit.slot,keep); else writtenOverrides.delete(edit.slot);
+      return true;
+    } catch { return failure(); }
+  }
+  window.addEventListener("storage",e=>{
+    const match=e.key?.match(/^musiclab\.kids\.v1\.slot\.([0-7])$/), version=tag(e.oldValue);
+    if (!match || !version || tag(e.newValue)===version) return;
+    const i=Number(match[1]),unused=overrideKey(i,version);
+    if (writtenOverrides.get(i)!==unused) return;
+    try { localStorage.removeItem(unused);writtenOverrides.delete(i); } catch {}
+  });
   const store = {
     slot: () => slot,
     write:writeDraft,
@@ -102,9 +141,9 @@
     if (!adult || !validSlot(index)) return false;
     const after = JSON.stringify(App.P);
     let before;
-    try { before = localStorage.getItem(slotKey(index)); } catch { return failure(); }
-    const edit = before === after ? null : {slot:index,before,after};
-    if (edit ? !changeShelf(edit,true,after,index) : !writeDraft(after,index)) return false;
+    try { before = slotState(index).value; } catch { return failure(); }
+    const edit = withoutTag(before) === after ? null : {slot:index,before,after:versioned(after)};
+    if (edit ? !changeShelf(edit,true,after,index,true) : !writeDraft(after,index)) return false;
     slot = index;
     App.commit(false,edit);
     return true;
@@ -112,7 +151,7 @@
   function read(index) {
     if (!validSlot(index)) return null;
     try {
-      const raw = localStorage.getItem(slotKey(index));
+      const raw = slotState(index).value;
       return raw == null ? null : soundProject(raw);
     } catch { failure(); return null; }
   }
@@ -127,7 +166,7 @@
   function slots() {
     return Array.from({length:size}, (_,i) => {
       try {
-        const raw = localStorage.getItem(slotKey(i));
+        const raw = slotState(i).value;
         if (raw == null) { previews[i] = null; return null; }
         if (raw === previews[i]?.raw) return previews[i].info;
         const P = soundProject(raw), motif = Array(8).fill(0), banks = new Set();
@@ -151,9 +190,18 @@
     const projects = [];
     const draft = localStorage.getItem(draftKey);
     if (draft !== null) projects.push(readDraft(draft).project);
-    for (let i = 0; i < size; i++) {
-      const song = localStorage.getItem(slotKey(i));
-      if (song !== null) projects.push(soundProject(song));
+    const activeOverrides=new Set();
+    for (let i=0;i<size;i++) {
+      const {base,key,value}=slotState(i);
+      if (key) activeOverrides.add(key);
+      if (base!==null) projects.push(soundProject(base));
+      if (value!==null && value!==base) projects.push(soundProject(value));
+    }
+    // This sweep runs with the tab lock held exclusively. Discard a late Undo
+    // that arrived after its slot was overwritten and can no longer be read.
+    for (let i=localStorage.length-1;i>=0;i--) {
+      const key=localStorage.key(i);
+      if (key?.startsWith(overridePrefix) && !activeOverrides.has(key))localStorage.removeItem(key);
     }
     if (adult) projects.push(adult.project);
     if (remembered) projects.push(remembered);

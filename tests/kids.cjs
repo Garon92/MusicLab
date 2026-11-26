@@ -115,10 +115,29 @@ module.exports = async function kidsUI(reference) {
       return drop.defaultPrevented && !reachedConsole;
     }));
     assert.equal(await key("note").count(),32);
+    assert.equal(await key("track").count(),8);assert.equal(await key("pad").count(),4);
+    assert.equal(await key("pattern").count(),4);assert.equal(await page.locator("#kids-band canvas[data-kid-screen]").count(),2);
+    assert.equal(await key("pad",'[data-row="0"]').getAttribute("aria-label"),"Play Cow");
+    assert.equal(await page.locator("#kids-inline-sound [data-sound=pad]").isVisible(),true);
     assert.equal(await page.evaluate(()=>App.P.tracks.every(t=>t.clips.every(c=>!c.length))),true);
     await key("lock").tap();assert.ok(await page.evaluate(()=>App.Kids.active));
     for(const [width,height] of sizes){await page.setViewportSize({width,height});await checkPanel(page,"Band");}
     await page.setViewportSize({width:1100,height:620});
+    // The source, its four row pads, its steps and its effects stay on this desk.
+    // Compose two different collections, then verify that switching keeps the
+    // previous rhythm visible in its eight-beat miniature on the source card.
+    for(const [source,track,row,step,name] of [[4,3,0,1,"Cow"],[6,5,2,4,"Keys"]]){
+      await item("track",source).tap();const pad=key("pad",'[data-row="'+row+'"]');
+      assert.equal(await pad.getAttribute("aria-label"),"Play "+name);
+      const bounds=await pad.boundingBox(),note=await cell(row,step).boundingBox();
+      assert.ok(Math.abs(bounds.y+bounds.height/2-note.y-note.height/2)<1,"played picture sits on its own row");
+      await pad.tap();await cell(row,step).tap();assert.match(await cell(row,step).getAttribute("aria-label"),new RegExp(name));
+      assert.equal(await item("track",source).locator(".kv-source-print .used").count(),1);
+      assert.equal(await page.evaluate(([t,c])=>App.P.tracks[t].clips[0][0].s===c*2,[track,step]),true);
+      assert.equal(await page.locator("#kids-inline-sound [data-sound=pad]").isVisible(),true);
+    }
+    await item("track",4).tap();assert.equal(await cell(0,1).getAttribute("aria-pressed"),"true");
+    assert.equal(await item("track",6).locator(".kv-source-print .used").count(),1);
     // Read the live level and the character animation in the same display frames.
     await page.evaluate(()=>{
       window.bandMeter={part:0,audio:0,mouth:0};
@@ -131,7 +150,7 @@ module.exports = async function kidsUI(reference) {
       };sample();
     });
     for(let t=0;t<4;t++){
-      if(t)await item("track",t).tap();
+      await item("track",t).tap();
       await page.evaluate(i=>Object.assign(window.bandMeter,{part:i,audio:0,mouth:0}),t);
       await cell(3,2*t).tap();
       assert.equal(await cell(3,2*t).getAttribute("aria-pressed"),"true");
@@ -146,17 +165,18 @@ module.exports = async function kidsUI(reference) {
     await key("undo").tap();assert.equal(await page.evaluate(()=>App.P.tracks[6].clips[0].length),1);
     await key("random").tap();assert.ok(await page.evaluate(()=>App.P.tracks[6].clips[0].length));
     await key("undo").tap();assert.equal(await page.evaluate(()=>App.P.tracks[6].clips[0].length),1);
-    await item("track",3).tap();
-    await checkPanel(page,"Live pads");await key("arm").tap();
+    await checkPanel(page,"Live pads on score");await key("arm").tap();
     await page.waitForFunction(()=>App.Seq.playing && App.Seq.frame()?.step>=1);
     await key("pad",'[data-row="0"]').tap();
     assert.equal(await page.evaluate(()=>App.P.tracks[6].clips[0].length),2);
-    await key("back").tap();await key("play").tap();
+    await key("play").tap();
     const tempo=key("tempo"), bounds=await tempo.boundingBox();
     await tempo.tap({position:{x:Math.floor(bounds.width-6),y:Math.floor(bounds.height/2)}});
     assert.equal(await page.evaluate(()=>App.P.bpm),148);
     await item("pattern",1).tap();await cell(2,1).tap();
-    await key("arrange").tap();await item("addPiece",1).tap();
+    await key("appendPiece").tap();
+    assert.deepEqual(await page.evaluate(()=>App.P.chain),[0,1],"append the selected piece without leaving the score");
+    await key("arrange").tap();
     await checkPanel(page,"Song arrangement");
     assert.deepEqual(await page.evaluate(()=>App.P.chain),[0,1]);
     await item("piece",1).tap();await key("moveLeft").tap();
@@ -217,6 +237,6 @@ module.exports = async function kidsUI(reference) {
     await page.waitForFunction(()=>App.P.name==="DESK ORIGINAL");
     assert.deepEqual(await page.evaluate(()=>App.sanitize(App.P)),adult);
     assert.deepEqual(errors,[]);
-    console.log("Kids studio · touch targets and six viewports, four audible characters, costumes, arrangement, shelf handoff and Undo · virtual mic "+voice.seconds.toFixed(2)+" s · console bounce peak "+imported.peak.toFixed(4)+", RMS "+imported.rms.toFixed(4));
+    console.log("Kids studio · touch targets and six viewports, inline picture rows and effects, independent kit rhythms, four audible characters, costumes, arrangement, shelf handoff and Undo · virtual mic "+voice.seconds.toFixed(2)+" s · console bounce peak "+imported.peak.toFixed(4)+", RMS "+imported.rms.toFixed(4));
   }finally{await context.close();}
 };

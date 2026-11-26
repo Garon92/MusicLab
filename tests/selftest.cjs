@@ -241,7 +241,7 @@ async function run(browserName, url) {
     await confirmIfAsked(page, name);
     assert.deepEqual(await project(page), original);
     assert.deepEqual(errors, []);
-    for (const suite of ["workstation", "operations", "phrases", "automation", "performance", "audio-studio", "mix-rack", "material-midi", "capture-rules-finder", "conductor", "sampler-lab", "scenes-eq", "composition-lab", "rack-laboratory", "signal-workshop", "instrument-lab", "console-rules", "console-kit", "regressions", "kids-storage", "kids-music", "kids", "kids-sound"]) {
+    for (const suite of ["workstation", "operations", "phrases", "automation", "performance", "audio-studio", "mix-rack", "material-midi", "capture-rules-finder", "conductor", "sampler-lab", "scenes-eq", "composition-lab", "rack-laboratory", "signal-workshop", "instrument-lab", "console-rules", "console-kit", "regressions", "kids-storage", "kids-world", "kids-music", "kids", "kids-stamp", "kids-sound"]) {
       await require("./" + suite + ".cjs")(page);
     }
     assert.deepEqual(errors, []);

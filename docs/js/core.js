@@ -637,14 +637,46 @@
     }
     for (const extension of extensions) extension.remapSample?.(P, from, to);
   };
+  // An installed instrument may supply a local asset for one of its reserved IDs.
+  // Keep the bytes in IndexedDB too, so an already played kit survives offline.
+  const bundledRecord = id => {
+    for (const e of extensions) {
+      const asset = e.bundledSample?.(id);
+      if (asset) return asset;
+    }
+    return null;
+  };
+  async function sampleRecord(id) {
+    const asset = bundledRecord(id);
+    let saved;
+    try { saved = await idb.get(id); } catch (error) { if (!asset) throw error; }
+    if (saved || !asset) return saved;
+    const response = await fetch(asset.url);
+    if (!response.ok) throw Error("CANNOT LOAD " + asset.name.toUpperCase());
+    return {id,name:asset.name,blob:await response.blob(),bundled:true};
+  }
+  const restoring = new Map();
+  App.restoreSample = id => {
+    if (App.samples.has(id)) return Promise.resolve(false);
+    if (restoring.has(id)) return restoring.get(id);
+    const loading = sampleRecord(id).then(async record => {
+      if (!record) return false;
+      const buf = await decode(await record.blob.arrayBuffer());
+      if (record.bundled) {
+        // Cache only decodable audio. A broken response can be retried on the next hit.
+        try { await idb.put({id,name:record.name,blob:record.blob}); } catch { /* The installed asset remains available. */ }
+      }
+      register(id,record.name,buf,record.blob);
+      return true;
+    }).finally(()=>restoring.delete(id));
+    restoring.set(id,loading);
+    return loading;
+  };
   App.restoreSamples = async (project = App.P) => {
     let n = 0;
     for (const id of App.sampleIds(project)) {
-      if (App.samples.has(id)) continue;
-      try {
-        const r = await idb.get(id);
-        if (r) { register(id, r.name, await decode(await r.blob.arrayBuffer()), r.blob); n++; }
-      } catch (e) { /* missing audio shows as an empty sampler */ }
+      try { if (await App.restoreSample(id)) n++; }
+      catch { /* Missing audio shows as an empty sampler. */ }
     }
     return n;
   };
@@ -652,6 +684,10 @@
     const sample = App.samples.get(id);
     if (sample?.blob) return sample.blob;
     if (sample) return wav(sample.buffer);
+    if (bundledRecord(id)) {
+      await App.restoreSample(id);
+      return App.samples.get(id)?.blob || null;
+    }
     return (await idb.get(id))?.blob || null;
   };
   App.importSample = async (id, name, blob) => {
@@ -663,7 +699,7 @@
      only a tab that is open alone cleans (another tab's undo history may still hold a sample), it keeps all that
      this tab has decoded or can undo to, and a build older than the one that last saved cleans nothing, because a
      later build may keep sample ids where this one does not look. Raise REFS with every such new place. */
-  const REFS = 2, REFS_KEY = KEY + ".refs", TABS = "musiclab.tabs";
+  const REFS = 3, REFS_KEY = KEY + ".refs", TABS = "musiclab.tabs";
   App.tidySamples = async (projects) => {
     const locks = navigator.locks;
     let known = 0, removed = 0;

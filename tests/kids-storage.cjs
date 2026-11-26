@@ -44,15 +44,20 @@ module.exports = async function kidsStorage(reference) {
       S.fresh(factory);
       const orphan = await App.storeBuffer("UNREFERENCED",tone);
       const separate = S.slots().filter(Boolean).length === 2 && S.slots()[0].motif[1] === 1 && !S.read(2);
-      // Simulate a full device precisely between its single-slot and draft writes.
+      // Either write can hit quota. The offered song, selected slot and
+      // persisted draft must all survive the failed replacement.
       const set=Storage.prototype.setItem;
-      Storage.prototype.setItem=function(key,value){
-        if(key==="musiclab.kids.v1.draft")throw new DOMException("Full","QuotaExceededError");
-        return set.call(this,key,value);
-      };
-      let atomic;
-      try { atomic = !S.save(1) && S.read(1).name === "OTHER BAND" && S.slot === -1; }
-      finally { Storage.prototype.setItem=set; }
+      let atomic=true;
+      for(const blocked of ["musiclab.kids.v1.draft","musiclab.kids.v1.slot.1"]){
+        const draft=localStorage.getItem("musiclab.kids.v1.draft");
+        Storage.prototype.setItem=function(key,value){
+          if(key===blocked)throw new DOMException("Full","QuotaExceededError");
+          return set.call(this,key,value);
+        };
+        try { atomic=atomic && !S.save(1) && S.read(1).name==="OTHER BAND" && S.slot===-1 &&
+          localStorage.getItem("musiclab.kids.v1.draft")===draft; }
+        finally { Storage.prototype.setItem=set; }
+      }
       App.flush();
       const cleanPaper = localStorage.getItem("musiclab.v3") === adult;
       const oneEdit = S.canUndo();
@@ -89,24 +94,49 @@ module.exports = async function kidsStorage(reference) {
     assert.ok(durable.count>=4000 && durable.peak>.22);
     assert.equal(durable.sample,result.voice);assert.equal(durable.entry,result.voice);
     assert.equal(durable.childCount,1);assert.equal(durable.adultCount,0);
-    assert.ok(durable.refs>=2);assert.equal(durable.adult,"DESK TAKE");
+    assert.ok(durable.refs>=3);assert.equal(durable.adult,"DESK TAKE");
 
-    await reload.evaluate(()=>{App.KidsStore.enter(App.newProject);App.KidsStore.load(0);App.KidsStore.save(4);});
+    const firstVersion=await reload.evaluate(()=>{
+      const S=App.KidsStore;S.enter(App.newProject);
+      if(!S.load(0)||!S.save(4))throw Error("Cannot seed the shared slot");
+      return localStorage.getItem("musiclab.kids.v1.slot.4");
+    });
     const sibling=await open();
-    await sibling.evaluate(()=>{
+    const secondSaved=await sibling.evaluate(()=>{
       App.P.name="DESK IN ANOTHER TAB";App.commit();
-      App.KidsStore.enter(App.newProject);App.KidsStore.load(1);App.KidsStore.save(4);
+      const S=App.KidsStore;S.enter(App.newProject);
+      return S.load(1) && S.save(4) && S.read(4).name==="OTHER BAND";
     });
+    assert.ok(secondSaved,"The second tab completed its save");
+    // WebKit can finish a save in one process before it delivers the storage
+    // update to the other. Reproduce that old snapshot deterministically.
+    const localUndo=await reload.evaluate(version=>{
+      const get=Storage.prototype.getItem;
+      Storage.prototype.getItem=function(key){return key==="musiclab.kids.v1.slot.4"?version:get.call(this,key);};
+      try {return App.KidsStore.undo();} finally {Storage.prototype.getItem=get;}
+    },firstVersion);
+    assert.ok(localUndo,"The old snapshot still believed its version was current");
+    await reload.waitForFunction(()=>App.KidsStore.read(4)?.name==="OTHER BAND");
+    assert.equal(await sibling.evaluate(()=>App.KidsStore.read(4)?.name),"OTHER BAND","A stale Undo did not remove the successful save");
+    // Once the writer's newer version has arrived, Undo can reject the conflict immediately.
+    assert.ok(await reload.evaluate(()=>App.KidsStore.save(5)));
+    await sibling.waitForFunction(()=>App.KidsStore.read(5)?.name==="BAND");
+    assert.ok(await sibling.evaluate(()=>App.KidsStore.save(5)));
+    await reload.waitForFunction(()=>App.KidsStore.read(5)?.name==="OTHER BAND");
     const concurrent=await reload.evaluate(()=>{
-      const protectedShelf=!App.KidsStore.undo() && App.KidsStore.read(4).name==="OTHER BAND";
+      const protectedShelf=!App.KidsStore.undo() && App.KidsStore.read(5).name==="OTHER BAND";
       App.KidsStore.leave();App.flush();
-      return {protectedShelf,desk:App.stored().name};
+      return {protectedShelf,desk:App.P.name};
     });
-    assert.ok(concurrent.protectedShelf);assert.equal(concurrent.desk,"DESK IN ANOTHER TAB");
+    assert.ok(concurrent.protectedShelf);assert.equal(concurrent.desk,"DESK TAKE");
+    await reload.waitForFunction(()=>App.stored().name==="DESK IN ANOTHER TAB");
+    assert.equal(await sibling.evaluate(()=>App.stored().name),"DESK IN ANOTHER TAB");
     const capacity=await sibling.evaluate(()=>{
       const S=App.KidsStore;
       for(let i=0;i<8;i++)if(!S.read(i)){App.P.name="SLOT "+i;App.commit();if(!S.save(i))return false;}
-      return S.slots().length===8 && S.slots().every(Boolean) && !S.save(8) && !S.read(-1) && S.read(0).name==="BAND";
+      for(let i=0;i<12;i++){App.P.name="TAKE "+i;App.commit();if(!S.save(6)||!S.undo())return false;}
+      const masks=Object.keys(localStorage).filter(k=>k.startsWith("musiclab.kids.v1.undo.6."));
+      return masks.length<=1 && S.slots().length===8 && S.slots().every(Boolean) && !S.save(8) && !S.read(-1) && S.read(0).name==="BAND";
     });
     assert.ok(capacity,"Eight identifiable songs coexist without reusing an occupied slot");
     const futureVoice=await sibling.evaluate(async()=>{

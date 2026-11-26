@@ -326,7 +326,7 @@
     const end=range ? range.to : layout.total, from=range ? range.from : 0;
     if (![from,end].every(Number.isFinite) || from<0 || end<=from || end>layout.total+1e-6) throw Error("SELECT A RANGE INSIDE THE ARRANGEMENT");
     const steps=Math.ceil(end), span=seconds(P,end), sr=App.E?.ctx.sampleRate || 48000;
-    await App.compLagReady;
+    await Promise.all([App.compLagReady,App.restoreSamples(P)]);
     const lag=stems?.length ? 0 : 2*App.compLagFrames(sr); // compressor and limiter on the master; stems are taken before them
     // The render ends when the sound does: reverb, then the delay line ringing down 60 dB, then the longest release in use.
     const echo=P.tracks.some(t=>t.dly>0) ? (()=>{

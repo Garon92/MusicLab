@@ -49,12 +49,13 @@
     add("Stop, all sound off","Transport","panic all notes off ticho",()=>App.silence(),"ESC");
     add("Kids music studio","View / Kids","kids mode child band loops echo modulation sound playground dětské kapela polička",()=>App.Kids.enter());
     note("Studio","Costumes · hold a musician","HOLD","kids band change sound");
-    note("Studio","Live pads · tap the selected player","TAP","kids record quantised band");
+    note("Studio","Play a pictured row or record its hits","TAP","kids pads farm animals pets toys objects clock recorded rhythm");
+    note("Studio","Stamp a pictured sound onto the beat","DRAG","kids animal instrument sound drag place");
     note("Studio","Accents and long notes","HOLD","kids note expression roll");
-    note("Studio","Echo, colour and vibrato","DRAG","kids sound playground modulation XY");
+    note("Studio","Shape the pictured row beside its score","DRAG","kids echo colour vibrato sound playground modulation XY");
     note("Studio","Record a movement","ARM + DRAG","kids gesture automation reverse");
     note("Studio","Freeze the signal displays","SNOWFLAKE","kids waveform spectrum");
-    note("Studio","Reorder song pieces","DRAG","kids arrange chain");
+    note("Studio","Append the pictured piece, reorder in chain","PLUS / DRAG","kids arrange chain");
     note("Studio","Open a shelf song in console","HOLD","kids import parent");
     note("Studio","Return through the lock","HOLD 2 SEC","kids exit parent");
     add("Tap tempo","Transport / Tap","tap bpm tempo by hand vyťukat",()=>press("top","TAP"));

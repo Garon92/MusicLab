@@ -2,19 +2,23 @@
 (() => {
   "use strict";
 
-  const tracks = [0, 1, 2, 6];
+  const tracks = [0, 1, 2, 6, 3, 4, 5, 7];
   const tempos = [76, 100, 124, 148];
   const pitches = [
     [39, 38, 37, 36], // Hat, clap, snare, kick
     [43, 40, 38, 36],
     [72, 69, 67, 64],
-    [69, 67, 64, 60]
+    [69, 67, 64, 60],
+    ...App.KidsWorld.groups.map(()=>[36,37,38,39])
   ];
   const voicePart = 3, masterMax = .54;
   const names = ["DRUMS", "BASS", "MELODY", "MY VOICE"];
   const normalVelocity = .69, accentVelocity = .98;
   const quartets = [0, 1, 2, 3];
-  const validPart = v => Number.isInteger(v) && v >= 0 && v < 4;
+  const inFour = v => Number.isInteger(v) && v >= 0 && v < 4;
+  const validPart = v => Number.isInteger(v) && v >= 0 && v < tracks.length;
+  const isKit = part => part === 0 || part >= 4;
+  const pitch = (part,row) => pitches[part]?.[row];
 
   // Keep the same recording when changing its costume. All four variants are
   // native sampler settings so they transfer to the full console and WAV bounce.
@@ -56,18 +60,30 @@
   const tempoIndex = P => tempos.reduce((best, value, index) =>
     Math.abs(P.bpm - value) < Math.abs(P.bpm - tempos[best]) ? index : best, 0);
   function tempo(P,index) {
-    if (validPart(index)) P.bpm = tempos[index];
+    if (inFour(index)) P.bpm = tempos[index];
     return tempoIndex(P);
   }
   App.extendProject({load(P, raw) {
     if (!Array.isArray(raw.kidsBand?.costumes)) return;
-    P.kidsBand = {costumes: quartets.map(i => validPart(raw.kidsBand.costumes[i]) ? raw.kidsBand.costumes[i] : 0)};
+    P.kidsBand = {costumes: quartets.map(i => inFour(raw.kidsBand.costumes[i]) ? raw.kidsBand.costumes[i] : 0)};
+    if (raw.kidsBand.world === 1) P.kidsBand.world = 1;
   }});
   function costumes(P) {
     return P.kidsBand?.costumes.slice() || [0, 0, 0, 0];
   }
   function prepare(P) {
     if (!P.kidsBand) P.kidsBand = {costumes:[0, 0, 0, 0]};
+    if (P.kidsBand.world !== 1) {
+      // The original four-part band left these strips untouched. Compare the
+      // canonical track definitions before installing sounds on an older draft.
+      const defaults=App.sanitize(App.newProject()), old=App.sanitize(P);
+      App.KidsWorld.groups.forEach((group,i)=>{
+        const ti=tracks[i+4];
+        if (JSON.stringify(old.tracks[ti])===JSON.stringify(defaults.tracks[ti]) &&
+            !P.audio?.regions?.some(r=>r.track===ti)) App.KidsWorld.install(P.tracks[ti],group);
+      });
+      P.kidsBand.world=1;
+    }
     P.fx.vol = Math.min(P.fx.vol, masterMax);
     P.bpm = tempos[tempoIndex(P)];
     return P;
@@ -81,7 +97,7 @@
     param.setValueAtTime(Math.min(App.P.fx.vol, masterMax) ** 2, now);
   }
   function costume(P,part,index) {
-    if (!validPart(part) || !validPart(index)) return;
+    if (!inFour(part) || !inFour(index)) return;
     P.kidsBand.costumes[part] = index;
     const T = P.tracks[tracks[part]];
     if (P === App.P) App.E?.cutTrack(tracks[part]);
@@ -105,8 +121,11 @@
     P.scale = App.SCALES.findIndex(scale => scale[0] === "PENTA MAJOR");
     P.key = 0; P.sig = 2; P.bpm = tempos[1]; P.fx.vol = masterMax;
     P.chain = [0]; P.song = 0; P.arrangement.slots = [null];
-    prepare(P);
-    tracks.forEach((ti,i) => {
+    P.kidsBand={costumes:[0,0,0,0],world:1};
+    App.KidsWorld.groups.forEach((group,i)=>App.KidsWorld.install(P.tracks[tracks[i+4]],group));
+    P.sel.t=tracks[4];
+    quartets.forEach(i => {
+      const ti=tracks[i];
       const T = P.tracks[ti];
       T.name = names[i]; T.vol = [.77,.81,.73,.76][i]; T.lo = Math.min(...pitches[i]);
       T.rev = [.04,.03,.14,.09][i]; T.dly = 0;
@@ -120,9 +139,9 @@
     const long = strength === 3;
     return {
       s:2*col, n:pitches[part][row],
-      l:long ? (part === 0 ? 2 : Math.min(4, 16 - 2*col)) : 1,
+      l:long ? (isKit(part) ? 2 : Math.min(4, 16 - 2*col)) : 1,
       v:strength === 2 ? accentVelocity : normalVelocity, p:1,
-      ...(long && part === 0 ? {r:2} : {})
+      ...(long && isKit(part) ? {r:2} : {})
     };
   }
   function grid(P,part,pattern) {
@@ -135,7 +154,7 @@
     return rows;
   }
   function edit(P,part,pattern,row,col,hold = false) {
-    if (![part,pattern,row].every(validPart) || !Number.isInteger(col) || col < 0 || col > 7) return 0;
+    if (!validPart(part) || !inFour(pattern) || !inFour(row) || !Number.isInteger(col) || col < 0 || col > 7) return 0;
     const clip = P.tracks[tracks[part]].clips[pattern], key = pitches[part][row];
     const index = clip.findIndex(n => n.s === 2*col && n.n === key);
     const old = index < 0 ? 0 : intensity(clip[index]);
@@ -154,12 +173,20 @@
     return true;
   }
   function audition(part,row,strength=1) {
-    if (!validPart(part) || !validPart(row)) return;
+    if (!validPart(part) || !inFour(row)) return;
     const engine = App.audio(); if (!engine) return;
-    const n = makeNote(part,row,0,strength || 1), step = 15/App.P.bpm;
-    const t = Math.max(.16, engine.ctx.currentTime + Math.max(.009,engine.ctx.baseLatency || 0));
-    const count = n.r || 1, width = n.l*step/count;
-    for (let i=0;i<count;i++) engine.play(tracks[part], n.n, n.v, t+i*width, Math.max(.02,width-.004),true);
+    const project=App.P, ti=tracks[part], n=makeNote(part,row,0,strength || 1);
+    const play=()=>{
+      if (project!==App.P) return;
+      const step=15/project.bpm, t=Math.max(.16,engine.ctx.currentTime+Math.max(.009,engine.ctx.baseLatency||0));
+      const count=n.r||1,width=n.l*step/count;
+      for(let i=0;i<count;i++)engine.play(ti,n.n,n.v,t+i*width,Math.max(.02,width-.004),true);
+    };
+    const pad=project.tracks[ti].kind==="kit" ? project.tracks[ti].kit.pads[n.n-36] : null;
+    if (pad?.src===1 && pad.id && !App.samples.has(pad.id)) {
+      App.restoreSample(pad.id).then(()=>{if(App.samples.has(pad.id))play();})
+        .catch(()=>window.dispatchEvent(new Event("kids-audio-error")));
+    } else play();
   }
 
   const choose = items => items[Math.floor(Math.random()*items.length)];
@@ -176,6 +203,11 @@
       const index = Math.floor(Math.random()*notes.length), n = notes[index];
       notes[index] = makeNote(part, pitches[part].indexOf(n.n), n.s/2, intensity(n)%3+1);
       if (notes.length < 12 && Math.random() < .65) put(choose(quartets),choose([1,3,5,7]));
+    } else if (part >= 4) {
+      // Give the one-shots space to answer each other, especially long animal calls.
+      const caller=choose(quartets), responders=quartets.filter(r=>r!==caller);
+      put(caller,0,2);put(choose(responders),choose([2,3]));put(caller,4);
+      put(choose(responders),choose([6,7]));
     } else if (!part) {
       put(3,0,2); put(3,choose([3,4,5])); put(2,choose([2,6]),2);
       const hats = choose([[0,2,4,6],[1,3,5,7],[0,3,4,7]]);
@@ -296,6 +328,6 @@
     cancelRecording();
     if (App.P?.kidsBand) App.E?.panic(true);
   }
-  App.KidsMusic = {tracks,tempos,tempo,tempoIndex,newProject,prepare,costumes,costume,sync,
+  App.KidsMusic = {tracks,tempos,tempo,tempoIndex,newProject,prepare,costumes,costume,sync,pitch,
     grid,edit,clear,audition,variation,levels,record,recording,micLevel,cancelRecording,dispose};
 })();

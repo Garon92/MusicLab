@@ -1,8 +1,8 @@
 /* The wordless instrument. Sound, projects and transport live in the controller. */
 (() => {
   "use strict";
-  const colour=["#ff836a","#9bafff","#fbc953","#71d9bb"];
-  const parts=["Drums","Bass","Melody","Voice"];
+  const colour=["#ef9980","#b0b5e9","#eac565","#8bceb7","#acd28c","#b1c7e8","#efb589","#9ad4d1"];
+  const parts=["Drums","Bass","Melody","Voice",...App.KidsWorld.groups.map(g=>g.name)];
   const patterns=["Sun","Moon","Leaf","Kite"];
   const ink="#23303b";
   const symbols={
@@ -72,6 +72,7 @@
     return '<g transform="translate('+x+' '+y+')">'+items[id%4]+'</g>';
   }
   function character(i,variant=0){
+    if(i>=4)return App.KidsPictures.cover(i-4);
     const images=[
       '<path d="m35 78-3 17 20 1 6-16m14-1 6 16 20-1-8-18" fill="'+shadow+'"/><path d="M26 73c-1-18 4-35 15-42 9-5 31-8 44-1 15 9 18 31 13 47-12 15-60 18-72-4Z" fill="#ff8b67"/><path d="M33 53q-5-5-7-1t6 8m66-5 7-5q-1 8-7 12" fill="#ff8b67"/>'+eyes(53,46)+mouth(63,57)+'<g fill="#d45e4c" stroke="none"><ellipse cx="44" cy="55" rx="5" ry="2"/><ellipse cx="78" cy="52" rx="5" ry="2"/></g><path d="M33 70q-3 16 12 11m52-15q3 12-8 14" fill="#ff8b67"/><path d="m38 78 18-16m34 13L77 59"/><circle cx="57" cy="61" r="3" fill="#fff0c9"/><circle cx="77" cy="58" r="3" fill="#fff0c9"/><path d="M44 80v14q23 12 46-2V78Z" fill="#72bea9"/><ellipse cx="67" cy="79" rx="23" ry="6" fill="#ffefd3"/><path d="m48 84 5 12 7-10 7 13 8-13 6 10 6-13" fill="none"/>'+hat(variant,60,29,0),
       '<path d="m49 81-3 14 12 1 3-14m11-1 4 14 13-1-6-15" fill="#675b98"/><path d="M38 43c3-14 16-22 31-21 17 0 25 10 25 21v26c0 18-11 24-30 22-21-2-27-10-27-26Z" fill="#a0a5ef"/><path d="M39 46q-11-6-9 3 1 9 9 10m54-15q10-5 8 4-1 8-8 11" fill="#a0a5ef"/><path d="m50 37 7-2m8-2 8 2"/>'+eyes(52,43)+mouth(61,55)+'<path d="M43 70q-1 10 11 13m26-18 10 7" fill="none"/><path d="M62 72q-15-6-19 4c-6 15 16 24 26 12 3-4 2-9 1-12l24-25-6-4Z" fill="#ec775e"/><path d="m86 49 9-11 8 6-9 10Zm-21 33 23-29"/><circle cx="59" cy="80" r="4" fill="#ffd995"/><path d="m47 83 8 5m32-18 6-7" fill="none"/>'+hat(variant,65,23,1),
@@ -89,8 +90,8 @@
   function element(tag,cls,parent){
     const el=document.createElement(tag);if(cls)el.className=cls;if(parent)parent.append(el);return el;
   }
-  let host,send,model,main,deck,modal,board,partsBox,display,toast,thumb,tempo,play,armButton,livePortrait,recordButton;
-  let partButtons=[],cells=[],patternButtons=[],lights=[],meters=[],chainSlots=[],pageKind="",pageTrack=0,chainPage=0,chainIndex=-1,dialogSignature="",lastFocus=null,lastStep=-1,lastPlayPattern=-1,lastFeedback,toastTimer,beatTimer;
+  let host,send,model,deck,modal,board,toast,thumb,tempo,play,armButton,recordButton,chainPreview;
+  let partButtons=[],pads=[],cells=[],patternButtons=[],lights=[],chainSlots=[],pageKind="",pageTrack=0,chainPage=0,chainIndex=-1,dialogSignature="",lastFocus=null,lastStep=-1,lastPlayPattern=-1,lastFeedback,toastTimer;
   let mainButtons={},lastFrame={},lockJobs=new Set();
   const stops=()=>{for(const cancel of [...lockJobs])cancel();};
   const call=(action,...args)=>send?.(action,...args);
@@ -136,16 +137,15 @@
     toastTimer=setTimeout(()=>toast?.classList.remove("visible"),1000);
   }
   function show(kind,trigger){
-    if(!model)return;lastFocus=trigger||document.activeElement;pageKind=kind;dialogSignature="";chainIndex=-1;chainPage=0;
+    if(!model)return;
+    App.KidsSound.release();lastFocus=trigger||document.activeElement;pageKind=kind;dialogSignature="";chainIndex=-1;chainPage=0;
     stops();deck.inert=true;modal.hidden=false;renderPanel();
     modal.querySelector('[data-k="back"]')?.focus({preventScroll:true});
   }
   function closePanel(){
     if(!pageKind)return;
-    const disarm=pageKind==="pads" && model?.armed;
-    stops();pageKind="";dialogSignature="";livePortrait=null;armButton=null;chainSlots=[];modal.hidden=true;modal.replaceChildren();deck.inert=false;
+    stops();pageKind="";dialogSignature="";chainSlots=[];modal.hidden=true;modal.replaceChildren();deck.inert=false;
     if(lastFocus?.isConnected)lastFocus.focus({preventScroll:true});lastFocus=null;
-    if(disarm)call("disarm");
   }
   function makeHeader(name,graphic){
     modal.replaceChildren();modal.className="kv-sheet kv-sheet-"+pageKind;modal.setAttribute("aria-label",name);
@@ -169,7 +169,6 @@
     if(pageKind==="wardrobe")signature+=pageTrack+"."+model.costumes?.[pageTrack];
     if(pageKind==="shelf"||pageKind==="replace")signature+=shelf.map(item=>item?[item.notes,item.patternCount,item.motif?.join("")].join("."):"-").join("/")+"."+model.slot;
     if(pageKind==="arrange")signature+=[chain.join(""),chainPage,chainIndex,model.song,model.playing].join(".");
-    if(pageKind==="pads")signature+=[model.track,model.costumes?.[model.track],model.playing,model.armed,model.hasVoice].join(".");
     if(dialogSignature===signature)return;dialogSignature=signature;chainSlots=[];
     if(pageKind==="wardrobe"){
       const inner=makeHeader("Instrument sounds","spark"),list=element("div","kv-costumes",inner);
@@ -221,22 +220,6 @@
         if(!alreadySong)call("song",true);
         if(needsStart||alreadySong)call("play");
       },"kv-play");listen.disabled=!chain.length;
-    }else if(pageKind==="pads"){
-      const ti=model.track,inner=makeHeader("Live pads","pads");
-      inner.style.setProperty("--part",colour[ti]);const strip=element("div","kv-performance",inner);
-      livePortrait=element("div","kv-stage-portrait",strip);livePortrait.innerHTML=character(ti,model.costumes?.[ti]||0);
-      const band=element("div","kv-performance-tools",strip);
-      button(band,model.playing?"Stop playback":"Play song","play",icon(model.playing?"stop":"play"),()=>call("play"),"kv-play");
-      armButton=button(band,"Record live pads","arm",icon("record"),()=>call("arm"),"kv-arm");pressed(armButton,model.armed);
-      const keys=element("div","kv-live-keys",inner);
-      for(let row=0;row<4;row++){
-        const b=button(keys,parts[ti]+" live pad "+(row+1),"pad",noteMark(ti,row,1),null,"kv-live-key");
-        b.style.setProperty("--tile",colour[(3-row+ti)%4]);b.dataset.row=row;
-        let pointer=false;
-        b.addEventListener("pointerdown",e=>{if(e.button!==0)return;pointer=true;call("pad",row);b.classList.remove("hit");void b.offsetWidth;b.classList.add("hit");});
-        b.addEventListener("click",()=>{if(!pointer)call("pad",row);pointer=false;});
-        b.addEventListener("pointercancel",()=>{pointer=false;});
-      }
     }
     if(previous?.k){
       const target=Array.from(modal.querySelectorAll("[data-k]")).find(b=>b.dataset.k===previous.k && b.dataset.index===previous.index && b.dataset.row===previous.row && !b.disabled);
@@ -247,15 +230,25 @@
     const c=(model.chain||[]).slice();if(c[from]===undefined||to<0||to>=c.length||to===from)return;
     const [p]=c.splice(from,1);c.splice(to,0,p);chainIndex=to;chainPage=Math.floor(to/8);call("chain",c);
   }
-  function noteMark(track,row,value){
-    const shape=[
-      '<circle cx="20" cy="20" r="11.5"/>',
-      '<rect x="10" y="10" width="20" height="20" rx="4" transform="rotate(45 20 20)"/>',
-      '<path d="m20 6 14 24H6Z" stroke-linejoin="round"/>',
-      '<path d="M7 20c0-6 4-9 9-8 2-6 10-6 12 0 7 0 8 9 4 12-1 8-13 10-16 5-5 2-10-2-9-9Z"/>'
-    ][track]||"";
-    const core=value===2?'<path d="m14 20 5-5 7 5" stroke-width="3"/>':value===3?'<path d="M14 20h12m-12 4h12" stroke-width="2.3"/>':'<circle cx="20" cy="20" r="2.3" fill="currentColor" stroke="none"/>';
-    return svg('<g class="kv-note-shape">'+shape+'</g>'+core);
+  const drumNames=["Hi-hat","Clap","Snare","Kick"],pitches=["high","middle high","middle low","low"];
+  const drumDrawings=[
+    '<path d="M5 22q2-5 13-7V9h4v6q10 1 13 7-17 5-30 0Z" fill="#e6b75e"/><path d="M6 26q13 5 28 0m-14-1v9m-7 2 7-3 7 3"/>',
+    '<path d="M6 26 4 16q0-3 2-3l3 8-2-13q1-3 3-1l4 12-2-14q1-3 3-1l5 14-2-11q2-2 4 1l4 13 4-4q4-3 5 1l-5 12q-6 9-15 6Z" fill="#edb887"/><path d="m27 5-1 4m7-2-3 5m7 1-4 3"/>',
+    '<path d="M5 18q15-6 30-1v12q-14 7-30 0Z" fill="#d58d78"/><ellipse cx="20" cy="17" rx="15" ry="5" fill="#f6e7bb"/><path d="m8 22 3 8 5-9 5 10 6-10 4 7M23 5l-5 9m13-6-8 7"/>',
+    '<circle cx="20" cy="21" r="13" fill="#bb8a77"/><ellipse cx="18" cy="21" rx="10" ry="12" fill="#f7e1ac"/><circle cx="18" cy="21" r="3" fill="#aabdc0"/><path d="m11 32-3 3m18-3 3 4"/>'
+  ];
+  function rowName(part,row){
+    if(part>=4)return App.KidsWorld.groups[part-4].sounds[row].name;
+    return part===0?drumNames[row]:parts[part]+" "+pitches[row];
+  }
+  function rowArt(part,row){
+    if(part>=4)return App.KidsPictures.sound(App.KidsWorld.groups[part-4].sounds[row].id);
+    if(part===0)return svg(drumDrawings[row]);
+    const bars=Array.from({length:4},(_,i)=>{
+      const y=30-i*5,fill=i===3-row?"#263b44":"#9caaa2";
+      return '<rect x="'+(4+i*8)+'" y="'+y+'" width="6" height="'+(35-y)+'" rx="2" fill="'+fill+'" stroke="none"/>';
+    }).join("");
+    return svg('<g transform="translate(5 -1) scale(.75)">'+symbols[["","bass","melody","mic"][part]]+'</g>'+bars);
   }
   function scope(parent,type,name){
     const monitor=element("div","kv-monitor kv-monitor-"+type,parent),face=element("div","kv-glass",monitor);
@@ -267,64 +260,72 @@
     host=container;send=dispatch;host.classList.add("kids-surface");host.setAttribute("aria-label","Music playground");
     deck=element("div","kv-shell",host);
     const header=element("header","kv-header",deck);
-    const badge=element("div","kv-radio",header);badge.setAttribute("aria-hidden","true");
-    badge.innerHTML=svg('<circle cx="23" cy="24" r="16" fill="#23303b" stroke="none"/><path d="M10 25h6l4-8 5 15 4-13 2 6h5" stroke="#fbd962" stroke-width="2.5"/>','0 0 46 48');
-    play=button(header,"Play song","play",icon("play"),()=>call("play"),"kv-play");
-    const tempoBox=element("div","kv-tempo",header);
+    const transport=element("div","kv-transport",header);
+    play=button(transport,"Play song","play",icon("play"),()=>call("play"),"kv-play");
+    const tempoBox=element("div","kv-tempo",transport);
     tempoBox.innerHTML='<div class="kv-tempo-track"><i></i><i></i><i></i><i></i></div><div class="kv-tempo-thumb"></div>';
     thumb=tempoBox.querySelector(".kv-tempo-thumb");
     tempo=element("input","kv-tempo-input",tempoBox);tempo.type="range";tempo.min=0;tempo.max=3;tempo.step=1;tempo.dataset.k="tempo";label(tempo,"Tempo");
     tempo.oninput=()=>{if(+tempo.value!==model.tempo)call("tempo",+tempo.value);};
-    scope(header,"wave","Waveform");
-    const grille=element("div","kv-grille",header);grille.setAttribute("aria-hidden","true");
-    const group=element("div","kv-utilities",header);
+    armButton=button(transport,"Record the sound pads","arm",svg('<rect x="4" y="7" width="21" height="22" rx="4"/><path d="M5 18h18m-10-9v18"/><circle cx="29" cy="27" r="7" fill="#ee856e"/>'),()=>call("arm"),"kv-arm");
     mainButtons={};
-    for(const [k,name,pic,action] of [
-      ["random","Surprise this part","dice",()=>call("random")],["mic","Record your voice","mic",()=>call("mic")],
-      ["undo","Undo","undo",()=>call("undo")],["erase","Clear this part","erase",()=>call("erase")],
-      ["save","Save song to shelf","star",()=>{if(model.slot<0 && (model.shelf||[]).filter(Boolean).length>=8)show("replace",mainButtons.save);else call("save");}]
-    ]){
-      const b=button(group,name,k,icon(pic),action,"kv-tool kv-"+k);mainButtons[k]=b;
-    }
-    recordButton=mainButtons.mic;
-    const lock=button(header,"Hold to return to console","lock",icon("lock"),null,"kv-lock");hold(lock,2000,null,()=>call("exit"));
-    main=element("main","kv-main",deck);partsBox=element("div","kv-band",main);partsBox.setAttribute("role","group");label(partsBox,"Band");
+    recordButton=mainButtons.mic=button(transport,"Record your voice","mic",icon("mic"),()=>call("mic"),"kv-mic");
+    const tools=element("div","kv-clip-tools",header);
+    mainButtons.random=button(tools,"Surprise this sound collection","random",icon("dice"),()=>call("random"),"kv-random");
+    mainButtons.erase=button(tools,"Clear the selected part","erase",icon("erase"),()=>call("erase"),"kv-erase");
+    const output=element("div","kv-output",header);output.setAttribute("role","group");label(output,"Live sound");
+    scope(output,"wave","Waveform");scope(output,"bands","Spectrum");
+    const group=element("div","kv-utilities",header);
+    mainButtons.undo=button(group,"Undo","undo",icon("undo"),()=>call("undo"),"kv-undo");
+    mainButtons.save=button(group,"Save song to shelf","save",icon("star"),()=>{
+      if(model.slot<0 && (model.shelf||[]).filter(Boolean).length>=8)show("replace",mainButtons.save);else call("save");
+    },"kv-save");
+    mainButtons.shelf=button(group,"Song shelf","shelf",icon("shelf"),e=>show("shelf",e.currentTarget),"kv-shelf");
+    const lock=button(group,"Hold to return to console","lock",icon("lock"),null,"kv-lock");hold(lock,2000,null,()=>call("exit"));
+    const main=element("main","kv-main",deck),sources=element("div","kv-sources",main);
+    sources.setAttribute("role","group");label(sources,"Sound collections and musicians");
     partButtons=[];
-    for(let i=0;i<4;i++){
-      const b=button(partsBox,parts[i],"track",'<span class="kv-character-wrap"></span><span class="kv-part-glyph">'+icon(["drum","bass","melody","mic"][i])+'</span><span class="kv-pad-hint">'+icon("pads")+'</span>',null,"kv-musician");
+    for(const i of [4,0,5,1,6,2,7,3]){
+      const b=button(sources,parts[i],"track",'<span class="kv-character-wrap"></span><span class="kv-source-print" aria-hidden="true">'+ '<i></i>'.repeat(8)+'</span><i class="kv-source-lamp"></i>',null,"kv-musician");
       b.dataset.index=i;b.style.setProperty("--part",colour[i]);
-      hold(b,560,()=>{if(model.track===i){show("pads",b);}else call("track",i);},()=>{pageTrack=i;show("wardrobe",b);});
-      partButtons.push(b);
+      if(i<4)hold(b,560,()=>call("track",i),()=>{pageTrack=i;show("wardrobe",b);});
+      else b.addEventListener("click",()=>call("track",i));
+      partButtons[i]=b;
     }
-    board=element("div","kv-board",main);board.setAttribute("role","group");label(board,"Note grid");
-    display=element("div","kv-beats",board);display.setAttribute("aria-hidden","true");lights=[];
-    for(let c=0;c<8;c++)lights.push(element("i",c%2?"":"major",display));
-    const mat=element("div","kv-cells",board);cells=[];
+    board=element("div","kv-board",main);board.setAttribute("role","group");label(board,"Sound pads and note grid");
+    const headerRow=element("div","kv-score-head",board);headerRow.setAttribute("aria-hidden","true");
+    const speaker=element("span","kv-pad-sign",headerRow);speaker.innerHTML=icon("amp");
+    const beats=element("div","kv-beats",headerRow);lights=[];
+    for(let c=0;c<8;c++)lights.push(element("i",c%2?"":"major",beats));
+    const score=element("div","kv-score",board);cells=[];pads=[];
     for(let row=0;row<4;row++){
-      cells[row]=[];
+      const lane=element("div","kv-lane",score);
+      const pad=button(lane,"Play sound "+(row+1),"pad",'<span class="kv-row-picture"></span><i class="kv-pad-lamp"></i>',null,"kv-row-pad");
+      pad.dataset.row=row;pads.push(pad);
+      const hit=()=>{call("pad",row);pad.classList.remove("hit");void pad.offsetWidth;pad.classList.add("hit");};
+      pad.addEventListener("pointerdown",e=>{if(e.button===0)hit();});
+      pad.addEventListener("click",e=>{if(!e.detail)hit();});
+      const notes=element("div","kv-step-keys",lane);cells[row]=[];
       for(let c=0;c<8;c++){
-        const b=button(mat,"Row "+(row+1)+", step "+(c+1),"note",'<span class="kv-socket"><i class="kv-idle-dot"></i><span class="kv-note-image"></span></span>',null,"kv-cell");
+        const b=button(notes,"Step "+(c+1),"note",'<span class="kv-socket"><i class="kv-idle-dot"></i><span class="kv-note-image"></span></span>',null,"kv-cell");
         b.dataset.row=row;b.dataset.col=c;
         hold(b,530,()=>call("note",row,c),()=>call("expression",row,c));cells[row].push(b);
       }
     }
     const hint=element("div","kv-empty-hint",board);hint.setAttribute("aria-hidden","true");hint.innerHTML=icon("hand");
+    const effects=element("aside","kv-effects",main);effects.id="kids-inline-sound";label(effects,"Sound effects");
     const foot=element("footer","kv-bottom",deck);
-    const strip=element("div","kv-speaker",foot);
-    scope(strip,"bands","Spectrum");
-    const vu=element("div","kv-vu",strip);meters=[];
-    for(let i=0;i<4;i++)meters.push(element("i","",vu));
-    patternButtons=[];
-    const bank=element("div","kv-patterns",foot);bank.setAttribute("role","group");label(bank,"Song pieces");
+    const bank=element("div","kv-patterns",foot);bank.setAttribute("role","group");label(bank,"Song pieces");patternButtons=[];
     for(let i=0;i<4;i++){
-      const b=button(bank,patterns[i]+" pattern","pattern",patternIcon(i)+'<i class="kv-reel-mark"></i>',()=>call("pattern",i),"kv-pattern");
+      const b=button(bank,patterns[i]+" pattern","pattern",patternIcon(i)+'<span class="kv-pattern-print" aria-hidden="true">'+ '<i></i>'.repeat(8)+'</span>',()=>call("pattern",i),"kv-pattern");
       b.dataset.index=i;b.style.setProperty("--piece",colour[i]);patternButtons.push(b);
     }
-    const tools=element("div","kv-lower-tools",foot);
-    mainButtons.sound=button(tools,"Sound playground","sound",icon("sound"),()=>call("sound"),"kv-sound");
-    mainButtons.song=button(tools,"Song mode","song",icon("loop"),()=>call("song",!model.song),"kv-mode");
-    button(tools,"Arrange song","arrange",icon("chain"),e=>show("arrange",e.currentTarget),"kv-arrange");
-    mainButtons.shelf=button(tools,"Song shelf","shelf",icon("shelf"),e=>show("shelf",e.currentTarget),"kv-shelf");
+    const song=element("div","kv-song-strip",foot);
+    mainButtons.append=button(song,"Add selected pattern to the song","appendPiece",icon("plus"),()=>{
+      if(model.chain.length<32)call("chain",[...model.chain,model.pattern]);
+    },"kv-append");
+    mainButtons.song=button(song,"Song mode","song",icon("loop"),()=>call("song",!model.song),"kv-mode");
+    chainPreview=button(song,"Arrange song","arrange",'<span class="kv-chain-glyph">'+icon("chain")+'</span><span class="kv-chain-print"></span>',e=>show("arrange",e.currentTarget),"kv-arrange");
     modal=element("section","kv-sheet",host);modal.hidden=true;modal.setAttribute("role","region");
     toast=element("div","kv-flash",host);toast.setAttribute("aria-hidden","true");
     host.addEventListener("keydown",keys);window.addEventListener("blur",stops);
@@ -346,35 +347,77 @@
     mainButtons.mic.disabled=!!state.busy&&!state.recording;
     const elapsedSignal=state.feedback;if(elapsedSignal && elapsedSignal!==lastFeedback)flash(typeof elapsedSignal==="string"?elapsedSignal:elapsedSignal.type);
     lastFeedback=elapsedSignal;
-    for(let i=0;i<4;i++){
+    pressed(armButton,state.armed);
+    for(let i=0;i<parts.length;i++){
       const c=state.costumes?.[i]||0,b=partButtons[i],wrap=b.querySelector(".kv-character-wrap");
       if(wrap.dataset.variant!==String(c)){wrap.innerHTML=character(i,c);wrap.dataset.variant=c;}
-      pressed(b,i===frameTrack);label(b,parts[i]);
-      pressed(patternButtons[i],state.pattern===i);
+      pressed(b,i===frameTrack);b.classList.toggle("populated",!!state.partHasNotes?.[i]);
+      const motif=state.partMotifs?.[i]||[],key=motif.join(",");
+      if(b.dataset.motif!==key){
+        b.dataset.motif=key;
+        b.querySelectorAll(".kv-source-print i").forEach((v,s)=>v.classList.toggle("used",!!motif[s]));
+      }
     }
+    for(const [i,b] of patternButtons.entries()){
+      pressed(b,state.pattern===i);
+      b.querySelectorAll(".kv-pattern-print i").forEach((bar,c)=>bar.style.setProperty("--count",Math.min(4,state.patternMotifs?.[i]?.[c]||0)));
+    }
+    const chain=state.chain||[],chainKey=chain.join(",");
+    if(chainPreview.dataset.chain!==chainKey){
+      chainPreview.dataset.chain=chainKey;delete chainPreview.dataset.slot;
+      chainPreview.querySelector(".kv-chain-print").innerHTML=chain.map(i=>'<i style="--piece:'+colour[i]+'">'+patternIcon(i)+'</i>').join("");
+      label(chainPreview,"Arrange song, "+chain.length+" pieces");
+    }
+    mainButtons.append.disabled=chain.length>=32;mainButtons.append.style.setProperty("--piece",colour[state.pattern]);
+    if(mainButtons.append.dataset.pattern!==String(state.pattern)){
+      mainButtons.append.dataset.pattern=state.pattern;
+      mainButtons.append.innerHTML=patternIcon(state.pattern)+'<i>'+icon("plus")+'</i>';
+    }
+    chainPreview.classList.toggle("long-chain",chain.length>8);
     let empty=true;
-    for(let r=0;r<4;r++)for(let c=0;c<8;c++){
-      const b=cells[r][c],v=state.grid?.[r]?.[c];
-      const expression=state.expression?.[r]?.[c]??(Number(v)>1?Number(v)-1:0),mark=v?1+expression:0;
-      pressed(b,!!v);if(v)empty=false;
-      const stamp=frameTrack+":"+mark;
-      if(b.dataset.mark!==stamp){b.dataset.mark=stamp;b.querySelector(".kv-note-image").innerHTML=v?noteMark(frameTrack,r,mark):"";}
-      b.dataset.expression=String(expression);b.style.setProperty("--row-ink",colour[(frameTrack+3-r)%4]);
+    for(let r=0;r<4;r++){
+      const pad=pads[r],name=rowName(frameTrack,r),art=rowArt(frameTrack,r),rowInk=["#9bc5cf","#ecc37d","#c0aece","#b4cc98"][r];
+      if(pad.dataset.part!==String(frameTrack)){
+        pad.dataset.part=frameTrack;pad.querySelector(".kv-row-picture").innerHTML=art;label(pad,"Play "+name);
+      }
+      pad.classList.toggle("selected",r===(state.row??0));pad.parentElement.style.setProperty("--row-ink",rowInk);
+      for(let c=0;c<8;c++){
+        const b=cells[r][c],v=state.grid?.[r]?.[c],expression=state.expression?.[r]?.[c]??(v?Number(v)-1:0);
+        const stamp=frameTrack+":"+v;
+        if(b.dataset.mark!==stamp){
+          b.dataset.mark=stamp;pressed(b,!!v);b.dataset.expression=String(expression);
+          b.querySelector(".kv-note-image").innerHTML=v?art:"";
+          label(b,name+", step "+(c+1)+(expression===1?", accent":expression===2?", long":""));
+        }
+        if(v)empty=false;
+      }
     }
     board.classList.toggle("waiting",!!state.playing&&empty);
     renderPanel();frame(lastFrame);
   }
   function frame(f={}){
     if(!host||!model)return;lastFrame=f;
-    for(let i=0;i<4;i++){
+    for(let i=0;i<parts.length;i++){
       const energy=Math.max(0,Math.min(1,Number(f.levels?.[i])||0)),value=String(+energy.toFixed(3));
-      if(partButtons[i].style.getPropertyValue("--amplitude")!==value){partButtons[i].style.setProperty("--amplitude",value);meters[i].style.setProperty("--amplitude",value);}
-      if(pageKind==="pads" && model.track===i)livePortrait?.style.setProperty("--amplitude",value);
+      if(partButtons[i].style.getPropertyValue("--amplitude")!==value){partButtons[i].style.setProperty("--amplitude",value);}
     }
-    const step=model.playing ? (f.step??-1) : -1;
-    if(step!==lastStep){for(let i=0;i<8;i++){lights[i].classList.toggle("lit",i===step);for(let r=0;r<4;r++)cells[r][i].classList.toggle("beat",i===step);}lastStep=step;}
+    const step=model.playing && (f.pattern??model.pattern)===model.pattern ? (f.step??-1) : -1;
+    if(step!==lastStep){
+      for(let i=0;i<8;i++){lights[i].classList.toggle("lit",i===step);for(let r=0;r<4;r++)cells[r][i].classList.toggle("beat",i===step);}
+      for(const source of partButtons){
+        const bars=source.querySelector(".kv-source-print").children;
+        if(lastStep>=0)bars[lastStep]?.classList.remove("playhead");
+        if(step>=0)bars[step]?.classList.add("playhead");
+      }
+      lastStep=step;
+    }
     const playPattern=model.playing?f.pattern??model.pattern:-1;
     if(lastPlayPattern!==playPattern){patternButtons.forEach((b,i)=>b.classList.toggle("sounding",i===playPattern));lastPlayPattern=playPattern;}
+    const playingSlot=model.playing && model.song?f.slot:-1;
+    if(chainPreview.dataset.slot!==String(playingSlot)){
+      chainPreview.dataset.slot=String(playingSlot);
+      Array.from(chainPreview.querySelector(".kv-chain-print").children).forEach((piece,i)=>piece.classList.toggle("sounding",i===playingSlot));
+    }
     for(const [i,b] of chainSlots)b.classList.toggle("sounding",model.playing&&model.song&&i===f.slot);
     if(recordButton&&model.recording){
       recordButton.style.setProperty("--mic-level",String(Math.max(0,Math.min(1,f.micLevel||0))));
@@ -382,10 +425,10 @@
     }
   }
   function unmount(){
-    if(!host)return;stops();clearTimeout(toastTimer);clearTimeout(beatTimer);
+    if(!host)return;stops();clearTimeout(toastTimer);
     host.removeEventListener("keydown",keys);window.removeEventListener("blur",stops);host.replaceChildren();host.classList.remove("kids-surface");
     host=null;send=null;model=null;pageKind="";lastFocus=null;lastStep=-1;lastPlayPattern=-1;lastFeedback=null;lastFrame={};
-    cells=[];partButtons=[];patternButtons=[];lights=[];chainSlots=[];meters=[];mainButtons={};livePortrait=null;
+    cells=[];partButtons=[];patternButtons=[];lights=[];chainSlots=[];pads=[];mainButtons={};
   }
-  App.KidsView={mount,render,frame,flash,unmount,character,partName:i=>parts[i],partColour:i=>colour[i]};
+  App.KidsView={mount,render,frame,flash,unmount,character,rowArt,rowName,partName:i=>parts[i],partColour:i=>colour[i]};
 })();
