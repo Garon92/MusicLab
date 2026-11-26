@@ -5,6 +5,11 @@
   let bridge,root,surface,sound,entry,parked=null,switching=false,armed=false,recordSince=0,ready=false;
   let shelves=[],signalFrame=0,feedback="",feedbackTimer=0,noticeEpoch=0;
   const lastRows=music.tracks.map(()=>0);
+  // How loud the band plays is the listener's choice, not the song's: the browser keeps it, Zpět does not take it back,
+  // and opening another song keeps it. Five steps up to the ceiling set for children's ears.
+  const VOLUME="musiclab.kids.v1.volume",levels=[.3,.5,.68,.84,1];
+  let volume=(()=>{try{const raw=localStorage.getItem(VOLUME),v=Number(raw);return raw!==null && Number.isInteger(v) && v>=0 && v<5?v:4;}catch{return 4;}})();
+  const loudness=()=>music.masterMax*levels[volume];
   const pieces=[0,1,2,3];
   const valid=(n,max)=>Number.isInteger(n) && n>=0 && n<max;
   const part=()=>music.part(App.P);
@@ -34,7 +39,7 @@
     return {track:who,pattern:pi,row:lastRows[who],patternMotifs,partMotifs,hits,partHasNotes:partMotifs.map(hits=>hits.some(Boolean)),grid,expression:grid.map(row=>row.map(v=>Math.max(0,v-1))),
       canEraseRow:clip.some(n=>n.n===eraseRowPitch),canEraseSource:clip.some(n=>music.owns(who,n.n)),canErasePiece:P.tracks.some(t=>t.clips[pi].length),
       canEraseSourceInBand:pieces.some(p=>sourceClips[p].some(n=>music.owns(who,n.n))),
-      costumes:music.costumes(P),tempo:music.tempoIndex(P),playing:App.Seq.playing,song:!!P.song,chain:P.chain.slice(),
+      costumes:music.costumes(P),tempo:music.tempoIndex(P),volume,playing:App.Seq.playing,song:!!P.song,chain:P.chain.slice(),
       armed,micState:music.recording(),recording:music.recording()==="recording",hasVoice:!!P.tracks[6].smp.id,canUndo:store.canUndo(),canRedo:store.canRedo(),shelf:shelves,
       slot:store.slot,lastRemoval:store.lastRemoval,feedback};
   }
@@ -50,7 +55,7 @@
     history.replaceState(history.state,"",url);
   }
   function prepare(resetRows=true){
-    music.prepare(App.P);
+    music.prepare(App.P);App.P.fx.vol=loudness();
     if(resetRows)lastRows.fill(0);
     if(!music.tracks.includes(App.P.sel.t))App.P.sel.t=0;
     if(!valid(App.P.sel.p,4))App.P.sel.p=0;
@@ -185,6 +190,12 @@
         if(!valid(i,4)||!valid(j,4))return;
         music.costume(P,i,j);music.audition(i,2);break;
       case "tempo":if(!valid(i,4))return;music.tempo(P,i);App.E?.syncFx();break;
+      case "volume":
+        if(!valid(i,5))return;
+        volume=i;try{localStorage.setItem(VOLUME,String(i));}catch{}
+        P.fx.vol=loudness();music.sync();App.touch();paint();
+        if(!App.Seq.playing)music.audition(who,lastRows[who]); // a change is heard at once, also while stopped
+        return;
       case "play":play();return;
       case "song":{
         if(i && !P.chain.length)return;

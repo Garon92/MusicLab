@@ -49,6 +49,7 @@
     add("Stop, all sound off","Transport","panic all notes off ticho",()=>App.silence(),"ESC");
     add("Kids music studio","View / Kids","kids mode child band loops echo modulation sound playground dětské kapela polička",()=>App.Kids.enter());
     note("Studio","Costumes · hold a musician","HOLD","kids band change sound");
+    note("Studio","How loud the band plays","HLASITOST","kids master volume loud quiet hlasitost potichu nahlas");
     note("Studio","Watch the band play","KAPELA","kids stage concert crowd band hop pódium kapela koncert skáčou");
     note("Studio","Delete a saved song","HOLD SMAZAT","kids shelf remove song písnička smazat podržet");
     note("Studio","Six rows in each of 12 sets","PICTURE","kids pads farm animals jungle silly burp fart toy space Czech legrace krknutí prdík vesmír hračky džungle");

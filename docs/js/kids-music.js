@@ -362,6 +362,6 @@
     cancelRecording();
     if (App.P?.kidsBand) App.E?.panic(true);
   }
-  App.KidsMusic = {tracks,rows,owns,part,select,clearRow,mixDefaults,tempos,tempo,tempoIndex,newProject,prepare,costumes,costume,sync,pitch,
+  App.KidsMusic = {masterMax,tracks,rows,owns,part,select,clearRow,mixDefaults,tempos,tempo,tempoIndex,newProject,prepare,costumes,costume,sync,pitch,
     grid,edit,clear,moveNote,audition,variation,levels,record,recording,micLevel,cancelRecording,dispose};
 })();

@@ -669,6 +669,30 @@ module.exports = async function regressions(page) {
     }
   } finally { await sounds.close(); }
 
+  // Reported from use: the kids' face had no master volume. Hlasitost sets how loud the band plays, at most the level
+  // set for children's ears; the browser keeps it across a reload and a new song, and Zpět does not take it back.
+  const loudPage = await page.context().browser().newPage({ viewport: { width: 1100, height: 620 } });
+  try {
+    const at = new URL(page.url()); at.search = "?kids";
+    await loudPage.goto(at.href);
+    await loudPage.waitForFunction(() => App.Kids.active && document.querySelector("#kids-root .kv-cell"));
+    await loudPage.mouse.click(5, 5);
+    const slider = loudPage.locator('#kids-root [data-k="volume"]');
+    const box = await slider.boundingBox();
+    await loudPage.mouse.click(box.x + box.width * 0.18, box.y + box.height / 2); // the quiet end
+    const quiet = await loudPage.evaluate(() => ({ step: +document.querySelector('[data-k="volume"]').value, vol: App.P.fx.vol, gain: App.E.out.gain.value, max: App.KidsMusic.masterMax }));
+    assert.ok(quiet.step <= 1 && quiet.vol < quiet.max * 0.6 && Math.abs(quiet.gain - quiet.vol ** 2) < 1e-3, JSON.stringify(quiet));
+    await loudPage.locator('#kids-root [data-k="note"][data-row="0"][data-col="0"]').click();
+    await loudPage.keyboard.press("Control+z");
+    assert.equal(await loudPage.evaluate(() => App.P.fx.vol), quiet.vol, "Zpět takes back the note, not the volume");
+    await loudPage.reload(); await loudPage.waitForFunction(() => App.Kids.active && document.querySelector("#kids-root .kv-cell"));
+    assert.equal(await loudPage.evaluate(() => App.P.fx.vol), quiet.vol, "the volume survives a reload");
+    await loudPage.evaluate(() => App.Kids.dispatch("new"));
+    assert.equal(await loudPage.evaluate(() => App.P.fx.vol), quiet.vol, "and a new song");
+    await loudPage.evaluate(() => App.Kids.dispatch("volume", 4));
+    assert.equal(await loudPage.evaluate(() => App.P.fx.vol), await loudPage.evaluate(() => App.KidsMusic.masterMax), "the loudest step is the ceiling for children's ears");
+  } finally { await loudPage.close(); }
+
   await reset();
-  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, note values, launcher hands the transport back, lists in popups, wheel grid, console number fields, long audio in a sampler, first recording on its frame, transport after a dialog, editor keys from anywhere, reasons on unavailable buttons, typed time unit, idle and lit controls, undo while playing, draft guard, duplicate on the beat, folded rows, song start slot, module wiring, loop export, page turn on drag, pad row menu, no console under a reload into the kids' face, kids' slow tap, unsaved song kept, piece name, replaced kids' sounds reach a browser that kept the old ones");
+  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, note values, launcher hands the transport back, lists in popups, wheel grid, console number fields, long audio in a sampler, first recording on its frame, transport after a dialog, editor keys from anywhere, reasons on unavailable buttons, typed time unit, idle and lit controls, undo while playing, draft guard, duplicate on the beat, folded rows, song start slot, module wiring, loop export, page turn on drag, pad row menu, no console under a reload into the kids' face, kids' slow tap, unsaved song kept, piece name, replaced kids' sounds reach a browser that kept the old ones, kids' master volume");
 };

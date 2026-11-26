@@ -545,6 +545,13 @@
     element("span","kv-tempo-name",tempoBox).textContent="Rychlost";
     tempo=element("input","kv-tempo-input",tempoBox);tempo.type="range";tempo.min=0;tempo.max=3;tempo.step=1;tempo.dataset.k="tempo";label(tempo,"Rychlost přehrávání");
     tempo.oninput=()=>{if(+tempo.value!==model.tempo)call("tempo",+tempo.value);};
+    // Master volume: the same kind of slider as the speed, a speaker with more waves the louder it plays.
+    const volumeBox=element("div","kv-tempo kv-volume",transport);
+    volumeBox.innerHTML='<div class="kv-tempo-track"><i></i><i></i><i></i><i></i><i></i></div><div class="kv-tempo-thumb"></div>';
+    mainButtons.volumeThumb=volumeBox.querySelector(".kv-tempo-thumb");
+    element("span","kv-tempo-name",volumeBox).textContent="Hlasitost";
+    mainButtons.volume=element("input","kv-tempo-input",volumeBox);Object.assign(mainButtons.volume,{type:"range",min:0,max:4,step:1});mainButtons.volume.dataset.k="volume";label(mainButtons.volume,"Hlasitost");
+    mainButtons.volume.oninput=()=>{if(+mainButtons.volume.value!==model.volume)call("volume",+mainButtons.volume.value);};
     recordButton=mainButtons.mic=caption(button(transport,"Nahrát hlas","mic",icon("mic"),()=>call("mic"),"kv-mic"),"Nahrát hlas");
     const editTools=element("div","kv-edit-tools",header);
     rhythmTools(editTools);eraser(editTools);
@@ -665,6 +672,13 @@
       thumb.dataset.speed=tempo.value;thumb.innerHTML=App.KidsPictures.tempo(+tempo.value);
       const name=["Šnek","Želva","Zajíc","Raketa"][+tempo.value],bpm=App.KidsMusic.tempos[+tempo.value];
       tempo.setAttribute("aria-valuetext",name+", "+bpm+" úderů za minutu");
+    }
+    const vol=state.volume??4,volumeInput=mainButtons.volume;
+    volumeInput.value=vol;volumeInput.parentElement.style.setProperty("--tempo",vol);
+    if(mainButtons.volumeThumb.dataset.level!==String(vol)){
+      mainButtons.volumeThumb.dataset.level=vol;volumeInput.setAttribute("aria-valuetext",["Potichu","Tišeji","Středně","Hlasitěji","Nahlas"][vol]);
+      const waves=["M25 16q3 4 0 8","M29 12q6 8 0 16","M33 8q9 12 0 24"].slice(0,[0,1,2,3,3][vol]).join("");
+      mainButtons.volumeThumb.innerHTML=svg('<path d="M5 15h6l8-7v24l-8-7H5Z" fill="#273a40" stroke="none"/>'+(waves?'<path d="'+waves+'" stroke-width="'+(vol===4?3.4:2.6)+'"/>':""));
     }
     const micText={pending:"Zrušit žádost",recording:"Ukončit nahrávání",saving:"Ukládám hlas"}[state.micState]||"Nahrát hlas";
     pressed(recordButton,state.micState==="recording");recordButton.classList.toggle("recording",state.micState==="recording");label(recordButton,micText);
