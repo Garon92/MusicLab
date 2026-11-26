@@ -271,6 +271,45 @@ module.exports = async function regressions(page) {
   await close();
   await state(() => App.E.closeInput());
 
+  // A note's velocity, probability and repeats could not be read as numbers, typed or reset. The readout over the lane
+  // showed where the pointer was, not what the note had, and stood still during a drag; a right-click did nothing.
+  // They are console values now, next to the selection, and the lane answers the same gestures.
+  await state(() => { App.P.tracks[0].clips[0] = [0, 4, 8, 12].map((s, i) => ({ s, n: 36 + (i % 2), l: 1, v: 0.8, p: 1, r: 1 })); App.select(0, 0); App.commit(); App.refresh(); });
+  const noteValues = () => state(() => [document.querySelector("#ed .ed-note .tg").textContent, ...[...document.querySelectorAll("#ed .ed-note .pm .v")].map(v => v.textContent)].join(" "));
+  const second = () => state(() => { const n = App.P.tracks[0].clips[0][1]; return [Math.round(n.v * 100), Math.round(n.p * 100), n.r || 1, n.l].join("/"); });
+  const value = name => page.locator("#ed .ed-note .pm", { hasText: name });
+  assert.equal(await noteValues(), "NEXT NOTE 80% 100% 1 1", "with nothing selected the values are those of the next note drawn");
+  const snare = await cell(4, 1);
+  await page.mouse.click(snare.x, snare.y);
+  assert.equal(await noteValues(), "SELECTED 80% 100% 1 1");
+  const prob = await value("PROB").boundingBox();
+  await page.mouse.move(prob.x + prob.width / 2, prob.y + prob.height / 2); await page.mouse.down();
+  await page.mouse.move(prob.x + prob.width / 2 - 60, prob.y + prob.height / 2, { steps: 5 }); await page.mouse.up();
+  assert.equal(await second(), "80/65/1/1", "a drag on the value sets the note");
+  await value("VEL").click(); await page.keyboard.type("45"); await page.keyboard.press("Enter");
+  assert.equal(await second(), "45/65/1/1", "a typed value sets the note");
+  await value("PROB").click({ button: "right" });
+  assert.equal(await second(), "45/100/1/1", "a right-click puts it back to its default");
+  assert.deepEqual(await state(() => [...document.querySelectorAll("#ed .ed-note .pm")].map(p => p.classList.contains("df"))), [false, true, true, true], "and only what differs from its default is bright");
+  await state(() => [...document.querySelectorAll("#ed .ed-tools .bt")].find(b => b.textContent === "PROB").click());
+  const laneY = await state(() => document.querySelector("#ed canvas").getBoundingClientRect().bottom - 14);
+  await page.mouse.move(snare.x, laneY); await page.mouse.down(); await page.mouse.move(snare.x, laneY - 18, { steps: 3 });
+  assert.match(await state(() => document.querySelector("#ed .rd").textContent), /PROBABILITY 6\d%$/, "the readout follows a drag in the lane and shows the note's value");
+  await page.mouse.up();
+  assert.match(await second(), /^45\/6\d\/1\/1$/);
+  await page.mouse.click(snare.x, laneY, { button: "right" });
+  assert.equal(await second(), "45/100/1/1", "a right-click in the lane resets the note under it");
+  await page.mouse.wheel(0, 120);
+  await page.waitForFunction(() => App.P.tracks[0].clips[0][1].p === 0.95, null, { timeout: 4000 });
+  // The pattern's length is set where the editor shows it, and what only a pitched track has is not shown on pads.
+  assert.deepEqual(await state(() => [...document.querySelectorAll("#ed .ed-tools .grp")].filter(g => g.hidden).length), 2, "chords, octaves and the scale fold are absent on a drum track");
+  const len = page.locator("#ed .ed-tools .pm", { hasText: "LENGTH" });
+  await len.click(); await page.keyboard.type("2"); await page.keyboard.press("Enter");
+  assert.deepEqual(await state(() => [App.P.pats[0].bars, document.querySelector("#mx .mx-p .pm .v").textContent]), [2, "2 BAR"], "the length typed in the editor is the pattern's, as on its letter");
+  await state(() => App.select(2, 0));
+  assert.equal(await state(() => [...document.querySelectorAll("#ed .ed-tools .grp")].filter(g => g.hidden).length), 0);
+  await reset();
+
   // Clips launched in LIVE… kept the transport for good. PLAY went on playing them, or silence once they were stopped,
   // whatever pattern was selected; with an empty song the SONG button could not hand the transport back; and nothing
   // on the console said who had it. A session ends with the player's stop now, and the console names it while it runs.
@@ -315,5 +354,5 @@ module.exports = async function regressions(page) {
   assert.ok(placed.found && Math.abs(placed.framesOff) <= 1, "the first recording on a page knows which frame it starts on: " + JSON.stringify(placed));
 
   await reset();
-  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, launcher hands the transport back, first recording on its frame");
+  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, note values, launcher hands the transport back, first recording on its frame");
 };

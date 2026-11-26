@@ -66,6 +66,8 @@ canvas { display: block; }
 .pm .b { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--ln); }
 .pm .b i { position: absolute; top: 0; bottom: 0; left: 0; background: var(--t2); }
 .pm .mt { position: absolute; left: 0; right: 0; top: 0; bottom: 2px; background: var(--mt); transform: scaleX(0); transform-origin: 0 50%; }
+/* dim = where a right-click would leave it; bright = changed. The transport's own readouts in the top bar stay bright. */
+.pm.df:not(.in) .v { color: var(--t2); } .pm:not(.df) .b i { background: var(--t1); }
 .pm:hover { background: var(--pn2); } .pm:hover .l { color: var(--t2); }
 .pm.dr { background: var(--pn2); } .pm.dr .v { color: var(--am); } .pm.dr .b i { background: var(--am); }
 .pm.en, .pm.bo { cursor: pointer; }
@@ -257,6 +259,13 @@ noscript { position: fixed; inset: 0; display: grid; place-items: center; backgr
 #ed .ed-tools, #ed .ed-actions { gap: .9rem; }
 #ed .ed-actions { flex-basis: 2.25rem; background: var(--pn2); }
 #ed .ed-actions .bt { height: 1.65rem; }
+/* values in the editor's two header rows: a note's own numbers, the pattern's length, what a click draws */
+#ed .hd .pm { flex: none; flex-direction: row; align-items: center; gap: 0.7rem; height: 1.65rem; padding: 0 0.7rem; border: 1px solid var(--ln2); }
+#ed .hd .pm .l { color: var(--t2); }
+#ed .hd .pm .v { min-width: 2.6em; font-size: var(--fm); text-align: right; font-variant-numeric: tabular-nums; }
+#ed .hd .pm.en .v { min-width: 0; }
+#ed .ed-note { gap: 0.5rem; }
+#ed .ed-note .tg { min-width: 6.6em; }
 #ed .ed-count { display: inline-flex; justify-content: center; align-items: center; min-width: 2.5rem; font-variant-numeric: tabular-nums; margin-right: .4rem; color: var(--am); }
 #ed .ed-b canvas { touch-action: none; }
 #ed .ed-b canvas[data-tool="select"] { cursor: default; }

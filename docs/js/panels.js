@@ -437,7 +437,7 @@
       ph.style.transform = `translate(${cell.offsetLeft + cell.offsetWidth * Math.min(f, 0.999)}px,${cells[0].offsetTop}px)`;
     }
 
-    return { build, sync, draw, frame };
+    return { build, sync, draw, frame, barsDef };
   })();
 
   /* ═════ DEVICE: the selected track's instrument ═════ */

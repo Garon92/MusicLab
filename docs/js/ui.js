@@ -293,6 +293,7 @@
       if (d.bool) el.setAttribute("aria-checked", String(!!v));
       else if (!d.opts) { el.setAttribute("aria-valuenow", v); el.setAttribute("aria-valuetext", val.textContent); }
       else el.setAttribute("aria-label", (d.name || d.l) + " · " + val.textContent);
+      el.classList.toggle("df", v === d.def); // at its reset value: shown dim, so what was changed stands out
       if (d.bool) el.classList.toggle("on", !!v);
       if (d.bi) { bar.style.left = Math.min(n, 0.5) * 100 + "%"; bar.style.width = Math.abs(n - 0.5) * 100 + "%"; }
       else if (d.opts || d.bool) { const k = d.max + 1; bar.style.left = (v / k) * 100 + "%"; bar.style.width = 100 / k + "%"; }
@@ -401,9 +402,12 @@
     return t === "number" ? "num" : t === "range" ? "range" : t === "checkbox" || t === "radio" ? "check" : t === "file" || t === "hidden" ? "" : "text";
   });
   const first = new WeakMap();
+  // What a right-click goes back to. A field that names its default in data-reset goes there, and the name is read
+  // each time, since an editor may point one field at another object. Any other field goes back to what it showed
+  // when it was first touched.
   const seen = (el) => {
-    if (!first.has(el)) first.set(el, el.tagName === "SELECT" ? el.selectedIndex : el.dataset.reset ?? el.value); // data-reset names a default
-    return first.get(el);
+    if (!first.has(el)) first.set(el, el.tagName === "SELECT" ? el.selectedIndex : el.value);
+    return el.tagName !== "SELECT" && el.dataset.reset != null ? el.dataset.reset : first.get(el);
   };
   const numOf = (el) => {
     const r = el.type === "range", lo = parseFloat(el.min), hi = parseFloat(el.max), st = parseFloat(el.step);

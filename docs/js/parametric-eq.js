@@ -128,6 +128,7 @@
     function sync(){
       const eq=get(),b=eq.bands[band];pick.value=String(band);track.value=String(ti);
       for(const key in vals)vals[key].value=b[key];
+      Object.assign(vals.hz.dataset,{reset:centers[band]});vals.db.dataset.reset=0;vals.q.dataset.reset=1; // where a right-click returns each
       enable.textContent=eq.on?"EQ on":"EQ bypassed";enable.setAttribute("aria-pressed",String(eq.on));
       bandOn.textContent=b.on?"Band on":"Band bypassed";bandOn.setAttribute("aria-pressed",String(b.on));
     }

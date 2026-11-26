@@ -6,7 +6,26 @@
 
   App.Ed = (() => {
     let cv, cx, ph, rd, hd = {}, W = 0, H = 0, D = 1, R = [], G = {}, hov = null, act = null, raf = 0, wheel = 0;
-    let lane = "v", chord = 1, lastLen = 1, lastVel = 0.8, rowNote = null;
+    let lane = "v", rowNote = null, laneT = 0;
+    // The pen: what the next note drawn gets, and what a click draws (one note, a triad or a seventh chord).
+    const pen = { v: 0.8, p: 1, r: 1, l: 1, chord: 0 };
+    // The four values every note carries, as console values. With notes selected they show and set those notes; with
+    // none they show and set the pen. A selection that disagrees reads as a range and takes the value it is given.
+    const noteVal = (nt, k) => (k === "r" ? nt.r || 1 : nt[k]);
+    const spread = (k, show) => (v) => {
+      let lo = Infinity, hi = -Infinity;
+      for (const nt of selection) { const x = noteVal(nt, k); if (x < lo) lo = x; if (x > hi) hi = x; }
+      return selection.size > 1 && lo !== hi ? show(lo).replace("%", "") + "-" + show(hi) : show(v);
+    };
+    const pct = (v) => Math.round(v * 100) + "%";
+    const NOTE = {
+      v: App.N("v", "VEL", "VELOCITY · HOW HARD THE NOTE IS PLAYED", 0.02, 1, 0.8, { u: "pc", f: spread("v", pct) }),
+      p: App.N("p", "PROB", "PROBABILITY · THE CHANCE THE NOTE SOUNDS ON EACH PASS", 0, 1, 1, { u: "pc", f: spread("p", pct) }),
+      r: App.N("r", "RPT", "REPEATS · HITS SPREAD ACROSS THE NOTE'S LENGTH", 1, 8, 1, { int: 1, f: spread("r", String) }),
+      l: App.N("l", "LEN", "LENGTH IN STEPS · STOPS AT THE NEXT NOTE ON THE ROW AND AT THE END OF THE CLIP", 1, 256, 1, { int: 1, f: spread("l", String) }),
+    };
+    const CHORD = { k: "chord", l: "CHORD", name: "WHAT A CLICK IN THE GRID DRAWS · ONE NOTE, A TRIAD OR A SEVENTH CHORD OF THE SCALE", opts: ["OFF", "TRIAD", "SEVENTH"], min: 0, max: 2, def: 0 };
+    const chordSize = () => [1, 3, 4][pen.chord];
     let page = 0, pagePattern = -1, followTransport = true;
     let tool = "draw", selection = new Set(), selectionClip = null, selectionShape = "";
     let lit = new Set(), litStep = -2; // rows sounding under the playhead
@@ -40,8 +59,15 @@
       hd.next = btn("›", "NEXT FOUR BARS · MANUAL PAGING HOLDS THIS VIEW UNTIL THE NEXT PLAY", () => turnPage(1));
       hd.prev.setAttribute("aria-label", "Previous bars");
       hd.next.setAttribute("aria-label", "Next bars");
-      hd.bars = h("span.ed-page", {tip:"VISIBLE BARS / PATTERN LENGTH · SET THE LENGTH ON THE PATTERN LETTER IN THE MATRIX"});
-      hd.ch = [1, 3, 4].map((n) => btn(String(n), "NOTES PER CLICK · " + (n === 1 ? "SINGLE NOTE" : n === 3 ? "TRIAD IN SCALE" : "SEVENTH CHORD IN SCALE"), () => { chord = n; sync(); }));
+      hd.bars = h("span.ed-page", {tip:"THE BARS IN VIEW, OUT OF THE PATTERN'S LENGTH"});
+      // The pattern's length where the pattern is edited: the same value as on its letter in the matrix.
+      const lenFace = { get bars() { const P = App.P; return Math.min(P.pats[P.sel.p].bars, App.maxBars(P)); }, set bars(v) { App.P.pats[App.P.sel.p].bars = v; } };
+      hd.len = UI.param(App.Mx.barsDef, lenFace, () => { App.Mx.sync(); sync(); }, { label: "LENGTH" });
+      hd.chord = UI.param(CHORD, pen, () => cv.focus({ preventScroll: true }));
+      const face = {};
+      for (const k of Object.keys(NOTE)) Object.defineProperty(face, k, { get: () => { let nt; for (nt of selection); return nt ? noteVal(nt, k) : pen[k]; }, set: (v) => setValue(k, v) });
+      hd.vals = Object.values(NOTE).map((d) => UI.param(d, face, () => { draw(); }, { done: () => { App.Mx.draw(); cv.focus({ preventScroll: true }); } }));
+      hd.sel = h("span.tg");
       hd.fold = btn("FOLD", "SHOW ONLY NOTES OF THE SCALE", () => { App.P.fold ^= 1; App.touch(); sync(); }, "tog");
       hd.od = btn("-", "VIEW ONE OCTAVE DOWN · WHEEL OVER GRID = SCROLL PITCH", () => view(-12));
       hd.ou = btn("+", "VIEW ONE OCTAVE UP · WHEEL OVER GRID = SCROLL PITCH", () => view(12));
@@ -62,20 +88,21 @@
         return b;
       };
       hd.move = [mover("l", "ONE STEP EARLIER", -1, 0), mover("r", "ONE STEP LATER", 1, 0), mover("d", "ONE ROW DOWN", 0, 1), mover("u", "ONE ROW UP", 0, -1)];
-      hd.lr = btn("RPT", "REPEATS PER STEP · 1–8 HITS", () => { lane = "r"; sync(); });
-      hd.lv = btn("VEL", "LANE SHOWS NOTE VELOCITY", () => { lane = "v"; sync(); });
-      hd.lp = btn("PROB", "LANE SHOWS NOTE PROBABILITY · BELOW 100% A NOTE PLAYS BY CHANCE", () => { lane = "p"; sync(); });
+      hd.lr = btn("RPT", "THE LANE UNDER THE GRID SHOWS REPEATS · 1–8 HITS ACROSS A NOTE", () => { lane = "r"; sync(); });
+      hd.lv = btn("VEL", "THE LANE UNDER THE GRID SHOWS VELOCITY", () => { lane = "v"; sync(); });
+      hd.lp = btn("PROB", "THE LANE UNDER THE GRID SHOWS PROBABILITY · BELOW 100% A NOTE PLAYS BY CHANCE", () => { lane = "p"; sync(); });
       hd.euc = btn("EUCLID", "SPREAD N HITS EVENLY OVER A CYCLE ON THE LAST TOUCHED ROW", () => euclid(), "mnu");
       rd = h("span.rd");
       el.append(h("div.hd.ed-tools", null,
         h("span.tg", { text: "EDIT" }), hd.title,
         h("span.grp", { role: "group", "aria-label": "Editing tool" }, hd.draw, hd.select, hd.auto),
-        h("span.grp.ed-pages", {role:"group", "aria-label":"Visible bars"}, h("span.tg", {text:"BARS"}), hd.prev, hd.bars, hd.next),
-        h("span.grp", null, h("span.tg", { text: "CHORD" }), hd.ch),
-        h("span.grp", null, h("span.tg", { text: "VIEW" }), hd.od, hd.ou, hd.fold),
-        h("span.grp", null, h("span.tg", { text: "LANE" }), hd.lv, hd.lp, hd.lr), h("span.sp"), rd),
+        h("span.grp.ed-pages", {role:"group", "aria-label":"Pattern length and visible bars"}, hd.len, hd.prev, hd.bars, hd.next),
+        h("span.grp", null, h("span.tg", { text: "LANE" }), hd.lv, hd.lp, hd.lr),
+        // What only a pitched track has comes last, so nothing else moves when it is not there.
+        (hd.pitched = [h("span.grp", null, hd.chord), h("span.grp", null, h("span.tg", { text: "VIEW" }), hd.od, hd.ou, hd.fold)]),
+        h("span.sp"), rd),
       h("div.hd.ed-actions", null,
-        h("span.grp", null, h("span.tg", { text: "SELECTED" }), hd.count),
+        h("span.grp.ed-note", { role: "group", "aria-label": "Note values" }, hd.sel, hd.count, hd.vals),
         h("span.grp", { role: "group", "aria-label": "Move notes" }, h("span.tg", { text: "MOVE" }), hd.move),
         h("span.grp", null, hd.dup, hd.remove),
         h("span.sp"),
@@ -110,11 +137,12 @@
       cv.addEventListener("dblclick", rename);
       cv.addEventListener("wheel", (e) => {
         e.preventDefault();
-        const { T } = ctx();
-        if (!isKeys(T) || act) return;
+        const { T } = ctx(), m = at(e);
+        if (act || (m.zone !== "lane" && !isKeys(T))) return;
         wheel += e.deltaY || e.deltaX; // with SHIFT held, browsers report the wheel on the X axis
         if (Math.abs(wheel) < 40) return;
-        view((wheel < 0 ? 1 : -1) * (e.shiftKey ? 12 : 2));
+        if (m.zone === "lane") wheelLane(m, wheel < 0, e.shiftKey);
+        else view((wheel < 0 ? 1 : -1) * (e.shiftKey ? 12 : 2));
         wheel = 0;
       }, { passive: false });
     }
@@ -176,7 +204,7 @@
         edit((c) => {
           const n = App.Live.length(c.P,c.ti,c.pi), N = Math.max(1, eu.n), K = Math.min(eu.k, N);
           for (let i = c.clip.length - 1; i >= 0; i--) if (c.clip[i].n === o.n && c.clip[i].s < n) c.clip.splice(i, 1);
-          for (let s = 0; s < n; s++) if ((((s % N) + eu.r) % N * K) % N < K) c.clip.push({ s, n: o.n, l: 1, v: lastVel, p: 1 });
+          for (let s = 0; s < n; s++) if ((((s % N) + eu.r) % N * K) % N < K) c.clip.push({ s, n: o.n, l: 1, v: pen.v, p: pen.p, ...(pen.r > 1 ? { r: pen.r } : {}) });
         });
       });
       const lab = () => (go.textContent = "WRITE ROW " + row().label);
@@ -289,12 +317,16 @@
       cx.fillStyle = C.t3;
       cx.font = `500 ${Math.round(rem)}px ${App.FONT}`;
       cx.fillText(laneTitle(), 0.7 * rem, G.ly + G.lh / 2);
-      const span = G.lh - 4 * L;
+      // A bar at its default is dim and one that was changed is bright, like every value on the console.
+      const span = G.lh - 4 * L, base = lane === "r" ? 1 / 8 : NOTE[lane].def, room = cw >= 2.4 * rem;
+      cx.textAlign = "left"; cx.textBaseline = "alphabetic";
       for (const [s, val] of laneV) {
-        const x = X(s) + L, w = Math.max(2 * L, Math.min(X(s + 1) - X(s) - L, Math.round(1.6 * rem))), hh = Math.max(L, Math.round(span * val));
-        cx.globalAlpha = 0.4; cx.fillStyle = C.t2; cx.fillRect(x, H - hh, w, hh);
-        cx.globalAlpha = 1; cx.fillStyle = C.t1; cx.fillRect(x, H - hh, w, 2 * L);
+        const x = X(s) + L, w = Math.max(2 * L, Math.min(X(s + 1) - X(s) - L, Math.round(1.6 * rem))), hh = Math.max(L, Math.round(span * val)), moved = Math.abs(val - base) > 1e-6;
+        cx.globalAlpha = moved ? 0.5 : 0.22; cx.fillStyle = C.t2; cx.fillRect(x, H - hh, w, hh);
+        cx.globalAlpha = 1; cx.fillStyle = moved ? C.t1 : C.t2; cx.fillRect(x, H - hh, w, 2 * L);
+        if (room) cx.fillText(lane === "r" ? String(Math.round(val * 8)) : String(Math.round(val * 100)), x + w + 0.3 * rem, Math.max(G.ly + 1.1 * rem, Math.min(H - 0.35 * rem, H - hh + 0.9 * rem)));
       }
+      cx.textBaseline = "middle";
       if (act?.mode === "box") {
         const x = Math.min(act.x0, act.x1), y = Math.min(act.y0, act.y1);
         const w = Math.abs(act.x1 - act.x0), h = Math.abs(act.y1 - act.y0);
@@ -320,14 +352,15 @@
       updateSelection();
       hd.title.textContent = pad2(ti + 1) + " " + T.name + " / " + PATS[pi];
       const {start, end} = range(), barSteps = App.spb(P);
-      hd.bars.textContent = bars <= 4 ? String(bars) : (1 + start / barSteps) + "–" + Math.ceil(end / barSteps) + "/" + bars;
-      hd.bars.dataset.tip="VISIBLE BARS / PATTERN LENGTH · "+total+" STEPS, "+barSteps+" PER BAR · SET THE LENGTH ON THE PATTERN LETTER IN THE MATRIX";
-      hd.prev.hidden = hd.next.hidden = bars <= 4;
+      hd.bars.textContent = (1 + start / barSteps) + "–" + Math.ceil(end / barSteps) + "/" + bars;
+      hd.bars.dataset.tip = "BARS IN VIEW / PATTERN LENGTH · " + total + " STEPS, " + barSteps + " PER BAR";
+      hd.prev.hidden = hd.next.hidden = hd.bars.hidden = bars <= 4;
+      hd.len.paint(); hd.chord.paint();
+      NOTE.l.max = Math.max(1, total);
       hd.prev.disabled = start === 0;
       hd.next.disabled = end === App.Live.length(P,P.sel.t,pi);
-      hd.ch.forEach((b, i) => { b.classList.toggle("on", [1, 3, 4][i] === chord); b.disabled = !keys; });
       hd.fold.classList.toggle("on", !!P.fold);
-      for (const b of [hd.fold, hd.od, hd.ou]) b.disabled = !keys;
+      for (const g of hd.pitched) g.hidden = !keys; // chords, octaves and the scale fold mean nothing on pads and slices
       App.Automation.sync();
       hd.lv.classList.toggle("on", lane === "v"); hd.lp.classList.toggle("on", lane === "p"); hd.lr.classList.toggle("on", lane === "r");
       litStep = -2;
@@ -383,8 +416,29 @@
       cv.focus({ preventScroll: true });
       draw();
     }
+    // Sets a value on the selected notes, or on the pen when none is selected. A length stops where the resize handle
+    // would: at the next note on the same row and at the end of the clip, so nothing underneath is cut.
+    function setValue(k, v) {
+      land();
+      if (!selection.size) { pen[k] = v; return; }
+      const { clip } = ctx();
+      for (const nt of selection) {
+        if (k !== "l") { nt[k] = v; continue; }
+        let room = Math.max(1, G.steps - nt.s);
+        for (const other of clip) if (other !== nt && other.n === nt.n && other.s > nt.s) room = Math.min(room, other.s - nt.s);
+        nt.l = clamp(v, 1, room);
+      }
+      // The pen follows the note last touched, as it does when a note is clicked or resized.
+      let lead; for (lead of selection);
+      if (k === "v") pen.v = v; else if (k === "l") pen.l = lead.l;
+    }
+    const paintValues = () => { for (const p of hd.vals) p.paint(); };
     function updateSelection() {
-      hd.count.textContent = selection.size;
+      hd.sel.textContent = selection.size ? "SELECTED" : "NEXT NOTE";
+      hd.sel.dataset.tip = selection.size ? "THESE VALUES ARE THE SELECTED NOTES' · DRAG, WHEEL, TYPE · RIGHT-CLICK = BACK TO DEFAULT" : "NO NOTE SELECTED · THESE VALUES GO TO THE NEXT NOTE YOU DRAW · CLICK A NOTE TO SEE AND SET ITS OWN";
+      hd.count.textContent = selection.size || "";
+      hd.count.hidden = !selection.size;
+      paintValues();
       for (const b of [hd.dup, hd.remove]) b.disabled = !selection.size;
       const activeTool = App.Automation.active() ? "auto" : tool;
       for (const [b, value] of [[hd.draw, "draw"], [hd.select, "select"], [hd.auto, "auto"]]) {
@@ -505,17 +559,36 @@
 
     const laneTitle = () => lane === "v" ? "VELOCITY" : lane === "p" ? "PROBABILITY" : "REPEATS";
     const laneValue = nt => lane === "r" ? (nt.r || 1) / 8 : nt[lane];
+    const laneText = (v) => (lane === "r" ? v + (v === 1 ? " HIT" : " HITS") : pct(v));
+    const laneAt = (m) => (lane === "r" ? clamp(Math.ceil(m.val * 8), 1, 8) : lane === "p" ? Math.round(m.val * 20) / 20 : Math.max(0.02, Math.round(m.val * 100) / 100));
+    // The notes a lane gesture at this step touches: those on the step, or only the selected ones among them.
+    const laneNotes = (clip, step, all) => clip.filter((nt) => (all || nt.s === step) && (!selection.size || selection.has(nt)));
+    const stepName = (s) => { const P = App.P, SPB = App.spb(P), BS = App.beatSteps(P); return Math.floor(s / SPB) + 1 + "." + (Math.floor((s % SPB) / BS) + 1) + "." + ((s % SPB) % BS + 1); };
+    // What the readout says in the lane: the value the notes on this step really have, not where the pointer is.
+    function readLane(m, setting) {
+      const notes = laneNotes(ctx().clip, m.step, act?.all), vals = [...new Set(notes.map((nt) => noteVal(nt, lane)))].sort((a, b) => a - b);
+      const has = !vals.length ? "NO NOTE" : vals.length === 1 ? laneText(vals[0]) : laneText(vals[0]).replace("%", "") + "-" + laneText(vals[vals.length - 1]);
+      rd.textContent = stepName(m.step) + "   " + laneTitle() + " " + has + (setting || !vals.length ? "" : "   CLICK = " + laneText(laneAt(m)));
+    }
     function setLane(m) {
-      for (const nt of act.clip) {
-        if ((!act.all && nt.s !== m.step) || (selection.size && !selection.has(nt))) continue;
-        const v = lane === "r" ? clamp(Math.ceil(m.val * 8), 1, 8)
-          : lane === "p" ? Math.round(m.val * 20) / 20 : Math.max(0.02, Math.round(m.val * 100) / 100);
-        if ((nt[lane] ?? 1) === v) continue;
+      for (const nt of laneNotes(act.clip, m.step, act.all)) {
+        const v = act.reset ? NOTE[lane].def : laneAt(m);
+        if (noteVal(nt, lane) === v) continue;
         if (!act.old.has(nt)) act.old.set(nt, { ...nt });
         nt[lane] = v;
-        if (lane === "v") lastVel = v;
+        if (lane === "v") pen.v = v;
         act.ch = true;
       }
+      readLane(m, true);
+    }
+    // The wheel nudges the notes under the pointer: one finished run of the wheel is one undo step.
+    function wheelLane(m, up, fine) {
+      const notes = laneNotes(ctx().clip, m.step, false), d = NOTE[lane];
+      if (!notes.length || act) return;
+      land();
+      for (const nt of notes) nt[lane] = lane === "r" ? clamp(noteVal(nt, "r") + (up ? 1 : -1), 1, 8) : clamp(Math.round((nt[lane] + (up ? 1 : -1) * (fine ? 0.01 : 0.05)) * 100) / 100, d.min, d.max);
+      clearTimeout(laneT); laneT = setTimeout(() => { laneT = 0; App.commit(); App.Mx.draw(); }, 350);
+      readLane(m, true); draw();
     }
     function begin(e, mode, props) {
       act = { mode, id: e.pointerId, clip: ctx().clip, previous: new Set(selection), old: new Map(), ...props };
@@ -574,8 +647,8 @@
       UI.closeMenu();
       if (!m.zone) return;
       e.preventDefault(); cv.focus({ preventScroll: true });
-      if (m.zone === "lane") {
-        if (e.button === 0) { begin(e, "lane", { all: e.shiftKey && selection.size > 0 }); setLane(m); draw(); }
+      if (m.zone === "lane") { // left = set, right = back to the default; either can be dragged across steps
+        begin(e, "lane", { all: e.shiftKey && selection.size > 0, reset: e.button === 2 }); setLane(m); draw();
         return;
       }
       const o = R[m.row];
@@ -603,11 +676,11 @@
         const resize = tail <= G.end && m.x >= G.gx + (tail - G.start) * G.cw - grab;
         const group = selection.has(hit) ? [...selection] : [hit];
         begin(e, resize ? "size" : "move", { note: hit, grp: group, old: originals(group), st0: m.step, r0: m.row });
-        selection = new Set(group); lastLen = hit.l; lastVel = hit.v;
+        selection = new Set(group); pen.l = hit.l; pen.v = hit.v;
         hear(hit.n, hit.v);
       } else {
-        const group = App.chordNotes(P, o.n, isKeys(T) ? chord : 1).filter(n => n <= 127)
-          .map(n => ({ s: m.step, n, l: Math.min(lastLen, G.steps - m.step), v: lastVel, p: 1, r: 1 }));
+        const group = App.chordNotes(P, o.n, isKeys(T) ? chordSize() : 1).filter(n => n <= 127)
+          .map(n => ({ s: m.step, n, l: Math.min(pen.l, G.steps - m.step), v: pen.v, p: pen.p, r: pen.r }));
         begin(e, "size", { note: group[0], grp: group, old: originals(group), st0: m.step, created: true, ch: true });
         selection.clear();
         for (const nt of group) { clip.push(nt); hear(nt.n, nt.v); }
@@ -645,7 +718,7 @@
       if (a.ch) {
         if (a.grp) {
           const available = new Set(a.clip);
-          carve(a.clip, a.grp.filter(nt => available.has(nt))); lastLen = a.note.l;
+          carve(a.clip, a.grp.filter(nt => available.has(nt))); pen.l = a.note.l;
         }
         a.clip.sort((x, y) => x.s - y.s || x.n - y.n);
         App.commit(); App.Mx.draw();
@@ -662,9 +735,8 @@
       const chordTxt = o.pad == null && !o.slice ? App.chordName(sounding) : "";
       if (m.zone === "gut") { rd.textContent = o.label; UI.hint(o.label + "    CLICK = PLAY" + (o.pad != null ? " + SELECT PAD · DOUBLE-CLICK = RENAME · DROP AUDIO FILE = LOAD" : "")); }
       else if (m.zone === "lane") {
-        const v = laneTitle();
-        rd.textContent = where + "   " + (lane === "r" ? clamp(Math.ceil(m.val * 8), 1, 8) + " HITS" : Math.round(m.val * 100) + "%");
-        UI.hint(v + " AT STEP " + where + (selection.size ? "    DRAG = SET SELECTED NOTES HERE · SHIFT-DRAG = SET ENTIRE SELECTION" : "    DRAG = SET"));
+        readLane(m);
+        UI.hint(laneTitle() + " AT STEP " + where + "    DRAG = SET · RIGHT-CLICK = BACK TO " + laneText(NOTE[lane].def) + " · WHEEL = NUDGE · SHIFT = FINE" + (selection.size ? " · SHIFT-DRAG = THE WHOLE SELECTION" : " · SELECT A NOTE TO TYPE ITS VALUES ABOVE"));
       } else {
         const rule=clip.find(nt=>nt.n===o.n && nt.s<=s && s<nt.s+nt.l && nt.when)?.when;
         const label=rule ? "   "+(rule.every>1?"PASS "+rule.phase+"/"+rule.every:"")+(rule.fill===1?" FILL":rule.fill===-1?" NO FILL":""):"";
@@ -718,7 +790,7 @@
       page = 0; pagePattern = -1; followTransport = true;
       cancelAnimationFrame(raf); raf = 0;
       selection.clear(); selectionClip = null; selectionShape = "";
-      tool = "draw"; lane = "v"; chord = 1; lastLen = 1; lastVel = 0.8;
+      tool = "draw"; lane = "v"; Object.assign(pen, { v: 0.8, p: 1, r: 1, l: 1, chord: 0 });
       rowNote = null; wheel = 0; hov = null;
       eu.k = 4; eu.n = 16; eu.r = 0;
       live.clear(); lit.clear(); litStep = -2;
