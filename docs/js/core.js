@@ -498,7 +498,7 @@
         if (record?.bytes && !record.blob) record.blob=new Blob([record.bytes],{type:record.type || "audio/wav"});
         return record;
       },
-      del: (id) => tx("readwrite", (s) => s.delete(id)),
+      drop: (ids) => tx("readwrite", (s) => { let q; for (const id of ids) q = s.delete(id); return q; }),
       keys: () => tx("readonly", (s) => s.getAllKeys()),
     };
   })();
@@ -595,6 +595,33 @@
   App.importSample = async (id, name, blob) => {
     register(id, name, await decode(await blob.arrayBuffer()), blob);
     try { await idb.put({ id, name, blob }); return true; } catch { return false; }
+  };
+
+  /* Recordings nothing can reach any more leave the browser's store at start-up. Three things keep that safe:
+     only a tab that is open alone cleans (another tab's undo history may still hold a sample), it keeps all that
+     this tab has decoded or can undo to, and a build older than the one that last saved cleans nothing, because a
+     later build may keep sample ids where this one does not look. Raise REFS with every such new place. */
+  const REFS = 1, REFS_KEY = KEY + ".refs", TABS = "musiclab.tabs";
+  App.tidySamples = async (projects) => {
+    const locks = navigator.locks;
+    if (!locks) return 0;
+    let known = 0, removed = 0;
+    try { known = +localStorage.getItem(REFS_KEY) || 0; if (known < REFS) localStorage.setItem(REFS_KEY, REFS); } catch { known = Infinity; }
+    if (projects && known <= REFS) {
+      // A reload asks while the page it replaces still holds its place for a moment, so wait for it briefly.
+      const stop = new AbortController(), timer = setTimeout(() => stop.abort(), 2500);
+      await locks.request(TABS, { signal: stop.signal }, async () => {
+        clearTimeout(timer);
+        const keys = await idb.keys(), keep = new Set(App.samples.keys());
+        const states = [...projects, App.P, ...hist.st.map((entry) => JSON.parse(entry.data))];
+        for (const P of states) if (P) for (const id of App.sampleIds(P)) keep.add(id);
+        const unused = keys.filter((id) => !keep.has(id));
+        if (unused.length) { await idb.drop(unused); removed = unused.length; }
+      }).catch(() => {});
+      clearTimeout(timer);
+    }
+    locks.request(TABS, { mode: "shared" }, () => new Promise(() => {})).catch(() => {}); // held until the tab closes
+    return removed;
   };
 
   Object.assign(App, {

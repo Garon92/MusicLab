@@ -574,7 +574,7 @@
           position=UI.param(DEF.smp.gpos,d,()=>{push();wv.paint();});
           wv.dataset.tip="GRAIN POSITION · DRAG THROUGH THE WAVEFORM · DRAG END MARKERS TO TRIM";
         }
-        const summary=zoning?h("div.zone-summary",{style:"grid-column:span 4;grid-row:span 2",
+        const summary=zoning?h("div.zone-summary",{style:"grid-column:span 4;grid-row:span 2","data-tip":"EACH KEY AND VELOCITY PLAYS THE SAMPLE MAPPED TO IT · UNMAPPED KEYS ARE SILENT · ZONES… EDITS THE MAP",
           text:d.zones.length+" ZONES · "+new Set(d.zones.map(z=>z.sample)).size+" SAMPLES"}):null;
         body.append(
           zoning ? mod("KEYMAP",4,[summary,st,en,q("tune"),q("rev")],[btn("ZONES…","ASSIGN KEYS, VELOCITIES AND ROUND ROBIN SAMPLES",()=>App.SamplerLab.zones(ti))])

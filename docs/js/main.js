@@ -345,10 +345,90 @@
     }
     return out;
   }
+  // A project file is written and read in pieces, so its size is not bound by the longest string a browser allows.
+  // The pieces are whole triplets of bytes going out and whole quartets of characters coming in, so they join cleanly.
+  const TRIPLETS = 3 << 20, QUARTETS = 4 << 20;
+  async function projectBlob(project) {
+    const out = clone(project);
+    delete out.samples;
+    const parts = [JSON.stringify(out).slice(0,-1) + ',"samples":['];
+    let count = 0;
+    for (const id of App.sampleIds(out)) {
+      const blob = await App.sampleBlob(id);
+      if (!blob) throw Error("SAMPLE MISSING · RELOAD IT BEFORE SAVING");
+      parts.push((count++ ? "," : "") + JSON.stringify({id, name:App.samples.get(id)?.name || id, type:blob.type || "audio/wav"}).slice(0,-1) + ',"data":"');
+      for (let at = 0; at < blob.size; at += TRIPLETS) parts.push(await b64(blob.slice(at,at + TRIPLETS)));
+      parts.push('"}');
+    }
+    parts.push("]}");
+    return {blob:new Blob(parts,{type:"application/json"}), count};
+  }
   async function saveProject() {
-    const out = await packProject(App.P);
-    download(new Blob([JSON.stringify(out)],{type:"application/json"}),out.name + ".musiclab.json");
-    UI.msg("PROJECT SAVED · " + out.samples.length + " SAMPLES INCLUDED");
+    const name = App.P.name, {blob,count} = await projectBlob(App.P);
+    download(blob,name + ".musiclab.json");
+    UI.msg("PROJECT SAVED · " + count + " SAMPLE" + (count === 1 ? "" : "S") + " INCLUDED");
+  }
+  async function fromBase64(text, type) {
+    const parts = [];
+    for (let at = 0; at < text.size; at += QUARTETS) {
+      const binary = atob(await text.slice(at,at + QUARTETS).text()), bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      parts.push(bytes);
+    }
+    return new Blob(parts,{type:type || "audio/wav"});
+  }
+  const sameBytes = async (a, b) => {
+    if (a.size !== b.size) return false;
+    for (let at = 0; at < a.size; at += TRIPLETS) if (await b64(a.slice(at,at + TRIPLETS)) !== await b64(b.slice(at,at + TRIPLETS))) return false;
+    return true;
+  };
+  // A large file is never held as one string. One pass over its bytes finds the top-level "samples" list and where
+  // each sample's audio lies; the project around the list parses as usual and the audio is decoded from its place.
+  async function readProject(file) {
+    if (file.size < App.ProjectFiles.streamFrom) { const raw = JSON.parse(await file.text()); return {raw, entries:raw?.samples}; }
+    const entries = [], STEP = 8 << 20;
+    let depth = 0, inString = false, escaped = false, text = "", last = "", key = "", list = null, entry = null, audio = false;
+    for (let base = 0; base < file.size; base += STEP) {
+      const bytes = new Uint8Array(await file.slice(base,base + STEP).arrayBuffer());
+      for (let i = 0; i < bytes.length; i++) {
+        if (audio) { // base64 has no quotes or escapes: jump to where the audio ends
+          const end = bytes.indexOf(34,i);
+          if (end < 0) break;
+          i = end; entry.to = base + i; audio = inString = false; last = null; continue;
+        }
+        const c = bytes[i];
+        if (inString) {
+          if (escaped) escaped = false;
+          else if (c === 92) escaped = true;
+          else if (c === 34) { inString = false; last = text; }
+          else if (text !== null) text = text.length < 8 ? text + String.fromCharCode(c) : null; // only short keys matter
+        } else if (c === 34) {
+          inString = true; escaped = false; text = "";
+          if (entry && depth === 3 && key === "data" && entry.from == null) { entry.from = base + i + 1; audio = true; }
+        } else if (c === 58) key = last;
+        else if (c === 44) key = "";
+        else if (c === 123 || c === 91) {
+          depth++;
+          if (c === 91 && depth === 2 && key === "samples" && !list) list = {start:base + i};
+          else if (c === 123 && depth === 3 && list && list.end == null) entry = {start:base + i};
+          key = "";
+        } else if (c === 125 || c === 93) {
+          if (c === 125 && depth === 3 && entry) { entry.end = base + i + 1; entries.push(entry); entry = null; }
+          else if (c === 93 && depth === 2 && list && list.end == null) list.end = base + i + 1;
+          depth--;
+        }
+      }
+    }
+    if (!list || list.end == null) throw SyntaxError("No sample list");
+    const raw = JSON.parse(await new Blob([file.slice(0,list.start),"[]",file.slice(list.end)]).text());
+    const read = [];
+    for (const e of entries) {
+      const whole = e.from == null || e.to == null;
+      const item = JSON.parse(await (whole ? file.slice(e.start,e.end) : new Blob([file.slice(e.start,e.from),file.slice(e.to,e.end)])).text());
+      if (!whole) item.base64 = file.slice(e.from,e.to);
+      read.push(item);
+    }
+    return {raw, entries:read};
   }
 
   async function finishRecordings() {
@@ -406,7 +486,7 @@
     const packed = new Map();
     let stored = true;
     for (const item of Array.isArray(entries) ? entries : []) {
-      if (item && typeof item.id === "string" && typeof item.data === "string") packed.set(item.id,item);
+      if (item && typeof item.id === "string" && (item.base64 instanceof Blob || typeof item.data === "string")) packed.set(item.id,item);
     }
     for (const id of App.sampleIds(project)) {
       const item = packed.get(id);
@@ -416,8 +496,8 @@
         continue;
       }
       let blob;
-      try { blob = unb64(item.data,item.type); } catch { throw Error("INVALID SAMPLE DATA"); }
-      if (existing && existing.size === blob.size && (await b64(existing)) === item.data) continue;
+      try { blob = item.base64 instanceof Blob ? await fromBase64(item.base64,item.type) : unb64(item.data,item.type); } catch { throw Error("INVALID SAMPLE DATA"); }
+      if (existing && await sameBytes(existing,blob)) continue;
       const dest = existing ? App.uid() : id;
       try { if (!await App.importSample(dest,String(item.name || "SAMPLE").slice(0,40),blob)) stored = false; }
       catch { throw Error("CANNOT DECODE THE EMBEDDED SAMPLE"); }
@@ -426,7 +506,7 @@
     return stored;
   }
 
-  App.ProjectFiles = {pack:packProject, importSamples};
+  App.ProjectFiles = {pack:packProject, importSamples, blob:projectBlob, read:readProject, streamFrom:64 << 20};
 
   async function openFile(file, isMidi) {
     const request = ++fileRequest;
@@ -437,10 +517,10 @@
         const result = App.MidiImport.read(await file.arrayBuffer(),file.name);
         project = result.project; summary = result.summary;
       } else {
-        const raw = JSON.parse(await file.text());
+        const read = await readProject(file), raw = read.raw;
         project = raw?.app === "MUSICLAB" && raw.v === 3 ? App.sanitize(raw) : null;
         if (!project) throw Error("UNSUPPORTED PROJECT FORMAT");
-        entries = raw.samples;
+        entries = read.entries;
       }
       if (!current()) return;
       const rows = [["File",file.name],["Project",project.name],["Contents",projectStats(project)]];
@@ -627,12 +707,15 @@
 
   function boot() {
     theme();
-    App.P = App.stored() || App.newProject();
+    const stored = App.stored();
+    App.P = stored || App.newProject();
     UI.init();
     App.Top.build(); App.Mx.build(); App.Ed.build(); App.Dv.build(); App.Fx.build(); App.Sg.build();
     App.Workspace.init();
     App.commit();
     App.refresh();
+    // Only a project that was read back says which recordings are still in use.
+    App.tidySamples(stored ? [stored, lastReset()] : null).then((n) => { if (n) UI.msg("STORAGE · " + n + " UNUSED SAMPLE" + (n === 1 ? "" : "S") + " CLEARED"); }).catch(() => {});
     const relayout = () => { theme(); App.Mx.draw(); App.Ed.draw(); App.Dv.paint(); App.Sg.resize(); };
     window.addEventListener("resize", relayout);
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(relayout);

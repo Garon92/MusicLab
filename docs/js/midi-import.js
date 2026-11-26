@@ -84,9 +84,9 @@
           const type = byte(), len = vlq();
           need(len);
           if (type === 3 && !name) name = textDecoder.decode(data.subarray(pos, pos + Math.min(len, 256))).replace(/[\u0000-\u001f\u007f]/g, "").trim();
-          if (type === 6 && len === 18 && ti === 0) {
-            const marker = /^MusicLab Pattern ([A-H])$/.exec(textDecoder.decode(data.subarray(pos, pos + len)));
-            if (marker) markers.push({ tick, pattern: marker[1].charCodeAt(0) - 65 });
+          if (type === 6 && (len === 18 || len === 13) && ti === 0) {
+            const marker = /^MusicLab (?:Pattern ([A-H])|Rest)$/.exec(textDecoder.decode(data.subarray(pos, pos + len)));
+            if (marker) markers.push(marker[1] ? { tick, pattern: marker[1].charCodeAt(0) - 65 } : { tick, rest: true });
           }
           if (type === 33 && len === 1) port = data[pos];
           if (type === 1 && ti === 0 && tick === 0 && len <= 18) {
@@ -245,6 +245,11 @@
       let cuts = 0;
       for (let i = 0; i < starts.length; i++) {
         const start = Math.round(starts[i]), end = Math.round(starts[i + 1] ?? bars);
+        if (markers[i].rest) {
+          // Empty bars come back as empty bars and take none of the eight patterns. Bars with notes in them are music.
+          if (Math.abs(starts[i] - start) > .0001 || end <= start || end > bars || carries[start]?.length || onsets.slice(start, end).some(list => list.length)) break;
+          chain.push({ start, len: end - start, rest: true }); continue;
+        }
         const word = words[start]?.find(w => w.len === end - start);
         if (!word || Math.abs(starts[i] - start) > .0001) break;
         const preferred = markers[i].pattern, id = preferred + "/" + word.id;
@@ -496,7 +501,13 @@
     }).join("/"));
     const plan = arrangement(onsets, carries, bars, spb, maxBars, file.markers, stepPerTick, ccBars);
     const seen = new Map(), reserved = new Set(plan.chain.map(item => item.preferred)), used = new Set();
+    // Slots line up with the chain by position, so once one slot is written every entry gets its place.
+    const metered = P.arrangement.meters.length > 0, slotted = metered || plan.chain.some(item => item.rest);
     for (const item of plan.chain) {
+      if (item.rest) {
+        P.chain.push(0); P.arrangement.slots.push({offset:0,steps:item.len*spb,rest:true});
+        continue;
+      }
       if (!seen.has(item.id)) {
         let index = item.preferred;
         if (index === undefined || used.has(index)) {
@@ -516,10 +527,10 @@
         }
       }
       P.chain.push(seen.get(item.id));
-      if(P.arrangement.meters.length)P.arrangement.slots.push({offset:0,steps:Math.min(item.len*spb,Math.max(1,maxEnd-item.start*spb)),rest:false});
+      if(slotted)P.arrangement.slots.push(metered ? {offset:0,steps:Math.min(item.len*spb,Math.max(1,maxEnd-item.start*spb)),rest:false} : null);
     }
-    P.song = P.chain.length > 1 || P.arrangement.meters.length ? 1 : 0;
-    P.sel.p = P.chain[0];
+    P.song = P.chain.length > 1 || metered ? 1 : 0;
+    P.sel.p = P.chain[P.arrangement.slots.findIndex(slot => !slot?.rest)] ?? P.chain[0];
     if (file.parts.length > parts.length) warnings.push(file.parts.length + " MIDI parts share " + parts.length + " console tracks.");
     if (pitched.size) warnings.push(pitched.size + " non-kit drum pitch" + (pitched.size === 1 ? "" : "es") + " mapped to the closest pads.");
     if (quantized) warnings.push(quantized + " note" + (quantized === 1 ? "" : "s") + " adjusted to the available note length or microtiming range.");

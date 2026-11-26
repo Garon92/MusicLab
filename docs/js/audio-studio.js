@@ -108,6 +108,16 @@
   let studio = null, sampleDialog = null, capture = null, captureTimer, generation = 0, selected = "", track = 0, cursor = 0;
   let snap = 1, loopBars = 1, src = "mic", zoom = 0, viewportStart = 0, notice = "", view = "timeline";
   const find = () => pool().find(r => r.id===selected);
+  // A take from the microphone is late by the way out and the way in. It moves earlier by what the browser reports,
+  // or by what the player set after a clap landed off the click. The setting belongs to this browser and its devices.
+  const DELAY="musiclab.input-delay", reported=()=>Math.round(1000*(App.E?.inputLag() || 0));
+  function inputDelay() {
+    try { const v=localStorage.getItem(DELAY); if(v && Number.isFinite(+v)) return App.clamp(Math.round(+v),0,500); } catch { /* Storage is optional. */ }
+    return Math.min(500,reported());
+  }
+  function setInputDelay(ms) {
+    try { if(ms===Math.min(500,reported())) localStorage.removeItem(DELAY); else localStorage.setItem(DELAY,ms); } catch { /* Storage is optional. */ }
+  }
   function add(id,ti,at,more={}) {
     if (pool().length >= 2048) throw Error("REGION LIMIT REACHED");
     const S = App.samples.get(id);
@@ -180,12 +190,12 @@
     }
     c.stopping=true;clearTimeout(captureTimer);
     try {
-      const end=Math.min(c.end ?? c.E.ctx.currentTime,c.E.ctx.currentTime);
+      const lag=c.lag || 0, now=c.E.ctx.currentTime, end=Math.min(c.end!=null ? c.end+lag : now,now);
       const raw=await c.rec.stop();
       if (c!==capture || c.project!==App.P) return;
-      const first=c.rec.firstTime() ?? c.connected, length=end-c.when;
-      if(length<.005 || raw.length<2 || raw.duration+first<c.when+.01) throw Error("RECORDING TOO SHORT");
-      const buffer=crop(raw,c.when-first,c.end ? c.end-c.when : length);
+      const first=c.rec.firstTime() ?? c.connected, from=c.when+lag, length=end-from;
+      if(length<.005 || raw.length<2 || raw.duration+first<from+.01) throw Error("RECORDING TOO SHORT");
+      const buffer=crop(raw,from-first,c.end ? c.end-c.when : length);
       const name=(c.mode==="take" ? "TAKE" : c.mode==="loop" ? "LAYER" : "INPUT")+" "+(App.P.audio.regions.length+1);
       const id=App.addBuffer(name,buffer,{floating:true});
       if(c.mode==="take") {
@@ -199,7 +209,7 @@
           if(skip>=0 && skip<loopClock.len) voice(c.E,layer,now+.005,skip+.005);
         }
       }
-      App.commit(); refreshPlayback(); notice=c.mode==="loop"?"LAYER RECORDED": "RECORDING ADDED";
+      App.commit(); refreshPlayback(); notice=(c.mode==="loop"?"LAYER RECORDED": "RECORDING ADDED")+(lag ? " · MOVED "+Math.round(lag*1000)+" MS EARLIER FOR INPUT DELAY" : "");
     } catch(e) {if(c===capture) notice=e.message;}
     finally { if(c===capture){ capture=null;render(); } }
   }
@@ -214,6 +224,7 @@
       const node=src==="mic"?await E.openInput():src==="track"?(E.tracks[c.track].instrument || E.tracks[c.track].pan):E.out;
       if(capture!==c)return;
       c.awaitingNewInput=false;
+      c.lag=src==="mic" ? inputDelay()/1000 : 0; // read once the input is open: only then is its own delay known
       c.rec=await E.record(node);
       if(capture!==c){await c.rec.stop();return;}
       c.connected=E.ctx.currentTime;
@@ -251,7 +262,7 @@
         }
       }
       if(c.end) {
-        const wait=()=>{if(capture!==c)return;const left=c.end-E.ctx.currentTime;
+        const wait=()=>{if(capture!==c)return;const left=c.end+c.lag-E.ctx.currentTime; // the end of the pass arrives late too
           if(left>.01) captureTimer=setTimeout(wait,Math.max(8,Math.min(250,left*1000)));
           else if(left>0) captureTimer=setTimeout(wait,12);
           else finishCapture();
@@ -430,16 +441,19 @@
     canvas=h("canvas.ast-timeline",{"aria-label":"Audio timeline · drop files or drag regions across tracks",role:"img"});bindCanvas(canvas);body.append(canvas);
     const idle=!capture;
     if(view==="looper" && src==="mix")src="track";
-    const sourceCtl=select("Record source",[["mic","MIC / LINE"],["track","TRACK INSTRUMENT"],...(view==="timeline"?[["mix","MASTER OUTPUT"]]:[])],src,v=>{src=v;});
+    const sourceCtl=select("Record source",[["mic","MIC / LINE"],["track","TRACK INSTRUMENT"],...(view==="timeline"?[["mix","MASTER OUTPUT"]]:[])],src,v=>{src=v;render();});
+    const delayCtl=src==="mic" ? number("Input delay · ms",inputDelay(),0,500,1,v=>{setInputDelay(v);render();}) : null;
+    if(delayCtl) Object.assign(delayCtl.querySelector("input").dataset,{reset:Math.min(500,reported()),tip:"A MIC TAKE MOVES THIS MUCH EARLIER · RIGHT-CLICK = WHAT THE BROWSER REPORTS · CLAP ON THE CLICK AND TRIM UNTIL IT SITS"});
+    if(delayCtl) delayCtl.querySelector("input").disabled=!idle;
     if(view==="timeline"){
       body.append(h("div.ast-toolbar",null,action("Resample…","RENDER A TRACK OR BUS RANGE INTO A REGION OR SAMPLER",openResample,!idle),
         action("Import audio…","PLACE FILES CONSECUTIVELY AT THE CURSOR",()=>App.pickFile("audio/*",files=>importFiles(files,track,cursor)),!idle),
-        sourceCtl, action(capture?.mode==="region"?"Stop recording":"Record region","CAPTURE AUDIO INTO THE SELECTED LANE",()=>capture?finishCapture():record("region"),!!capture && capture.mode!=="region","rec"+(capture?.mode==="region"?".on":"")),
+        sourceCtl, delayCtl, action(capture?.mode==="region"?"Stop recording":"Record region","CAPTURE AUDIO INTO THE SELECTED LANE",()=>capture?finishCapture():record("region"),!!capture && capture.mode!=="region","rec"+(capture?.mode==="region"?".on":"")),
         action("Record take","RECORD ONE ALTERNATE PASS OF THE SELECTED REGION",()=>record("take"),!idle || !r,"rec"),
         action(App.Seq.playing?"Stop transport":"Play transport","PLAY TIMELINE WITH THE SONG OR CURRENT PATTERN",()=>{stopLoop();App.Seq.toggle();render();},!!capture)));
     } else {
       const group=layersAt(cursor,loopLength());
-      body.append(h("div.ast-toolbar",null,sourceCtl,select("Loop bars",[[1,"1"],[2,"2"],[4,"4"],[8,"8"],[16,"16"]],loopBars,v=>{stopLoop();loopBars=+v;render();}),
+      body.append(h("div.ast-toolbar",null,sourceCtl,delayCtl,select("Loop bars",[[1,"1"],[2,"2"],[4,"4"],[8,"8"],[16,"16"]],loopBars,v=>{stopLoop();loopBars=+v;render();}),
         action(loopClock?"Stop loop":"Play loop","AUDITION LAYERS AT THE CURSOR IN A CONTINUOUS LOOP",()=>startLoop(),!idle),
         action("Overdub layer","CAPTURE ONE BAR-ALIGNED PASS AND KEEP PREVIOUS LAYERS",()=>record("loop"),!idle,"rec"),
         action("Undo layer","REMOVE THE LAST OVERDUB AT THIS CURSOR AND LOOP LENGTH",()=>edit(()=>{pool().splice(pool().indexOf(group.at(-1)),1);selected="";}),!idle || !group.length),

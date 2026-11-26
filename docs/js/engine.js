@@ -9,12 +9,15 @@
   const DELAY_BEATS = [0.125, 1 / 6, 0.25, 1 / 3, 0.375, 0.5, 2 / 3, 0.75, 1, 2];
   const LFO_UNITS = [8, 4, 2, 1, 2, 1, 0.5, 0.25]; // first four in bars, rest in beats
 
+  // The recorder says which frame its first sample is, so a take can be cut to the beat. It works that out again on
+  // every block (the frame now, less what it has taken): the first block of the first processor on a page reads
+  // frame 0 in WebKit and one block early in Chromium, whatever the time really is, and every later block is right.
   const REC_SRC =
-    'class R extends AudioWorkletProcessor{constructor(){super();this.a=new Float32Array(4096);this.b=new Float32Array(4096);this.n=0;this.on=true;this.first=-1;' +
+    'class R extends AudioWorkletProcessor{constructor(){super();this.a=new Float32Array(4096);this.b=new Float32Array(4096);this.n=0;this.t=0;this.on=true;this.first=-1;' +
     "this.port.onmessage=()=>{this.on=false;this.flush();this.port.postMessage(0)}}" +
     "flush(){if(!this.n)return;this.port.postMessage([this.a.slice(0,this.n),this.b.slice(0,this.n),this.first]);this.n=0}" +
-    "process(i){if(!this.on)return false;if(this.first<0)this.first=currentFrame;const c=i[0],l=c&&c[0],r=c&&c[1]||l,m=l?l.length:128;" +
-    "for(let k=0;k<m;k++){this.a[this.n]=l?l[k]:0;this.b[this.n]=r?r[k]:0;if(++this.n===4096)this.flush()}return true}}" +
+    "process(i){if(!this.on)return false;this.first=currentFrame-this.t;const c=i[0],l=c&&c[0],r=c&&c[1]||l,m=l?l.length:128;" +
+    "for(let k=0;k<m;k++){this.a[this.n]=l?l[k]:0;this.b[this.n]=r?r[k]:0;if(++this.n===4096)this.flush()}this.t+=m;return true}}" +
     'registerProcessor("ml-rec",R)';
 
   // A DynamicsCompressorNode looks ahead (6 ms in today's engines). Whatever sums a compressed path with an
@@ -756,6 +759,9 @@
       inputStream = inputNode = E.input = mon = null;
     };
     E.monitor = (on) => mon && set(mon.gain, on ? 1 : 0);
+    // What is played is heard later by the way out, and what a microphone hears arrives later again by the way in.
+    // This is their sum as far as the browser reports it: a take played to the beat is late by this much.
+    E.inputLag = () => (ctx.baseLatency || 0) + (ctx.outputLatency || 0) + (inputStream?.getAudioTracks()[0]?.getSettings?.().latency || 0);
 
     let worklet = null;
     const loadWorklet = () => {
@@ -774,8 +780,9 @@
       let frames = 0, firstTime = null, end, sink;
       const done = new Promise((r) => (end = r));
       if (await loadWorklet()) {
+        const made = ctx.currentTime; // a first sample cannot be older than its recorder, whatever a stopped-at-once pass reports
         sink = new AudioWorkletNode(ctx, "ml-rec", { channelCount: 2, channelCountMode: "explicit" });
-        sink.port.onmessage = (e) => { if (!e.data) return end(); firstTime ??= e.data[2] / sr; L.push(e.data[0]); R.push(e.data[1]); frames += e.data[0].length; };
+        sink.port.onmessage = (e) => { if (!e.data) return end(); firstTime ??= Math.max(e.data[2] / sr, made - 0.01); L.push(e.data[0]); R.push(e.data[1]); frames += e.data[0].length; };
       } else {
         sink = ctx.createScriptProcessor(4096, 2, 2);
         sink.onaudioprocess = (e) => { firstTime ??= Math.max(0, e.playbackTime - 4096 / sr); L.push(e.inputBuffer.getChannelData(0).slice()); R.push(e.inputBuffer.getChannelData(1).slice()); frames += 4096; };

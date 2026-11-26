@@ -119,7 +119,8 @@
     dlg.classList.add("ast-dialog","zone-dialog");dlg.setAttribute("data-instrument-keys","");
     const zones=d.zones;let at=0,info="",busy=false,preview=null;
     const current=()=>P===App.P && P.tracks[ti].smp===d && dlg.open;
-    function commit(message) {if(!current())return;d.mode=3;App.commit();App.Dv.build();App.Ed.sync();info=message;draw();}
+    // A map with no zones plays nothing, so the sampler goes back to its own recording when the last one leaves.
+    function commit(message) {if(!current())return;d.mode=zones.length?3:0;App.commit();App.Dv.build();App.Ed.sync();App.Mx.draw();info=message;draw();}
     function number(label,key,lo,hi,z) {
       const el=h("input",{type:"number","aria-label":label,value:z[key],min:lo,max:hi,step:1});
       el.onchange=()=>{if(!el.reportValidity())return;z[key]=el.valueAsNumber;commit("");};
@@ -185,7 +186,7 @@
         h("div.ast-toolbar",null,add,use, d.mode!==3 && zones.length?btn("Play zones","Switch this sampler to zone playback",()=>commit("Zone playback enabled")):null, h("p.dlg-tip",{text:"FILE NAMES LIKE GLASS_C4_V80_RR1.WAV SET ROOT AND VELOCITY LAYER"})),chart);
       if(z){
         const hear=btn("Audition sample","Play the original recording for this zone",()=>audition(z));
-        const remove=btn("Remove zone","Remove this assignment from the instrument",()=>{zones.splice(at,1);at=Math.max(0,Math.min(at,zones.length-1));commit("Removed zone");});
+        const remove=btn("Remove zone","Remove this assignment from the instrument",()=>{zones.splice(at,1);at=Math.max(0,Math.min(at,zones.length-1));commit(zones.length?"Removed zone":"Removed the last zone · the sampler plays its own sample again");});
         body.append(h("div.ast-toolbar",null,field("Zone",list),hear,remove),
           h("div.ast-toolbar",null,number("Root note","root",0,127,z),number("Low key","lo",0,z.hi,z),
             number("High key","hi",z.lo,127,z),number("Low velocity","vl",1,z.vh,z),number("High velocity","vh",z.vl,127,z)),

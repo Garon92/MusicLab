@@ -95,8 +95,9 @@ module.exports=async function audioStudio(reference) {
     await imported.evaluate(()=>{
       const E=App.audio(),dest=E.ctx.createMediaStreamDestination(),osc=E.ctx.createOscillator(),gain=E.ctx.createGain();
       osc.frequency.value=311;gain.gain.value=.25;osc.connect(gain).connect(dest);osc.start();
-      window.testMic={osc,dest,requests:0};
-      Object.defineProperty(navigator.mediaDevices,"getUserMedia",{configurable:true,value:async()=>{
+      // WebKit drops a device object nothing refers to, and a stand-in defined on it goes with it: hold the object.
+      window.testMic={osc,dest,requests:0,devices:navigator.mediaDevices};
+      Object.defineProperty(window.testMic.devices,"getUserMedia",{configurable:true,value:async()=>{
         window.testMic.requests++;return dest.stream;
       }});
     });

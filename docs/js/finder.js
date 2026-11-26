@@ -67,7 +67,7 @@
     add("Tempo & meter map","Song / Arrange","BPM conductor ramp time signature takt tempo mapa zrychlit",()=>App.Song.open("conductor"));
     add("Song automation","Song / Arrange","continuous curves bend arrangement repeat stretch průběh obálka",()=>App.Song.open("automation"));
     add("Song chords","Song / Chords","harmony progression akordy bass voice leading",()=>App.Harmony.open());
-    add("Audio timeline","Song / Audio","takes comp crossfade split trim nahrávka prolnutí střih",()=>App.AudioStudio.open());
+    add("Audio timeline","Song / Audio","takes comp crossfade split trim microphone input delay latency offset nahrávka prolnutí střih zpoždění latence",()=>App.AudioStudio.open());
     add("Loop overdubs","Song / Audio","looper layer record vrstva smyčka",()=>{App.AudioStudio.open();[...document.querySelectorAll("dialog[open] button")].find(b=>b.textContent.trim().toLowerCase()==="looper")?.click();});
     add("Resample a range","Song / Audio","print bounce internal track group pre post tail sampler resampling",()=>App.AudioStudio.openResample());
     add("Audio to notes","Song / Audio","audio midi hummed sing whistle melodie hlas přepis noty",()=>App.AudioStudio.openTranscription());

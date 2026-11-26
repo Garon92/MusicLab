@@ -106,8 +106,192 @@ module.exports = async function regressions(page) {
   assert.ok(Math.abs(edges.mix - edges.stem) <= 2, "mix and stem are aligned: " + JSON.stringify(edges));
   assert.ok(Math.abs(edges.mix - edges.rate / 2) <= 4, "and the click is where it was placed: " + JSON.stringify(edges));
 
-  await state(() => { App.P.name = "TO RESET"; App.commit(); App.file("new"); });
+  const reset = async () => {
+    await state(() => { App.P.name = "TO RESET"; App.commit(); App.file("new"); });
+    await page.locator("dialog[open] .confirm-action").click();
+    await page.waitForFunction(() => App.P.name === "UNTITLED" && !document.querySelector("dialog[open]"));
+  };
+  await reset();
+
+  // Removing the last zone left the sampler in zone mode with nothing mapped: silent, with its own sample still loaded.
+  await state(() => {
+    const b = new AudioBuffer({ length: 4800, sampleRate: 48000 }); b.getChannelData(0).fill(0.2);
+    const id = App.addBuffer("TONE", b);
+    Object.assign(App.P.tracks[6].smp, { id, mode: 3, zones: [{ sample: id, root: 60, lo: 0, hi: 127, vl: 1, vh: 127 }] });
+    App.select(6, 0); App.commit(); App.refresh(); App.SamplerLab.zones(6);
+  });
+  await page.locator("dialog[open]").getByRole("button", { name: "Remove zone", exact: true }).click();
+  assert.deepEqual(await state(() => [App.P.tracks[6].smp.zones.length, App.P.tracks[6].smp.mode]), [0, 0], "with no zone left the sampler plays its own sample");
+  assert.match(await page.locator("dialog[open] .ast-status").textContent(), /plays its own sample/);
+  await close();
+
+  // A slot of empty bars went into a MIDI file as "Pattern A" and came back as a pattern of its own.
+  const rest = await state(async () => {
+    const P = App.P;
+    P.tracks[0].clips[0] = [{ s: 0, n: 36, l: 1, v: 0.8, p: 1 }];
+    P.tracks[0].clips[1] = [{ s: 4, n: 38, l: 1, v: 0.8, p: 1 }];
+    P.chain = [0, 0, 1]; P.arrangement.slots = [null, { offset: 0, steps: 32, rest: true }, null]; P.song = 1;
+    App.P = App.sanitize(P); App.commit(); App.refresh();
+    const bytes = await App.Seq.midi().arrayBuffer();
+    const marks = [...new TextDecoder("latin1").decode(bytes).matchAll(/MusicLab (Pattern [A-H]|Rest)/g)].map(m => m[1]);
+    const back = App.MidiImport.read(bytes, "rest.mid").project, spans = p => App.Conductor.layout(p, p.chain).map(s => [s.from, s.end, !!s.rest].join());
+    return { marks, chain: back.chain, played: App.songPatterns(back), same: spans(back).join(" ") === spans(App.P).join(" "), length: spans(back).pop() };
+  });
+  assert.deepEqual(rest.marks, ["Pattern A", "Rest", "Pattern B"], "empty bars are named as a rest");
+  assert.deepEqual([rest.chain, rest.played, rest.same, rest.length], [[0, 0, 1], [0, 1], true, "48,64,false"], "and come back as empty bars: " + JSON.stringify(rest));
+  await reset();
+
+  // A project was saved and opened as one string, which no browser allows past about half a gigabyte. It is written
+  // and read in pieces now: the file stays what it was, byte for byte, and the pieced reader returns the same project.
+  const big = await state(async () => {
+    const sr = 48000, tone = k => {
+      const b = new AudioBuffer({ length: sr * 12, sampleRate: sr, numberOfChannels: 2 });
+      for (let ch = 0; ch < 2; ch++) { const d = b.getChannelData(ch); for (let i = 0; i < d.length; i++) d[i] = Math.sin(i * (ch ? 0.031 : 0.02) * k) * 1.3; }
+      return b;
+    };
+    const ids = [App.addBuffer("LONG A", tone(1), { floating: true }), App.addBuffer('LONG "B" \\ [x]', tone(1.7), { floating: true })];
+    App.P.tracks[6].smp.id = ids[0]; App.P.tracks[7].smp.id = ids[1]; App.P.name = "BIG"; App.commit();
+    const { blob, count } = await App.ProjectFiles.blob(App.P), text = await blob.text(), whole = JSON.parse(text);
+    App.ProjectFiles.streamFrom = 0;
+    const pieced = await App.ProjectFiles.read(new File([blob], "big.musiclab.json"));
+    const audio = await Promise.all(pieced.entries.map(async (e, i) => e.id === whole.samples[i].id && e.name === whole.samples[i].name && (await e.base64.text()) === whole.samples[i].data));
+    return { ids, count, size: blob.size, asBefore: text === JSON.stringify(await App.ProjectFiles.pack(App.P)),
+      project: JSON.stringify({ ...whole, samples: [] }) === JSON.stringify(pieced.raw), audio, text };
+  });
+  assert.ok(big.size > 12e6 && big.count === 2, "the file spans several pieces: " + big.size);
+  assert.deepEqual([big.asBefore, big.project, big.audio], [true, true, [true, true]], "written and read in pieces without a change");
+  // Opened through FILE with the samples gone from this browser: the pieced reader has to bring the audio back.
+  await reset();
+  await state(async (ids) => {
+    for (const id of ids) App.samples.delete(id);
+    const db = await new Promise((done, fail) => { const r = indexedDB.open("musiclab3"); r.onsuccess = () => done(r.result); r.onerror = () => fail(r.error); });
+    await new Promise((done, fail) => { const t = db.transaction("smp", "readwrite"); ids.forEach(id => t.objectStore("smp").delete(id)); t.oncomplete = done; t.onabort = () => fail(t.error); });
+    db.close();
+  }, big.ids);
+  const chooser = page.waitForEvent("filechooser");
+  await state(() => { App.file("open"); });
+  await (await chooser).setFiles({ name: "big.musiclab.json", mimeType: "application/json", buffer: Buffer.from(big.text) });
   await page.locator("dialog[open] .confirm-action").click();
-  await page.waitForFunction(() => App.P.name === "UNTITLED" && !document.querySelector("dialog[open]"));
-  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems");
+  await page.waitForFunction(() => App.P.name === "BIG" && !document.querySelector("dialog[open]"));
+  const opened = await state(async (ids) => {
+    await App.restoreSamples();
+    const a = App.samples.get(ids[0]), b = App.samples.get(ids[1]);
+    return { names: [a?.name, b?.name], frames: [a?.buffer.length, b?.buffer.length], channels: a?.buffer.numberOfChannels,
+      over: +Math.max(...a.buffer.getChannelData(0).subarray(0, 4800)).toFixed(2), value: +b.buffer.getChannelData(1)[1000].toFixed(4), want: +(Math.sin(1000 * 0.031 * 1.7) * 1.3).toFixed(4) };
+  }, big.ids);
+  assert.deepEqual(opened, { names: ["LONG A", 'LONG "B" \\ [x]'], frames: [576000, 576000], channels: 2, over: 1.3, value: opened.want, want: opened.want }, "the opened project has its audio, unclipped: " + JSON.stringify(opened));
+  await state(() => { App.ProjectFiles.streamFrom = 64 << 20; });
+  await reset();
+
+  // Recordings no project could reach any more stayed in the browser's store for good. They leave at start-up now,
+  // but only when no other tab is open: an undo history elsewhere may still lead back to them.
+  const inStore = () => state(() => new Promise((done, fail) => {
+    const r = indexedDB.open("musiclab3");
+    r.onerror = () => fail(r.error);
+    r.onsuccess = () => { const q = r.result.transaction("smp").objectStore("smp").getAllKeys(); q.onsuccess = () => { r.result.close(); done(q.result); }; };
+  }));
+  // Every open tab holds a shared place; a tab that has just started first asks for the store alone and waits a moment.
+  const tabs = async (n) => {
+    for (let i = 0; i < 150; i++) {
+      const q = await state(async () => { const all = await navigator.locks.query(), mine = l => l.name === "musiclab.tabs"; return [all.held.filter(mine).map(l => l.mode).join(), all.pending.filter(mine).length]; });
+      if (q[0] === Array(n).fill("shared").join() && !q[1]) return;
+      await page.waitForTimeout(100);
+    }
+    assert.fail("the tabs did not settle");
+  };
+  const store = await state(() => {
+    const b = new AudioBuffer({ length: 4800, sampleRate: 48000 }); b.getChannelData(0).fill(0.1);
+    const used = App.addBuffer("USED", b), loose = App.addBuffer("LOOSE", b);
+    App.P.tracks[6].smp.id = used; App.commit(); App.flush();
+    return { used, loose };
+  });
+  await tabs(1);
+  for (const id of [store.used, store.loose]) assert.ok((await inStore()).includes(id), "both recordings are stored");
+  const [other] = await Promise.all([page.waitForEvent("popup"), state(() => { window.open(location.href); })]); // a second tab on the same storage
+  await other.waitForSelector("#ed canvas");
+  await tabs(2);
+  await page.reload();
+  await page.waitForSelector("#ed canvas");
+  await tabs(2);
+  assert.ok((await inStore()).includes(store.loose), "nothing is cleared while another tab is open");
+  await other.close();
+  await page.reload();
+  await page.waitForSelector("#ed canvas");
+  await tabs(1);
+  const after = await inStore();
+  assert.ok(!after.includes(store.loose), "a recording nothing refers to is cleared at start-up");
+  assert.ok(after.includes(store.used), "one the project uses is kept");
+  assert.ok(big.ids.every(id => after.includes(id)), "and so is the audio FILE › RESTORE LAST RESET would bring back");
+  await page.waitForFunction((id) => App.samples.has(id), store.used);
+
+  await reset();
+
+  // A take from the microphone landed late by the way out and the way in, and nothing moved it back. A stand-in
+  // microphone on the engine's own clock clicks every 250 ms: with 100 ms of input delay set, the clicks of a pass
+  // have to sit 100 ms earlier in the layer than they do with none. (The real figure needs real devices.)
+  await page.mouse.click(5, 5);
+  await state(() => {
+    const E = App.audio(), ctx = E.ctx, sr = ctx.sampleRate;
+    const b = new AudioBuffer({ length: Math.round(sr / 4), sampleRate: sr }); b.getChannelData(0).fill(0.9, 0, 24);
+    const clicks = new AudioBufferSourceNode(ctx, { buffer: b, loop: true }), line = ctx.createMediaStreamDestination();
+    clicks.connect(line); clicks.start(Math.ceil(ctx.currentTime * 4 + 1) / 4);
+    // WebKit drops a device object nothing refers to, and a stand-in defined on it goes with it: hold the object.
+    window.standIn = { devices: navigator.mediaDevices, clicks, line };
+    Object.defineProperty(window.standIn.devices, "getUserMedia", { configurable: true, value: async () => line.stream });
+    E.closeInput();
+    App.P.bpm = 120; App.commit(); App.refresh(); App.AudioStudio.open();
+  });
+  const studio = page.locator("dialog[open]").last(), layers = n => page.waitForFunction(count => App.P.audio.regions.filter(r => r.layer).length === count, n, { timeout: 15000 });
+  await studio.getByRole("button", { name: "Looper", exact: true }).click();
+  await studio.getByRole("combobox", { name: "Record source", exact: true }).selectOption("mic");
+  await studio.getByRole("combobox", { name: "Loop bars", exact: true }).selectOption("1");
+  const delay = async ms => { const f = studio.getByRole("spinbutton", { name: "Input delay · ms", exact: true }); await f.fill(String(ms)); await f.press("Tab"); };
+  await delay(0);
+  await studio.getByRole("button", { name: "Play loop", exact: true }).click();
+  for (const [count, ms] of [[1, 0], [2, 0], [3, 100]]) { // an input that has just opened is still settling: the first pass does not count
+    await delay(ms);
+    await studio.getByRole("button", { name: "Overdub layer", exact: true }).click();
+    await layers(count);
+  }
+  const moved = await state(() => {
+    const said = document.querySelector("dialog[open] .ast-status").textContent;
+    const at = App.P.audio.regions.filter(r => r.layer).slice(1).map(r => {
+      const buf = App.samples.get(r.takes[r.take].sample).buffer, x = buf.getChannelData(0), sr = buf.sampleRate;
+      let first = -1;
+      for (let i = sr / 10; i < x.length && first < 0; i++) if (Math.abs(x[i]) > 0.2 && Math.abs(x[i - 200]) < 0.02) first = i;
+      return { at: (first / sr) % 0.25, seconds: +buf.duration.toFixed(3), tail: Math.max(...x.subarray(x.length - sr / 2).map(Math.abs)) > 0.2 };
+    });
+    const shift = ((at[0].at - at[1].at) % 0.25 + 0.25) % 0.25;
+    return { said, shift: +(shift * 1000).toFixed(1), seconds: at.map(a => a.seconds), tails: at.map(a => a.tail) };
+  });
+  assert.ok(Math.abs(moved.shift - 100) < 4, "the layer moved earlier by the input delay: " + JSON.stringify(moved));
+  assert.deepEqual([moved.seconds, moved.tails], [[2, 2], [true, true]], "and still holds its whole pass, to the end: " + JSON.stringify(moved));
+  assert.match(moved.said, /MOVED 100 MS EARLIER/);
+  await state(() => { delete window.standIn.devices.getUserMedia; window.standIn.clicks.stop(); localStorage.removeItem("musiclab.input-delay"); });
+  await close();
+  await state(() => App.E.closeInput());
+
+  // The first recording on a page was cut in the wrong place: the recorder's first block read frame 0 in WebKit
+  // whatever the time was (a take came back half silent or "too short") and one block early in Chromium. A click
+  // put on an exact frame of a context that has been running for a while has to be found on that frame.
+  const fresh = await page.context().browser().newPage({ viewport: { width: 1100, height: 620 } });
+  await fresh.goto(page.url());
+  await fresh.waitForSelector("#ed canvas");
+  await fresh.mouse.click(5, 5);
+  await fresh.waitForFunction(() => App.E && App.E.ctx.currentTime > 1);
+  const placed = await fresh.evaluate(async () => {
+    const E = App.E, ctx = E.ctx, sr = ctx.sampleRate, out = ctx.createGain();
+    const b = new AudioBuffer({ length: 64, sampleRate: sr }); b.getChannelData(0).fill(0.9, 0, 8);
+    const rec = await E.record(out), at = Math.ceil((ctx.currentTime + 0.1) * sr) / sr;
+    const click = new AudioBufferSourceNode(ctx, { buffer: b }); click.connect(out); click.start(at);
+    await new Promise(r => setTimeout(r, 400));
+    const x = (await rec.stop()).getChannelData(0);
+    let i = 0; while (i < x.length && Math.abs(x[i]) < 0.5) i++;
+    return { found: i < x.length, framesOff: Math.round((rec.firstTime() + i / sr - at) * sr), contextSeconds: +at.toFixed(2) };
+  });
+  await fresh.close();
+  assert.ok(placed.found && Math.abs(placed.framesOff) <= 1, "the first recording on a page knows which frame it starts on: " + JSON.stringify(placed));
+
+  await reset();
+  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, first recording on its frame");
 };

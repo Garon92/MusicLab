@@ -408,7 +408,8 @@
     conductor.push([0, 0xff, 0x01, swingText.length, ...swingText]);
     let markerTick = 0, markerIndex=0;
     for (const pi of (layout.source==="arrangement" ? list : [])) {
-      const marker = txt("MusicLab Pattern " + String.fromCharCode(65 + pi));
+      // A slot of empty bars is stored as pattern A with a rest flag: the file names it for what it is.
+      const marker = txt(layout.slots[markerIndex]?.rest ? "MusicLab Rest" : "MusicLab Pattern " + String.fromCharCode(65 + pi));
       conductor.push([markerTick, 0xff, 0x06, marker.length, ...marker]);
       markerTick = layout.ends[markerIndex++] * TPS;
     }

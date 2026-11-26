@@ -40,8 +40,9 @@ module.exports=async function checkPerformance(reference){
     await page.evaluate(()=>{
       const E=App.audio(),ctx=E.ctx,out=ctx.createMediaStreamDestination(),osc=ctx.createOscillator(),level=ctx.createGain();
       osc.frequency.value=750;level.gain.value=0;osc.connect(level).connect(out);osc.start();
-      window.clapMic={out,level,osc,requests:0};
-      Object.defineProperty(navigator.mediaDevices,"getUserMedia",{configurable:true,value:async()=>{window.clapMic.requests++;return out.stream;}});
+      // WebKit drops a device object nothing refers to, and a stand-in defined on it goes with it: hold the object.
+      window.clapMic={out,level,osc,requests:0,devices:navigator.mediaDevices};
+      Object.defineProperty(window.clapMic.devices,"getUserMedia",{configurable:true,value:async()=>{window.clapMic.requests++;return out.stream;}});
     });
     await d.getByLabel("Groove capture source").selectOption("mic");
     await d.getByRole("button",{name:"Capture groove",exact:true}).click();

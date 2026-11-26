@@ -402,7 +402,7 @@
   });
   const first = new WeakMap();
   const seen = (el) => {
-    if (!first.has(el)) first.set(el, el.tagName === "SELECT" ? el.selectedIndex : el.value);
+    if (!first.has(el)) first.set(el, el.tagName === "SELECT" ? el.selectedIndex : el.dataset.reset ?? el.value); // data-reset names a default
     return first.get(el);
   };
   const numOf = (el) => {
