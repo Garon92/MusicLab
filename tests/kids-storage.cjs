@@ -266,8 +266,13 @@ module.exports = async function kidsStorage(reference) {
     assert.ok(await sheet.getByRole("button",{name:"Otevřít: Písnička 7 · Kráva a vlak",exact:true}).isVisible());
     assert.equal(await sheet.locator('[data-k="slot"][data-index="6"] .kv-cover-pictures svg').count(),2);
     assert.ok(await sheet.getByRole("button",{name:"Otevřít: Písnička 8 · Basa",exact:true}).isVisible());
-    await sheet.getByRole("button",{name:"Smazat: Písnička 1 · BAND",exact:true}).click();
-    await older.waitForFunction(()=>App.KidsStore.read(0)===null);
+    // A tap only shakes Smazat; the song goes away on a hold.
+    const trash=sheet.getByRole("button",{name:"Smazat: Písnička 1 · BAND · podržet",exact:true});
+    await trash.click();
+    assert.equal(await older.evaluate(()=>App.KidsStore.read(0)?.name),"BAND","a tap on Smazat deletes nothing");
+    const bin=await trash.boundingBox();
+    await older.mouse.move(bin.x+bin.width/2,bin.y+bin.height/2);await older.mouse.down();
+    await older.waitForFunction(()=>App.KidsStore.read(0)===null);await older.mouse.up();
     assert.equal(await sheet.locator(":focus").getAttribute("data-k"),"restoreSlot");
     await older.keyboard.press("Enter");
     assert.equal(await older.evaluate(()=>App.KidsStore.read(0).name),"BAND");

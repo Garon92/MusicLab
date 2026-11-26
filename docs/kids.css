@@ -1,4 +1,10 @@
 /* A pocket picture sequencer: sources, sound rows and the effect surface stay side by side. */
+/* The kids' paper is laid down by a line in index.html before anything is drawn, so a reload into this face never shows
+   the console first. While the sounds load, three dots wait in the middle. */
+html.face-kids,html.face-kids body{background:#ead3ae}
+html.face-kids #app{visibility:hidden}
+html.face-kids body:has(>#kids-root[hidden])::before{content:"";position:fixed;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#273a40;box-shadow:-28px 0 #273a40,28px 0 #273a40;opacity:0;animation:kv-wait 1.1s .35s ease-in-out infinite}
+@keyframes kv-wait{0%,100%{opacity:.15}50%{opacity:.7}}
 .kids-surface {
   --kid-ink:#273a40;--kid-white:#fff6df;--kid-shell:#f5e2bb;--kid-selected:#245644;--kid-focus:#8a4c17;--part:#acd28c;--amplitude:0;
   --kv-rim:clamp(2px,.15vw,3px);--kv-key:clamp(64px,7.3vh,88px);--kv-gap:clamp(7px,.9vh,12px);--kv-pad:clamp(11px,1.7vh,21px);
@@ -522,3 +528,71 @@
 .kv-piece-zone [data-drop-edge=before]::after{left:0}
 .kv-piece-zone [data-drop-edge=after]::after{right:0}
 .kv-arrange[data-drop-edge=append] .kv-chain-add>svg{border-color:#795019;background:#ffe39b;outline:2px solid #976323;outline-offset:-2px}
+
+/* The band on stage. KAPELA in the header swaps the sources, notes and effects for a stage where everyone with notes in
+   what PLAY plays stands together and hops on each of their notes. In a song, those with nothing in the piece now
+   playing sit back until their piece comes. */
+.kv-bottom .kv-stage-toggle{flex:0 0 auto;align-self:stretch;height:auto;width:clamp(86px,8vw,132px);background:#f6d6a9}
+.kv-bottom .kv-stage-toggle>svg{width:clamp(30px,5vh,52px);max-height:52px}
+.kv-stage-toggle[data-goal=notes]{background:#bfe0c6}
+.kv-main.kv-show-stage{grid-template-columns:minmax(0,1fr)}
+.kv-main.kv-show-stage>:not(.kv-stage){display:none!important}
+.kv-stage{position:relative;min-width:0;min-height:0;overflow:hidden;display:grid;grid-template-rows:minmax(0,1fr);padding:clamp(34px,6vh,64px) 10.5% clamp(10px,2vh,24px);
+  border:var(--kv-rim) solid var(--kid-ink);border-radius:clamp(15px,2.2vh,26px);
+  background:radial-gradient(ellipse 46% 58% at 50% 2%,#fff1c463,transparent 72%),linear-gradient(#4b3f6b 0 40%,#3a2f55 40% 41.2%,transparent 41.2%),
+    repeating-linear-gradient(90deg,#b8845a 0 calc(12.5% - 2px),#90633f calc(12.5% - 2px) 12.5%) #b8845a;
+  box-shadow:inset 0 -6px #6f4a2f}
+.kv-stage::before,.kv-stage::after{content:"";position:absolute;z-index:2;top:0;bottom:0;width:9.5%;pointer-events:none;
+  background:repeating-linear-gradient(90deg,#c84f43 0 9px,#e0705d 9px 15px,#c84f43 15px 22px);border-right:var(--kv-rim) solid var(--kid-ink);border-radius:0 0 60% 0/0 0 12% 0}
+.kv-stage::before{left:0}
+.kv-stage::after{right:0;transform:scaleX(-1)}
+.kv-stage-valance{position:absolute;z-index:3;inset:0 0 auto;height:clamp(22px,4vh,40px);pointer-events:none;border-bottom:var(--kv-rim) solid var(--kid-ink);
+  background:radial-gradient(circle at 50% 0,#d9614e 62%,transparent 64%) 0 100%/clamp(34px,4vw,58px) clamp(14px,2.2vh,24px) repeat-x,#d9614e;
+  background:#d9614e;-webkit-mask:radial-gradient(circle at 50% 0,#000 70%,transparent 71%) 0 100%/clamp(34px,4vw,58px) 46% repeat-x,linear-gradient(#000 0 0) top/100% 56% no-repeat;mask:radial-gradient(circle at 50% 0,#000 70%,transparent 71%) 0 100%/clamp(34px,4vw,58px) 46% repeat-x,linear-gradient(#000 0 0) top/100% 56% no-repeat}
+.kv-stage-scope{position:absolute;z-index:4;left:50%;top:clamp(4px,.8vh,10px);transform:translateX(-50%);padding:3px 12px;border:2px solid var(--kid-ink);border-radius:20px;background:#fff1c9;font:750 clamp(12px,1.5vh,17px)/1 system-ui,sans-serif;white-space:nowrap}
+.kv-stage-floor{position:relative;z-index:1;min-height:0}
+.kv-stage.empty .kv-stage-floor{display:none}
+.kv-stage-empty{display:none;z-index:1;align-self:center;justify-self:center;flex-direction:column;align-items:center;gap:clamp(8px,1.4vh,16px);color:#fff1d0;font:750 clamp(15px,2.1vh,24px)/1.1 system-ui,sans-serif}
+.kv-stage.empty .kv-stage-empty{display:flex}
+.kv-stage-chairs{width:clamp(150px,18vw,260px);height:auto;aspect-ratio:102/44;color:#f6dfb1;opacity:.75}
+.kv-stage-empty .kv-button{width:clamp(76px,7vw,96px);background:#bfe0c6}
+/* The riser the musicians stand on, at the back. */
+.kv-stage-riser{position:absolute;z-index:5;height:7%;border:var(--kv-rim) solid var(--kid-ink);border-radius:6px 6px 2px 2px;
+  background:linear-gradient(#d9a777 0 30%,#b98352 30%);box-shadow:inset 0 2px #f0c99a,0 3px #2a1f1855}
+/* A member stands where kids-stage.js puts it: feet on its row, the front rows nearer and larger. */
+.kids-surface .kv-member{position:absolute;aspect-ratio:1;width:auto;min-width:64px;min-height:64px;padding:0;display:block;transform:translateX(-50%);
+  border:none;background:transparent;box-shadow:none;overflow:visible}
+.kids-surface .kv-member-musician{aspect-ratio:1.257}
+.kv-member.kv-lifted{z-index:900!important}
+.kv-member::after{content:"";position:absolute;z-index:-1;left:16%;right:16%;bottom:-3%;height:10%;border-radius:50%;background:radial-gradient(closest-side,#1d150f66,transparent);pointer-events:none}
+.kv-member-musician::after{display:none}
+.kv-member-figure{position:absolute;inset:0;display:block;transform-origin:50% 100%;transition:opacity .25s,transform .25s,filter .25s}
+.kv-member-figure>svg{width:100%;height:100%;transform-origin:50% 100%;animation:kv-sway 2.8s ease-in-out var(--delay,0s) infinite alternate}
+@keyframes kv-sway{from{transform:rotate(-2deg) translateY(0)}to{transform:rotate(2deg) translateY(-1.5%)}}
+.kv-member-name{position:absolute;z-index:2;left:50%;top:0;transform:translate(-50%,-100%);padding:3px 10px;border:1.5px solid var(--kid-ink);border-radius:10px;
+  background:color-mix(in srgb,var(--part) 70%,#fff6df);font:750 clamp(12px,1.75vh,19px)/1.05 system-ui,sans-serif;white-space:nowrap;opacity:0;transition:opacity .15s;pointer-events:none}
+.kv-member:focus-visible .kv-member-name{opacity:1}
+@media(hover:hover){.kv-member:hover{z-index:800!important}.kv-member:hover .kv-member-name{opacity:1}.kv-member:hover .kv-member-figure{filter:brightness(1.07)}.kids-surface .kv-member:not(:disabled):hover{filter:none}}
+.kv-member.resting .kv-member-figure{opacity:.42;filter:saturate(.35);transform:translateY(4%) scale(.9)}
+.kv-member.resting .kv-member-figure>svg{animation-play-state:paused}
+.kv-sung{position:absolute;z-index:3;top:-4%;width:clamp(22px,2.5vw,40px);aspect-ratio:1;pointer-events:none;color:var(--kid-ink)}
+.kv-sung svg{stroke-width:2.6}
+/* Scenes some members play together (kids-stage.js). */
+.kv-egg{position:absolute;z-index:950;display:block;pointer-events:none}
+.kv-egg svg{width:100%;height:100%}
+.kv-egg-wash{inset:0;width:auto!important;height:auto!important;left:0!important;top:0!important}
+.kv-egg-warm{background:radial-gradient(ellipse 70% 60% at 50% 40%,#ffc46a55,transparent 75%),#ff9a4a22;z-index:0}
+.kv-egg-dark{background:#0d1426aa;z-index:940}
+.kv-egg-flash{background:#f4f7ff;z-index:941}
+.kv-egg-rain{z-index:942;background:repeating-linear-gradient(105deg,transparent 0 14px,#bfe0f099 14px 16px,transparent 16px 30px)}
+.kv-egg-sun{z-index:0}
+.kv-egg-puddle{height:auto!important;aspect-ratio:3;border-radius:50%;border:2px solid #4d8fa3;background:#8fd0e2aa;z-index:4}
+.kv-egg-drop{aspect-ratio:1;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#8fd0e2;border:1.5px solid #4d8fa3}
+.kv-egg-beam{height:6px;margin-top:-3px;transform-origin:0 50%;border-radius:3px;background:linear-gradient(90deg,#ff6b5e,#ffd1c4 50%,#ff6b5e);box-shadow:0 0 10px #ff6b5e}
+.kv-egg-confetti{width:9px;height:14px;border-radius:2px}
+@media(prefers-reduced-motion:reduce){.kv-member-figure{transition:none}.kv-member-figure>svg{animation:none}}
+
+/* A control that cannot be used now is faded as a whole, caption and colour too, not only its picture. */
+.kids-surface .kv-button:disabled{background:#efe6d2;border-color:#8b8c80;box-shadow:0 2px #9a998d;color:#6d746e}
+.kids-surface .kv-button:disabled .kv-caption,.kids-surface .kv-button:disabled>:not(svg){opacity:.55}
+.kv-flash.long{animation-duration:3.2s}

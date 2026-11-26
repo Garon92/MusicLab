@@ -25,7 +25,13 @@
       });
       return partMotif;
     });
-    return {track:who,pattern:pi,row:lastRows[who],patternMotifs,partMotifs,partHasNotes:partMotifs.map(hits=>hits.some(Boolean)),grid,expression:grid.map(row=>row.map(v=>Math.max(0,v-1))),
+    // Who plays on each beat of each piece, as [part,row] pairs: the band on stage and the hopping pictures read it.
+    const hits=pieces.map(p=>{
+      const beats=Array.from({length:8},()=>[]);
+      music.tracks.forEach((_,source)=>music.grid(P,source,p).forEach((cols,row)=>cols.forEach((v,col)=>{if(v)beats[col].push([source,row]);})));
+      return beats;
+    });
+    return {track:who,pattern:pi,row:lastRows[who],patternMotifs,partMotifs,hits,partHasNotes:partMotifs.map(hits=>hits.some(Boolean)),grid,expression:grid.map(row=>row.map(v=>Math.max(0,v-1))),
       canEraseRow:clip.some(n=>n.n===eraseRowPitch),canEraseSource:clip.some(n=>music.owns(who,n.n)),canErasePiece:P.tracks.some(t=>t.clips[pi].length),
       canEraseSourceInBand:pieces.some(p=>sourceClips[p].some(n=>music.owns(who,n.n))),
       costumes:music.costumes(P),tempo:music.tempoIndex(P),playing:App.Seq.playing,song:!!P.song,chain:P.chain.slice(),
@@ -89,14 +95,14 @@
       ready=true;preference(true);paint();soundPage(false);hydrate();
       if(loadError)flash("error");
       if(!auto)surface.querySelector('[data-k="play"]')?.focus({preventScroll:true});
-    }finally{switching=false;if(!store.active)consoleRoot.inert=false;}
+    }finally{switching=false;if(!store.active){consoleRoot.inert=false;document.documentElement.classList.remove("face-kids");}}
   }
   function leave(){
     if(!store.active || switching)return;
     ++noticeEpoch;clearTimeout(feedbackTimer);feedback="";ready=false;
     App.KidsSound.close();music.dispose();stop();App.KidsStamp.unmount();App.KidsView.unmount();store.leave();
     root.hidden=true;const consoleRoot=document.getElementById("app");consoleRoot.hidden=false;consoleRoot.inert=false;
-    document.body.classList.remove("band-open");preference(false);
+    document.body.classList.remove("band-open");document.documentElement.classList.remove("face-kids");preference(false);
     bridge.resume(parked);parked=null;entry.focus({preventScroll:true});
   }
   function confirmImport(kid,index){
@@ -168,6 +174,7 @@
         break;
       }
       case "pad":if(valid(i,music.rows)){lastRows[who]=i;livePad(i);paint();}return;
+      case "hear":if(valid(i,music.tracks.length)&&valid(j,music.rows))music.audition(i,j);return; // a member on stage plays its sound
       case "arm":
         // Record the piece printed on the button and shown in the grid, even
         // if the transport had a different piece queued in the song.
@@ -213,8 +220,15 @@
         if(action==="undo" && !store.canUndo() || action==="redo" && !store.canRedo())return;
         music.cancelRecording();stop();
         const history=action==="undo" || action==="redo";
+        // Work that was never put on the shelf is not thrown away by a new song or by opening another: it goes on
+        // the first free place first. With the shelf full, Zpět still brings it back.
+        let kept=-1;
+        if(!history && store.slot<0 && P.tracks.some(t=>t.clips.some(c=>c.length))){
+          const free=shelves.findIndex((x,k)=>!x && k!==store.lastRemoval); // a deleted song's place stays free for Vrátit smazání
+          if(free>=0 && free!==i && store.save(free,null))kept=free;
+        }
         const ok=history?store[action]():action==="load"?store.load(i):store.fresh(music.newProject);
-        if(ok){prepare(!history || App.historyCrossedProject);updateShelves();paint();hydrate();}
+        if(ok){prepare(!history || App.historyCrossedProject);updateShelves();paint();hydrate();if(kept>=0)setTimeout(()=>flash("kept"));}
         else flash("error");
         return ok;
       }

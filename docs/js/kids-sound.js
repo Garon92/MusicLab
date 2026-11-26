@@ -274,7 +274,7 @@
     for(const b of controls.querySelectorAll("[data-scope]")){
       const where=b.dataset.scope;
       b.querySelector("strong").textContent=where==="master"?"Celá kapela":familyTitle;
-      b.querySelector("small").textContent=where==="family"?"Všechny dílky":where==="piece"?"Jen "+pieceName.toLowerCase():"Všechny sady i dílky";
+      b.querySelector("small").textContent=where==="family"?"Všechny dílky":where==="piece"?"Jen dílek "+"ABCD"[bank()]:"Všechny sady i dílky";
       b.setAttribute("aria-pressed",String(scope===where));
     }
     const sound=master()?"band":part+"."+row;
@@ -291,7 +291,7 @@
     arm.hidden=master();
     if(arm.dataset.state!==armState){
       const name=armState==="idle"?"Nahrát pohyb":armState==="armed"?"Zrušit nahrávání":"Ukončit záznam";
-      arm.innerHTML=face(armState==="idle"?"arm":"stop",name);
+      arm.innerHTML=face(armState==="idle"?"arm":"stop",armState==="idle"?name:armState==="armed"?"Zrušit":"Hotovo"); // short words fit the button at every size
       arm.dataset.state=armState;arm.setAttribute("aria-label",name);arm.setAttribute("aria-pressed",String(armed));
     }
     const cfg=config();root.style.setProperty("--room",cfg.colour);pad.dataset.room=mode;

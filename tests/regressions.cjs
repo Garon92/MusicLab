@@ -602,6 +602,40 @@ module.exports = async function regressions(page) {
   await page.keyboard.press("Escape");
 
 
+  // Reported from use: reloading into the kids' face showed the console's green for a moment before the kids' paper.
+  // The paper goes down before the first frame now: when the page's own scripts have run, the console is still hidden.
+  const reload = await page.context().browser().newPage({ viewport: { width: 1100, height: 620 } });
+  await reload.addInitScript(() => document.addEventListener("DOMContentLoaded", () => {
+    window.firstLook = { app: getComputedStyle(document.getElementById("app")).visibility, paper: getComputedStyle(document.body).backgroundColor, kids: !document.getElementById("kids-root").hidden };
+  }));
+  const kidsUrl = new URL(page.url()); kidsUrl.search = "?kids";
+  await reload.goto(kidsUrl.href);
+  await reload.waitForFunction(() => App.Kids.active && document.querySelector("#kids-root .kv-cell"));
+  assert.deepEqual(await reload.evaluate(() => window.firstLook), { app: "hidden", paper: "rgb(234, 211, 174)", kids: false }, "before the kids' face is up, the console is not shown");
+  await reload.evaluate(() => App.Kids.leave());
+  assert.deepEqual(await reload.evaluate(() => [document.documentElement.classList.contains("face-kids"), getComputedStyle(document.getElementById("app")).visibility]), [false, "visible"], "and it comes back when the console does");
+  await reload.close();
+
+  // A walk through the kids' face as a child found: a slow tap on an empty beat made an accented note, a new song threw
+  // away work that was never saved, and the effect's place read "Jen dílek a".
+  const kidsPage = await page.context().browser().newPage({ viewport: { width: 1366, height: 768 } });
+  try {
+    const kidsAt = new URL(page.url()); kidsAt.search = "?kids";
+    await kidsPage.goto(kidsAt.href);
+    await kidsPage.waitForFunction(() => App.Kids.active && document.querySelector("#kids-root .kv-cell"));
+    const slow = await kidsPage.locator('#kids-root [data-k="note"][data-row="0"][data-col="0"]').boundingBox();
+    await kidsPage.mouse.move(slow.x + slow.width / 2, slow.y + slow.height / 2); await kidsPage.mouse.down(); await kidsPage.waitForTimeout(650); await kidsPage.mouse.up();
+    assert.deepEqual(await kidsPage.evaluate(() => App.KidsMusic.grid(App.P, App.KidsMusic.part(App.P), 0)[0][0]), 1, "a slow tap places a plain note");
+    assert.equal(await kidsPage.evaluate(() => App.KidsStore.slot), -1);
+    await kidsPage.locator('#kids-root [data-k="shelf"]').click();
+    await kidsPage.locator('#kids-root [data-k="new"]').click();
+    const kept = await kidsPage.evaluate(() => App.KidsStore.slots().findIndex(Boolean));
+    assert.ok(kept >= 0 && await kidsPage.evaluate(i => App.KidsMusic.grid(App.KidsStore.read(i), App.KidsMusic.part(App.KidsStore.read(i)), 0)[0][0] === 1, kept), "the unsaved song went onto the shelf before the new one replaced it");
+    await kidsPage.evaluate(() => { App.KidsStore.remove(App.KidsStore.slots().findIndex(Boolean), App.KidsStore.slots().find(Boolean)); });
+    const scopes = await kidsPage.locator('#kids-root [data-scope="piece"] small').allTextContents();
+    assert.ok(scopes.length && scopes.every(t => t === "Jen dílek A"), JSON.stringify(scopes));
+  } finally { await kidsPage.close(); }
+
   await reset();
-  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, note values, launcher hands the transport back, lists in popups, wheel grid, console number fields, long audio in a sampler, first recording on its frame, transport after a dialog, editor keys from anywhere, reasons on unavailable buttons, typed time unit, idle and lit controls, undo while playing, draft guard, duplicate on the beat, folded rows, song start slot, module wiring, loop export, page turn on drag, pad row menu");
+  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, note values, launcher hands the transport back, lists in popups, wheel grid, console number fields, long audio in a sampler, first recording on its frame, transport after a dialog, editor keys from anywhere, reasons on unavailable buttons, typed time unit, idle and lit controls, undo while playing, draft guard, duplicate on the beat, folded rows, song start slot, module wiring, loop export, page turn on drag, pad row menu, no console under a reload into the kids' face, kids' slow tap, unsaved song kept, piece name");
 };
