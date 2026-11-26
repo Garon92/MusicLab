@@ -18,8 +18,33 @@
       else e.setAttribute(k, v);
     }
     for (const c of kids.flat(3)) if (c != null && c !== false) e.append(c);
+    if (t === "input" && a && a.type === "number") numberField(e);
     return e;
   });
+  // A number field is the console's own. The browser would write its digits in the language of the system (0,5 on a
+  // Czech machine, beside the console's 0.5) and add its own arrows. This is a text field that is a number field to
+  // the code that made it: valueAsNumber, min, max, step, required and validity mean what they mean there. A comma is
+  // read as a point and written back as one.
+  function numberField(e) {
+    e.type = "text"; e.inputMode = "decimal"; e.dataset.num = ""; e.setAttribute("role", "spinbutton");
+    e.spellcheck = false; e.setAttribute("autocomplete", "off");
+    let custom = "";
+    const read = () => { const s = e.value.trim().replace(",", "."); return /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(s) ? parseFloat(s) : NaN; };
+    const state = () => {
+      const s = e.value.trim(), v = read(), lo = parseFloat(e.min), hi = parseFloat(e.max), st = parseFloat(e.step), ok = isFinite(v);
+      const o = { customError: !!custom, valueMissing: e.required && s === "", badInput: s !== "" && !ok, rangeUnderflow: ok && isFinite(lo) && v < lo, rangeOverflow: ok && isFinite(hi) && v > hi, stepMismatch: false, tooLong: false };
+      if (ok && e.step !== "any") { const step = isFinite(st) && st > 0 ? st : 1, k = (v - (isFinite(lo) ? lo : 0)) / step; o.stepMismatch = Math.abs(k - Math.round(k)) > 1e-6 * Math.max(1, Math.abs(k)); }
+      o.valid = !Object.values(o).some(Boolean);
+      return o;
+    };
+    Object.defineProperties(e, {
+      valueAsNumber: { configurable: true, get: read, set: (v) => { e.value = Number.isFinite(v) ? String(v) : ""; } },
+      validity: { configurable: true, get: state },
+      validationMessage: { configurable: true, get: () => custom },
+    });
+    e.setCustomValidity = (m) => { custom = m || ""; };
+    e.checkValidity = () => state().valid;
+  }
 
   // Size a canvas's pixel buffer to its layout box. Returns device pixels per CSS pixel.
   // Uses layout size, not the on-screen rectangle, so drawing stays right if an ancestor is ever scaled.
@@ -88,8 +113,18 @@
   /* ── popups ───────────────────────────────────────────────────── */
   let open = null;
   let opener = null;
+  // A list opened from a control inside a popup lies over that popup: the popup stays, and with it the control the
+  // list is anchored to. (Closing it first left the list with nothing to hang from, and it jumped to the corner.)
+  let sub = null, subOpener = null;
   let closedFor = null; // the control whose list the current press just closed: that press must not open it again
+  const closeSub = (restore = false) => {
+    if (!sub) return;
+    sub.remove(); sub = null;
+    if (restore && subOpener?.isConnected) subOpener.focus?.({preventScroll:true});
+    subOpener = null;
+  };
   UI.closeMenu = (restore = false) => {
+    closeSub();
     if (!open) return;
     open.remove(); open = null;
     if (restore && opener?.isConnected) opener.focus?.({preventScroll:true});
@@ -118,14 +153,15 @@
     if (y < 0) y = Math.max(0, innerHeight - b.height);
     m.style.left = clamp(x, 0, Math.max(0, innerWidth - b.width)) + "px";
     m.style.top = y + "px";
-    open = m; opener = anchor;
+    if (o.sub) { sub = m; subOpener = anchor; } else { open = m; opener = anchor; }
     return rows;
   };
   // items: { label, value, key, tip, on, disabled } or "-" for a rule. `on` marks the current choice.
   UI.menu = (anchor, items, pick, o = {}) => {
     // Pressing the control whose list is open closes the list; it does not open it again.
     if (closedFor && closedFor === anchor) { closedFor = null; return null; }
-    UI.closeMenu();
+    const inside = !!(open && anchor?.nodeType && open.contains(anchor)), shut = (restore) => (inside ? closeSub(restore) : UI.closeMenu(restore));
+    if (inside) closeSub(); else UI.closeMenu();
     const m = h("div.mn", {role:"menu", "aria-label":o.label || anchor.getAttribute?.("aria-label") || anchor.textContent || "Actions"});
     let rule = true; // no rule first, last or twice
     for (const it of items) {
@@ -133,19 +169,19 @@
       rule = false;
       const b = h("button.mn-i" + (it.on ? ".on" : ""), { type:"button", role:"menuitem", tip: it.tip || it.label.toUpperCase() }, h("span", { text: it.label }), it.key ? h("span.k", { text: it.key }) : null);
       if (it.disabled) { b.setAttribute("aria-disabled", "true"); if (it.why) b.dataset.why = it.why; }
-      b.onclick = e => { if (it.disabled) { UI.msg(UI.tipOf(b)); return; } UI.closeMenu(e.detail === 0); pick(it.value ?? it.label); };
+      b.onclick = e => { if (it.disabled) { UI.msg(UI.tipOf(b)); return; } shut(e.detail === 0); pick(it.value ?? it.label); };
       m.append(b);
     }
     if (rule && m.lastChild) m.lastChild.remove();
-    const rows = place(m, anchor, o);
+    const rows = place(m, anchor, { ...o, sub: inside });
     const choices = [...m.querySelectorAll('button:not([aria-disabled="true"])')];
     choices.find(b => b.classList.contains("on"))?.focus({preventScroll:true});
     if (!m.contains(document.activeElement)) choices[0]?.focus({preventScroll:true});
     let typed = "", typedT = 0;
     m.onkeydown = e => {
       const i = choices.indexOf(document.activeElement);
-      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); UI.closeMenu(true); return; }
-      if (e.key === "Tab") { UI.closeMenu(true); return; }
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); shut(true); return; }
+      if (e.key === "Tab") { shut(true); return; }
       if (e.key.length === 1 && e.key !== " " && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // Typing jumps to the first choice that starts with what was typed.
         e.preventDefault(); e.stopPropagation();
@@ -170,7 +206,10 @@
   };
   document.addEventListener("pointerdown", (e) => {
     closedFor = null;
-    if (open && !open.contains(e.target)) { closedFor = opener?.contains?.(e.target) ? opener : null; UI.closeMenu(); }
+    if (e.target.closest?.("input.ed")) return; // a value being typed over a control in a popup belongs to that popup
+    const inSub = !!(sub && sub.contains(e.target));
+    if (sub && !inSub) { closedFor = subOpener?.contains?.(e.target) ? subOpener : null; closeSub(); }
+    if (open && !open.contains(e.target) && !inSub) { closedFor = opener?.contains?.(e.target) ? opener : closedFor; UI.closeMenu(); }
   }, true);
   document.addEventListener("click", e => {
     const button = e.target.closest?.("button");
@@ -318,7 +357,7 @@
       else bar.style.width = n * 100 + "%";
     });
     const put = (v) => {
-      v = clamp(v, d.min, d.max);
+      v = App.snap(d, clamp(v, d.min, d.max)); // kept on the grid the display shows
       if (v === get()) return false;
       O()[d.k] = v;
       paint();
@@ -374,7 +413,7 @@
       const v = d.bool ? (s > 0 ? 1 : 0)
         : d.opts || d.int ? get() + s
         : d.step ? get() + s * (e.shiftKey && d.fine ? d.fine : d.step)
-        : App.fromN(d, App.toN(d, get()) + s * (e.shiftKey ? 0.002 : 0.012));
+        : App.nudge(d, get(), s, e.shiftKey);
       if (put(d.step ? +v.toFixed(3) : v)) { clearTimeout(wt); wt = setTimeout(done, 350); }
     }, { passive: false });
 
@@ -400,7 +439,7 @@
       const dir = e.key === "ArrowUp" || e.key === "ArrowRight" ? 1 : -1;
       const v = e.key === "Home" ? d.min : e.key === "End" ? d.max :
         (d.bool || d.opts || d.int) ? get() + dir : d.step ? get()+dir*(e.shiftKey && d.fine ? d.fine : d.step) :
-        App.fromN(d,App.toN(d,get())+dir*(e.shiftKey ? 0.002 : 0.012),e.shiftKey);
+        App.nudge(d, get(), dir, e.shiftKey);
       if (put(v)) { clearTimeout(wt); wt = setTimeout(done, 350); } // a held key is one change, like a turn of the wheel
     });
     el.addEventListener("contextmenu", (e) => { e.preventDefault(); if (put(defOf())) done(); });
@@ -420,6 +459,7 @@
     if (el.tagName === "TEXTAREA") return "text";
     if (el.tagName !== "INPUT") return "";
     const t = el.type;
+    if (el.dataset.num != null) return "num";
     return t === "number" ? "num" : t === "range" ? "range" : t === "checkbox" || t === "radio" ? "check" : t === "file" || t === "hidden" ? "" : "text";
   });
   const first = new WeakMap();
@@ -556,9 +596,16 @@
   }, true);
 
   document.addEventListener("keydown", (e) => {
+    const el = e.target, k = e.key;
+    // The arrows step a number, as the wheel does: a held key is one change when it comes to rest. SHIFT = ten steps.
+    if (kindOf(el) === "num" && (k === "ArrowUp" || k === "ArrowDown") && !el.disabled && !el.readOnly && !(e.ctrlKey || e.metaKey || e.altKey)) {
+      e.preventDefault(); closedFor = null; seen(el);
+      const { min, step } = numOf(el), v = parseFloat(String(el.value).replace(",", "."));
+      if (setNum(el, (isFinite(v) ? v : min ?? 0) + (k === "ArrowUp" ? 1 : -1) * (step || 0.01) * (e.shiftKey ? 10 : 1))) later(el);
+      return;
+    }
     flush();
     closedFor = null;
-    const el = e.target, k = e.key;
     if (kindOf(el) !== "list" || el.disabled || e.ctrlKey || e.metaKey) return;
     const down = k === "ArrowDown" || k === "ArrowRight", up = k === "ArrowUp" || k === "ArrowLeft";
     if (k === "Enter" || k === " " || (e.altKey && (down || up))) { e.preventDefault(); seen(el); openList(el); }
@@ -599,7 +646,7 @@
 
   // Bars follow values that editors set from code, and every field remembers the value it appeared with.
   UI.fields = (root = document) => {
-    for (const el of root.querySelectorAll("select,input[type=number],input[type=range]")) {
+    for (const el of root.querySelectorAll("select,input[data-num],input[type=number],input[type=range]")) {
       seen(el);
       if (el.tagName !== "INPUT") continue;
       bar(el);
@@ -612,7 +659,7 @@
 
   const LEGEND = {
     list: "CLICK = LIST · DRAG / WHEEL = STEP · RIGHT-CLICK = RESET",
-    num: "CLICK = TYPE · DRAG / WHEEL = ADJUST · SHIFT = FINE · RIGHT-CLICK = RESET",
+    num: "CLICK = TYPE · DRAG / WHEEL / ARROWS = ADJUST · SHIFT = FINE · RIGHT-CLICK = RESET",
     range: "DRAG / WHEEL = ADJUST · SHIFT = FINE · RIGHT-CLICK = RESET",
     check: "CLICK = TOGGLE", rows: "CLICK = SELECT · WHEEL = STEP", text: "TYPE · ENTER = APPLY",
   };

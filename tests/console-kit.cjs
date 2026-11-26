@@ -129,6 +129,8 @@ module.exports = async function consoleKit(page) {
     const e = new (type === "pointerdown" ? PointerEvent : MouseEvent)(type, { bubbles: true, cancelable: true, button: 0 });
     sel.dispatchEvent(e); return e.defaultPrevented;
   })), [true, true], "the browser's own list is suppressed");
+  // The made-up press has no release: end it, or the next real move of the pointer counts as a drag on the list.
+  await key().evaluate(sel => sel.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true })));
   await page.mouse.move(2, 2); await page.mouse.up();
   await state(() => App.UI.closeMenu());
   await key().click();
@@ -162,7 +164,7 @@ module.exports = async function consoleKit(page) {
   const start = +(await threshold().inputValue());
   assert.ok(+(await threshold().evaluate(e => getComputedStyle(e).getPropertyValue("--n"))) > 0, "the bar under a number shows where it stands");
   await threshold().hover();
-  await page.waitForFunction(() => /DRAG \/ WHEEL = ADJUST/.test(document.querySelector("dialog[open]").dataset.st));
+  await page.waitForFunction(() => /DRAG \/ WHEEL \/ ARROWS = ADJUST/.test(document.querySelector("dialog[open]").dataset.st));
   assert.match(await dialog.getAttribute("data-st"), /^Sidechain threshold {2}-?\d/, "the strip names the field and its value");
   await wheel(threshold(), 3);
   const wheeled = +(await threshold().inputValue());

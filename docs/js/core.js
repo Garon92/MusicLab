@@ -131,6 +131,41 @@
     return +v.toPrecision(4);
   };
 
+  // The grid a value is shown on. A value is kept on it, so what a control shows is what is set, and the wheel can
+  // reach every value the display can show (a step of 1.2% used to land on 14 and 16 and never on 15).
+  const res = (d, v) => {
+    switch (d.u) {
+      case "pc": case "pan": case "oct": return 0.01;
+      case "pc1": return 0.001;
+      case "ct": return 1;
+      case "db": case "bpm": return 0.1;
+      case "hz": return v >= 10000 ? 100 : v >= 1000 ? 10 : v >= 100 ? 1 : 0.1;
+      case "t": return v >= 1 ? 0.01 : v >= 0.01 ? 0.001 : 0.0001;
+      default: return d.int ? 1 : 10 ** -(d.dp ?? 2);
+    }
+  };
+  const snap = (d, v) => {
+    if (d.opts || d.bool || d.int || d.step || d.f || !Number.isFinite(v)) return v; // these keep their own steps
+    let out;
+    if (d.u === "gain") out = v <= 0.00001 ? v : Math.sqrt(10 ** (Math.round(20 * Math.log10(v * v) * 10) / 200)); // level sits on tenths of a dB
+    else { const q = res(d, Math.abs(v)); out = +(Math.round(v / q) * q).toPrecision(12); }
+    out = clamp(out, d.min, d.max);
+    return fmt(d, out) === fmt(d, d.def) ? d.def : out; // what reads as the default is the default
+  };
+  // One notch of the wheel or one press of an arrow. A linear value moves by whole units of its display (a hundred
+  // notches across its range, one unit with SHIFT); a level moves by half a dB, a tenth with SHIFT.
+  const nudge = (d, v, dir, fine) => {
+    if (d.u === "gain") {
+      const db = v > 0.00001 ? Math.round(200 * Math.log10(v * v)) / 10 : -60.5 - (dir < 0 ? 100 : 0);
+      // Coarse lands on the next half dB (-3.9 goes to -4.0, then -4.5), fine moves a tenth.
+      const to = fine ? Math.round((db + dir * 0.1) * 10) / 10 : dir > 0 ? Math.floor(db * 2 + 1 + 1e-6) / 2 : Math.ceil(db * 2 - 1 - 1e-6) / 2;
+      return snap(d, to < -60 ? d.min : Math.sqrt(10 ** (to / 20)));
+    }
+    if (!d.c) { const q = res(d, Math.abs(v)), k = fine ? 1 : Math.max(1, Math.round((d.max - d.min) / q / 100)); return snap(d, clamp(v + dir * k * q, d.min, d.max)); }
+    const to = snap(d, fromN(d, toN(d, v) + dir * (fine ? 0.002 : 0.012), fine));
+    return to !== v ? to : snap(d, clamp(v + dir * res(d, Math.abs(v)), d.min, d.max));
+  };
+
   /* ── parameter schema ─────────────────────────────────────────── */
   const N = (k, l, name, min, max, def, o) => ({ k, l, name, min, max, def, ...o });
   const EN = (k, l, name, opts, def = 0) => ({ k, l, name, opts, min: 0, max: opts.length - 1, def });
@@ -631,6 +666,6 @@
   Object.assign(App, {
     clamp, NOTES, PATS, SCALES, SIGS, DEF, pc, noteName, mtof, uid, pad2, spb, beatSteps, maxBars, patSteps, inScale,
     chordNotes, chordName, fmt, parse, toN, fromN, UNIT, fHz, fTime, fDb, defs, newProject, newKit, sanitize, wav, peaks, N,
-    automationKeys, curveBase, curveValue, curveShape, MAX_STEPS, MAX_BARS, songPatterns,
+    automationKeys, curveBase, curveValue, curveShape, MAX_STEPS, MAX_BARS, songPatterns, snap, nudge,
   });
 })();

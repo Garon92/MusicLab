@@ -332,6 +332,41 @@ module.exports = async function regressions(page) {
   await page.waitForSelector("#ed canvas");
   assert.equal(await state(() => App.P.performance.source), "arrangement", "a project never opens with the launcher holding the transport");
 
+  // Reported from use: a list inside a popup (AUTOMATION › Shape › the shape list) closed its own popup when it opened,
+  // lost the field it hangs from and jumped to the corner of the window.
+  await state(() => { App.select(0, 0); });
+  await page.getByRole("button", { name: "AUTOMATION", exact: true }).click();
+  await page.getByRole("button", { name: "Shape", exact: true }).click();
+  const shapeList = page.getByRole("combobox", { name: "Curve shape", exact: true }), shapeAt = await shapeList.boundingBox();
+  await shapeList.click();
+  const hung = await state(() => { const m = document.querySelector(".mn").getBoundingClientRect(); return { popup: !!document.querySelector(".pop"), x: m.left, y: m.top }; });
+  assert.ok(hung.popup && Math.abs(hung.x - shapeAt.x) < 3 && hung.y > shapeAt.y && hung.y < shapeAt.y + shapeAt.height + 6, "the list opens under its field and the popup stays: " + JSON.stringify(hung));
+  await page.getByRole("menuitem", { name: "Sine", exact: true }).click();
+  assert.deepEqual(await state(() => [!!document.querySelector(".pop"), document.querySelector(".pop select").value]), [true, "sine"]);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "DRAW", exact: true }).click();
+
+  // Reported from use: the wheel could not land on 15% (a notch was 1.2% and the display rounds). A value now sits on
+  // the grid its display shows, and a notch moves it by whole units of that grid.
+  await state(() => { App.P.fx.dfb = 0.4; App.commit(); App.refresh(); });
+  await page.locator('#fx .pm[aria-label="DELAY FEEDBACK"]').hover();
+  const landed = [];
+  for (let i = 0; i < 5; i++) { await page.mouse.wheel(0, -120); landed.push(await page.locator('#fx .pm[aria-label="DELAY FEEDBACK"] .v').textContent()); }
+  assert.deepEqual(landed, ["41%", "42%", "43%", "44%", "45%"], "every percent can be reached with the wheel");
+  await page.waitForFunction(() => Math.abs(App.P.fx.dfb - 0.45) < 1e-9);
+
+  // A number field in a dialog was the browser's own, which writes 0,5 on a Czech machine beside the console's 0.5.
+  // It is the console's field now: a point always, and a typed comma is read as one.
+  await state(() => { App.select(1, 0); App.Rack.mixer(1); });
+  const ratio = page.locator("dialog[open]").last().getByRole("spinbutton", { name: "Sidechain ratio", exact: true });
+  assert.equal(await ratio.evaluate((e) => e.type), "text", "no browser-drawn number field");
+  await ratio.fill("2,5"); await ratio.press("Tab");
+  assert.deepEqual(await state(() => [App.P.rack.strips[1].ratio, document.querySelector('dialog[open] input[aria-label="Sidechain ratio"]').value]), [2.5, "2.5"]);
+  await ratio.focus(); await page.keyboard.press("ArrowUp");
+  await page.waitForFunction(() => App.P.rack.strips[1].ratio === 2.6, null, { timeout: 4000 });
+  await close();
+  await reset();
+
   // The first recording on a page was cut in the wrong place: the recorder's first block read frame 0 in WebKit
   // whatever the time was (a take came back half silent or "too short") and one block early in Chromium. A click
   // put on an exact frame of a context that has been running for a while has to be found on that frame.
@@ -354,5 +389,5 @@ module.exports = async function regressions(page) {
   assert.ok(placed.found && Math.abs(placed.framesOff) <= 1, "the first recording on a page knows which frame it starts on: " + JSON.stringify(placed));
 
   await reset();
-  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, note values, launcher hands the transport back, first recording on its frame");
+  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, note values, launcher hands the transport back, lists in popups, wheel grid, console number fields, first recording on its frame");
 };

@@ -62,14 +62,15 @@ dialog.console-dialog :is([role=status], .ast-status, .cycle-status, .il-status,
 /* a field an editor refused: red, and the strip says what it needs */
 :is(dialog.console-dialog, .pop) :is(select, input, textarea).bad { color: var(--rd); background-image: linear-gradient(var(--rd), var(--rd)); background-position: 0 100%; background-size: 100% 2px; }
 /* a number is dragged like a console value and typed into once it has focus */
-:is(dialog.console-dialog, .pop) input[type=number] { appearance: textfield; -moz-appearance: textfield; width: 6.2em; cursor: ns-resize; }
+:is(dialog.console-dialog, .pop) input:is([data-num], [type=number]) { width: 6.2em; cursor: ns-resize; }
+:is(dialog.console-dialog, .pop) input[type=number] { appearance: textfield; -moz-appearance: textfield; }
 /* under a label a number is as wide as its label, so neighbouring labels never read as one */
-dialog.console-dialog label > input[type=number] { width: 100%; min-width: 6.2em; }
-:is(dialog.console-dialog, .pop) input[type=number]:focus { cursor: text; }
+dialog.console-dialog label > input:is([data-num], [type=number]) { width: 100%; min-width: 6.2em; }
+:is(dialog.console-dialog, .pop) input:is([data-num], [type=number]):focus { cursor: text; }
 /* dim = where a right-click would leave it; bright = changed (fields that name a default) */
-:is(dialog.console-dialog, .pop) input[type=number].df:not(:focus) { color: var(--t2); }
-:is(dialog.console-dialog, .pop) input[type=number]::-webkit-inner-spin-button,
-:is(dialog.console-dialog, .pop) input[type=number]::-webkit-outer-spin-button,
+:is(dialog.console-dialog, .pop) input:is([data-num], [type=number]).df:not(:focus) { color: var(--t2); }
+:is(dialog.console-dialog, .pop) input:is([data-num], [type=number])::-webkit-inner-spin-button,
+:is(dialog.console-dialog, .pop) input:is([data-num], [type=number])::-webkit-outer-spin-button,
 :is(dialog.console-dialog, .pop) input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; margin: 0; }
 :is(dialog.console-dialog, .pop) :is(input[type=text], input[type=search], input:not([type]), textarea) { cursor: text; }
 :is(dialog.console-dialog, .pop) textarea:not([hidden]) { height: auto; padding: 0.4em 0.55em; line-height: 1.45; resize: none; overflow: hidden; }
@@ -212,7 +213,7 @@ dialog.console-dialog .song-slots .arr-slot:hover, dialog.console-dialog .song-s
 .arr-maps { display: grid; grid-template-columns: 1fr 1fr; gap: 1em; }
 .arr-maps > div, .arr-maps label { display: flex; flex-direction: column; align-items: stretch; gap: 0.3em; }
 .arr-maps .bt { align-self: flex-start; }
-.arr-content input:not([type=number]) { width: 12em; }
+.arr-content input:not([data-num], [type=number]) { width: 12em; }
 
 /* ── patches ── */
 .patch-field { margin-top: 0.8em; }
@@ -256,8 +257,8 @@ dialog.console-dialog :is(.ast-inspect, .ast-subhead) { margin-top: 0; }
 .transcript-table td { border-top: 1px solid var(--ln); color: var(--t1); }
 .transcript-table tr.selected td { background: var(--am2); color: var(--am); }
 .transcript-table tr.uncertain td:last-child { color: var(--am); }
-dialog.console-dialog .transcript-table :is(input[type=number], .bt) { height: calc(var(--F) * 1.6); line-height: calc(var(--F) * 1.6); }
-dialog.console-dialog .transcript-table input[type=number] { width: 5.6em; }
+dialog.console-dialog .transcript-table :is(input:is([data-num], [type=number]), .bt) { height: calc(var(--F) * 1.6); line-height: calc(var(--F) * 1.6); }
+dialog.console-dialog .transcript-table input:is([data-num], [type=number]) { width: 5.6em; }
 @media (max-height: 700px) { .ast-dialog .ast-body { gap: 0.45em; } .ast-timeline { height: 160px; } }
 
 /* ── mixer routing, modulation, stems, scenes, parametric EQ, bench ── */
