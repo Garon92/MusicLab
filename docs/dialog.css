@@ -112,10 +112,10 @@ dialog.console-dialog label:has(> input[type=checkbox]:checked) { color: var(--t
 /* ── buttons: a frame is something to press. Lit = on or open. A thick frame = the action the dialog exists for ── */
 dialog.console-dialog .bt { height: var(--H); min-width: 2em; padding: 0 0.8em; border-color: var(--ln3); color: var(--t2); font-size: var(--L); letter-spacing: 0.08em; }
 dialog.console-dialog .bt:hover { border-color: var(--t2); color: var(--t1); }
-dialog.console-dialog .bt:disabled { border-color: var(--ln2); color: var(--t3); opacity: 0.55; }
+dialog.console-dialog .bt:is(:disabled, [aria-disabled=true]), dialog.console-dialog .bt[aria-disabled=true]:hover { border-color: var(--ln2); background: transparent; color: var(--t3); opacity: 0.55; cursor: default; }
 dialog.console-dialog .bt.confirm-action { border-color: var(--t1); box-shadow: inset 0 0 0 1px var(--t1); background: transparent; color: var(--t1); }
 dialog.console-dialog .bt.confirm-action:hover { background: var(--t1); color: #000; }
-dialog.console-dialog .bt.confirm-action:disabled { border-color: var(--ln3); box-shadow: inset 0 0 0 1px var(--ln3); background: transparent; color: var(--t3); opacity: 1; }
+dialog.console-dialog .bt.confirm-action:is(:disabled, [aria-disabled=true]), dialog.console-dialog .bt.confirm-action[aria-disabled=true]:hover { border-color: var(--ln3); box-shadow: inset 0 0 0 1px var(--ln3); background: transparent; color: var(--t3); opacity: 1; }
 dialog.console-dialog .bt.rec, dialog.console-dialog .bt.pf-record { border-color: var(--rd); color: var(--rd); }
 dialog.console-dialog .bt.rec.on { background: var(--rd); color: #000; }
 dialog.console-dialog .bt.sq::before { content: ""; width: 0.6em; height: 0.6em; background: currentColor; }
@@ -322,7 +322,7 @@ dialog.console-dialog .cycle-lanes > :first-child { margin-top: 0; padding-top: 
 .il-board path { fill: none; stroke: var(--t2); stroke-width: 1.5; }
 .il-board path.control { stroke: var(--am); stroke-dasharray: 3 3; }
 dialog.console-dialog .il-board .bt { position: absolute; width: 10.1%; padding: 0; overflow: hidden; background: var(--pn); touch-action: none; cursor: grab; }
-dialog.console-dialog .il-board .bt:disabled { opacity: 0.8; }
+dialog.console-dialog .il-board .bt:is(:disabled, [aria-disabled=true]) { opacity: 0.8; }
 .il-inspect { padding-bottom: 0.6em; border-bottom: 1px solid var(--ln2); }
 .il-inspect b { align-self: center; margin-right: auto; }
 .il-cables { display: grid; gap: 0.3em; max-height: 10em; }

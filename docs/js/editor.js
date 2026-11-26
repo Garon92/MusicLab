@@ -27,7 +27,7 @@
     const CHORD = { k: "chord", l: "CHORD", name: "WHAT A CLICK IN THE GRID DRAWS · ONE NOTE, A TRIAD OR A SEVENTH CHORD OF THE SCALE", opts: ["OFF", "TRIAD", "SEVENTH"], min: 0, max: 2, def: 0 };
     const chordSize = () => [1, 3, 4][pen.chord];
     let page = 0, pagePattern = -1, followTransport = true;
-    let tool = "draw", selection = new Set(), selectionClip = null, selectionShape = "";
+    let tool = "draw", selection = new Set(), selectionClip = null, selectionShape = "", selectionAt = "", carry = false;
     let lit = new Set(), litStep = -2; // rows sounding under the playhead
     const live = new Set(); // rows held from the keyboard or MIDI
     const eu = { k: 4, n: 16, r: 0 };
@@ -343,8 +343,17 @@
       const shape = T.kind + ":" + (T.kind === "smp" ? [T.smp.mode, T.smp.slices].join(":") : "");
       if (selectionClip !== T.clips[pi] || selectionShape !== shape) {
         if (act) cancelGesture(false);
-        selection.clear(); hov = null; rowNote = null;
-        selectionClip = T.clips[pi]; selectionShape = shape;
+        // Undo and redo swap the project, so the same notes are new objects. A selection on the same clip goes to the
+        // notes the step changed (what came back, moved back or got its value back), else to the same notes as before.
+        const here = ti + ":" + pi, sig = (nt) => [nt.s, nt.n, nt.l, nt.v, nt.p, nt.r || 1].join(":");
+        let next = [];
+        if (carry && selection.size && selectionAt === here && selectionShape === shape && selectionClip) {
+          const before = new Set(selectionClip.map(sig)), kept = new Set([...selection].map(sig));
+          next = T.clips[pi].filter((nt) => !before.has(sig(nt)));
+          if (!next.length) next = T.clips[pi].filter((nt) => kept.has(sig(nt)));
+        }
+        selection = new Set(next); hov = null; rowNote = null; carry = false;
+        selectionClip = T.clips[pi]; selectionShape = shape; selectionAt = here;
       } else {
         const existing = new Set(selectionClip), steps = App.Live.length(P,P.sel.t,pi);
         selection = new Set([...selection].filter(nt => existing.has(nt) && nt.s < steps));
@@ -357,8 +366,8 @@
       hd.prev.hidden = hd.next.hidden = hd.bars.hidden = bars <= 4;
       hd.len.paint(); hd.chord.paint();
       NOTE.l.max = Math.max(1, total);
-      hd.prev.disabled = start === 0;
-      hd.next.disabled = end === App.Live.length(P,P.sel.t,pi);
+      hd.prev.disabled = start === 0; hd.prev.dataset.why = "THESE ARE THE FIRST BARS";
+      hd.next.disabled = end === App.Live.length(P,P.sel.t,pi); hd.next.dataset.why = "THESE ARE THE LAST BARS";
       hd.fold.classList.toggle("on", !!P.fold);
       for (const g of hd.pitched) g.hidden = !keys; // chords, octaves and the scale fold mean nothing on pads and slices
       App.Automation.sync();
@@ -439,7 +448,7 @@
       hd.count.textContent = selection.size || "";
       hd.count.hidden = !selection.size;
       paintValues();
-      for (const b of [hd.dup, hd.remove]) b.disabled = !selection.size;
+      for (const b of [hd.dup, hd.remove]) { b.disabled = !selection.size; b.dataset.why = "SELECT NOTES FIRST · CLICK ONE, SHIFT-CLICK MORE, OR CTRL/CMD A"; }
       const activeTool = App.Automation.active() ? "auto" : tool;
       for (const [b, value] of [[hd.draw, "draw"], [hd.select, "select"], [hd.auto, "auto"]]) {
         b.classList.toggle("on", value === activeTool);
@@ -530,15 +539,16 @@
       App.touch(); draw(); App.Mx.draw();
     }
     function shortcuts(e) {
-      if (App.Automation.active() || e.target.closest("input, select, textarea, [contenteditable], [role=dialog], dialog") ||
-          document.querySelector(".mn, .pop, dialog[open], [role=dialog]:not([hidden])") || e.altKey) return;
+      if (App.Automation.active() || e.target.closest?.("input, select, textarea, [contenteditable], [role=dialog], dialog") ||
+          document.querySelector(".mn, .pop, dialog[open], [role=dialog]:not([hidden])") || e.altKey) return false;
       const mod = e.ctrlKey || e.metaKey;
       let command;
       if (!act && mod && e.code === "KeyA") command = () => {
         const { clip, P, pi } = ctx();
         const eligible = new Set(pitchRows());
         selection = new Set(clip.filter(nt => nt.s < App.Live.length(P,P.sel.t,pi) && eligible.has(nt.n)));
-        chooseTool("select");
+        updateSelection(); draw(); // the tool stays what it was: a selection works in DRAW too
+        UI.msg(selection.size + (selection.size === 1 ? " NOTE" : " NOTES") + " SELECTED" + (selection.size < clip.length ? " · " + (clip.length - selection.size) + " LIE OUTSIDE THE ROWS OR PAST THE END" : ""));
       };
       if (!act && mod && e.code === "KeyD" && selection.size) command = duplicate;
       if (!mod && e.key === "Escape" && (act || selection.size)) command = () => {
@@ -555,6 +565,7 @@
         if (actions[e.key]) command = actions[e.key];
       }
       if (command) { e.preventDefault(); e.stopPropagation(); command(); }
+      return !!command;
     }
 
     const laneTitle = () => lane === "v" ? "VELOCITY" : lane === "p" ? "PROBABILITY" : "REPEATS";
@@ -806,7 +817,7 @@
       const r = cv.getBoundingClientRect();
       return { x: r.left + ((G.gx + (step - G.start + 0.3) * G.cw) / W) * r.width, y: r.top + ((G.ry + (row + 0.5) * G.rh) / H) * r.height };
     };
-    return { build, sync, draw, frame, key, reset, range, settle: land, cellAt, selected: () => new Set(selection),
+    return { build, sync, draw, frame, key, reset, range, settle: land, cellAt, keys: shortcuts, keep() { carry = true; }, selected: () => new Set(selection),
       cancel() { cancelGesture(); App.Automation.cancel(); } };
   })();
 })();

@@ -86,8 +86,8 @@
     }
     function sync() {
       for (const k in srcB) srcB[k].classList.toggle("on", k === mode);
-      monB.classList.toggle("on", mon);
-      monB.disabled = mode !== "in";
+      monB.classList.toggle("on", mon && mode === "in"); // lit only while the input is really heard
+      monB.disabled = mode !== "in"; monB.dataset.why = "MONITORING NEEDS INPUT AS THE SOURCE · CLICK INPUT";
       holdB.classList.toggle("on", hold);
     }
 

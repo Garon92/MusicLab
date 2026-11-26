@@ -12,6 +12,7 @@
     if(running)App.Seq.stop();
     const wasEmpty=!P.chain.length;
     for(const k of ["chain","arrangement","harmony","audio","performance","scenes","songCurves","pats","tracks"])if(draft[k])P[k]=draft[k];
+    App.Conductor.settle(P); // a tempo or meter set on bar 1 is the project's own BPM and SIG
     if(!P.chain.length || wasEmpty)P.song=Number(!!P.chain.length);
     App.Seq.startAt(App.clamp(first,0,Math.max(0,P.chain.length-1)));
     App.commit();App.refresh();
@@ -26,7 +27,7 @@
   function insert(at,p) {
     const P=App.P, start=App.Seq.start(), i=Math.min(at,P.chain.length);
     if(P.chain.length>=limit){App.UI.msg("SONG IS FULL · 32 SLOTS");return;}
-    change(order=>order.splice(i,0,{p}),()=>start+Number(P.chain.length>0 && i<=start));
+    change(order=>order.splice(i,0,{p}),()=>start ? start+Number(i<=start) : 0);
   }
   function move(from,to) {
     if(from===to || App.P.chain[from]==null)return;
@@ -174,7 +175,9 @@
     tempoList.onchange=()=>loadCue("tempo",tempoList);meterList.onchange=()=>loadCue("meters",meterList);
     const save=btn("Apply arrangement","Apply all timeline edits as one undo step",()=>{
       // A slot of empty bars is stored as pattern A and stands for no pattern: selecting it leaves the editor where it is.
-      if(App.P!==P){node.close();return;}apply(P,D,first);if(P.chain[first]!=null && !P.arrangement.slots?.[first]?.rest)App.select(P.sel.t,P.chain[first]);node.close();
+      if(App.P!==P){node.close();return;}apply(P,D,Math.min(App.Seq.start(),Math.max(0,D.chain.length-1)));if(P.chain[first]!=null && !P.arrangement.slots?.[first]?.rest)App.select(P.sel.t,P.chain[first]);node.close();
+      const map=P.arrangement.tempo.length+P.arrangement.meters.length;
+      App.UI.msg("ARRANGEMENT APPLIED · "+P.chain.length+" SLOTS"+(map?" · TEMPO / METER MAP: "+map+(map===1?" CHANGE":" CHANGES")+" AFTER BAR 1":"")+" · UNDO REVERTS");
     },"confirm-action");
     const tabs=[["song","Arrangement"],["map","Tempo & meter"],["automation","Song automation"]].map(([id,title])=>{
       const b=button(title,"Show "+title,()=>{tab=id;render();});b.dataset.section=id;return b;

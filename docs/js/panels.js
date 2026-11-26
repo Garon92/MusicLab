@@ -61,17 +61,25 @@
   App.Top = (() => {
     const ICON = { play: '<svg viewBox="0 0 10 10"><path d="M2 1v8l7-4z"/></svg>', stop: '<svg viewBox="0 0 10 10"><path d="M2 2h6v6H2z"/></svg>' };
     const buf = new Float32Array(1024), pk = [0, 0];
-    let undoB, redoB, nameEl, playB, recB, tapeB, posEl, clickB, takeEl, midiB, om, omL, omR, omT, pms = [], lastPos = "", hold = 0, taps = [];
+    let undoB, redoB, nameEl, playB, recB, tapeB, posEl, clickB, takeEl, sampEl, midiB, om, omL, omR, omT, pms = [], lastPos = "", hold = 0, taps = [];
 
-    const tempo = () => { App.E && App.E.syncAll(); App.touch(); };
+    const tempo = () => {
+      const first = P().arrangement.tempo[0];
+      if (first?.at === 0) first.bpm = P().bpm; // a ramp that starts on bar 1 starts from the value shown here
+      App.E && App.E.syncAll(); App.touch();
+    };
+    // One run of taps is one change: it is committed when the tapping stops.
+    let tapT = 0;
     const tap = () => {
       const now = performance.now();
       if (taps.length && now - taps[taps.length - 1] > 2000) taps = [];
       taps.push(now);
       if (taps.length > 6) taps.shift();
-      if (taps.length < 2) return;
+      clearTimeout(tapT); tapT = setTimeout(() => { taps = []; App.commit(); }, 2000);
+      if (taps.length < 2) { UI.msg("TAP AGAIN IN TIME · THE TEMPO FOLLOWS YOUR TAPS"); return; }
       const bpm = clamp(Math.round((60000 * (taps.length - 1)) / (now - taps[0])), 40, 300);
-      if (bpm !== P().bpm) { P().bpm = bpm; pms[0].paint(); tempo(); App.commit(); }
+      if (bpm !== P().bpm) { P().bpm = bpm; pms[0].paint(); tempo(); }
+      UI.msg("TAP · " + bpm + " BPM");
     };
 
     function build() {
@@ -81,7 +89,10 @@
       nameEl.onclick = (e) => UI.edit(nameEl, P().name, (s) => { P().name = s.toUpperCase().slice(0, 28); App.commit(); sync(); }, 28, e.detail === 0);
       playB = h("button.bt.ic", { html: ICON.play, tip: "PLAY / STOP · SPACE", type: "button" });
       playB.onclick = () => App.playToggle();
-      recB = btn("REC", "RECORD NOTES AND MAPPED CONTROLLERS INTO PLAYING CLIPS", () => { App.recArm = !App.recArm; sync(); }, "rec.tog");
+      recB = btn("REC", "RECORD NOTES AND MAPPED CONTROLLERS INTO PLAYING CLIPS", () => {
+        App.recArm = !App.recArm; sync();
+        UI.msg(!App.recArm ? "REC OFF" : App.Seq.playing ? "RECORDING · PLAY THE KEYS · NOTES LAND IN THE PLAYING CLIP" : "REC ARMED · PRESS PLAY, THEN PLAY THE KEYS");
+      }, "rec.tog");
       tapeB = btn("TAPE", "AUDIO RECORD · CAPTURES THE OUTPUT · STOP = TAKE", () => App.tape(), "rec.tog");
       posEl = h("div.tc.pos", { tip: "POSITION · PATTERN  BAR . BEAT . STEP" });
       const redraw = () => { App.Ed.sync(); App.Mx.sync(); };
@@ -96,7 +107,14 @@
       clickB = btn("CLICK", "METRONOME · NOT RECORDED", () => { P().click ^= 1; App.commit(); sync(); }, "tog");
       takeEl = h("div.tc.take.dg", { tip: "LAST TAPE TAKE · CLICK = SAVE WAV · DRAG ONTO A TRACK OR PAD = USE AS SAMPLE · RIGHT-CLICK = MENU" });
       takeEl.onpointerdown = (e) => { if (e.button === 0) UI.drag(e, { type: "take", data: 0, label: "TAKE", hint: "DROP ON A TRACK, A PAD OR THE SAMPLE VIEW = USE THE TAKE AS A SAMPLE", click: () => App.saveTake() }); };
-      takeEl.oncontextmenu = () => UI.menu(takeEl, [{ label: "Save WAV", value: "save", key: "24-BIT" }, { label: "Discard take", value: "drop" }], (v) => { if (v === "save") App.saveTake(); else { App.take = null; sync(); } });
+      // A take is the only copy of what was played: discarding or replacing it keeps the one before within reach.
+      const bringBack = { label: "Bring back the take before", value: "back", get disabled() { return !App.takeBefore; }, why: "NO EARLIER TAKE IN THIS TAB" };
+      takeEl.oncontextmenu = () => UI.menu(takeEl, [{ label: "Save WAV", value: "save", key: "24-BIT" }, { label: "Discard take", value: "drop" }, bringBack], (v) => {
+        if (v === "save") App.saveTake(); else if (v === "back") App.swapTake(); else { App.takeBefore = App.take; App.take = null; sync(); UI.msg("TAKE DISCARDED · RIGHT-CLICK TAPE = BRING IT BACK"); }
+      });
+      tapeB.oncontextmenu = () => UI.menu(tapeB, [bringBack], () => App.swapTake(), { label: "Tape" });
+      // A recording into a sampler runs on whatever is selected: it shows here, and a click here ends it.
+      sampEl = btn("", "RECORDING INTO A SAMPLER · CLICK = STOP AND KEEP WHAT WAS RECORDED", () => App.recStop(), "rec.on.samp");
       omL = h("i"); omR = h("i"); omT = h("span.omv", { text: "-INF" });
       om = h("div.tc.om", { tip: "OUTPUT PEAK dBFS · LEFT OVER RIGHT · RED = LIMITER IS HOLDING THE MIX DOWN, LOWER SOMETHING" }, h("span.l", { text: "OUT" }), h("span.omb", null, omL, omR), omT);
       midiB = btn("MIDI…", "MIDI DEVICES · CONTROLLER LEARN · CLOCK", () => App.midi());
@@ -115,14 +133,14 @@
         h("div.tc.logo", { text: "MUSICLAB" }), nameEl,
         h("div.tc.grp", null, playB, recB, btn("CAPTURE…","RETRIEVE WHAT WAS JUST PLAYED ON THE KEYS OR MIDI · NO RECORDING NEEDED",()=>App.Retrospective.open()), tapeB), posEl,
         pms[0], h("div.tc", null, btn("TAP", "TAP TEMPO", tap)), pms[1], pms[2], pms[3], pms[4], h("div.tc", null, clickB),
-        h("div.sp"), takeEl, om,
+        h("div.sp"), sampEl, takeEl, om,
         h("div.tc.grp", null, midiB, undoB, redoB, fileB),
       );
     }
 
     function history() {
-      if (undoB) undoB.disabled = !App.canUndo();
-      if (redoB) redoB.disabled = !App.canRedo();
+      if (undoB) { undoB.disabled = !App.canUndo(); undoB.dataset.why = "NOTHING TO UNDO YET"; }
+      if (redoB) { redoB.disabled = !App.canRedo(); redoB.dataset.why = "NOTHING TO REDO"; }
     }
     function sync() {
       history();
@@ -135,17 +153,38 @@
       tapeB.classList.toggle("on", !!App.taping);
       if (!App.taping) tapeB.textContent = "TAPE";
       clickB.classList.toggle("on", !!P().click);
+      sampEl.hidden = !App.recTo; sampTick();
       takeEl.hidden = !App.take;
       if (App.take) takeEl.textContent = "TAKE " + mmss(App.take.duration);
       midiB.classList.toggle("on", App.midiN > 0);
       midiB.textContent = (App.midiN > 0 ? "MIDI " + App.midiN : "MIDI") + "…";
       midiB.setAttribute("aria-label", App.midiN > 0 ? "MIDI " + App.midiN : "MIDI");
       pms.forEach((p) => p.paint());
+      // A map that takes over after bar 1 is marked on the value it overrides, with where to find it.
+      const arr = P().arrangement;
+      for (const [i, n, what] of [[0, arr.tempo.length, "TEMPO"], [2, arr.meters.length, "METER"]]) {
+        pms[i].classList.toggle("map", n > 0);
+        pms[i].dataset.why = n ? "THIS IS BAR 1 · " + n + " " + what + (n === 1 ? " CHANGE FOLLOWS" : " CHANGES FOLLOW") + " IN ARRANGE… › TEMPO & METER" : "";
+      }
       pos(App.Seq.pos);
     }
 
+    const sampTick = () => {
+      const r = App.recTo;
+      if (!r) return;
+      const s = "REC " + pad2(r.ti + 1) + (r.pad != null ? "." + (r.pad + 1) : "") + " " + mmss(r.rec.seconds());
+      if (sampEl.textContent !== s) sampEl.textContent = s;
+    };
     function pos(c) {
       const p = P(), BS = c?.beatSteps || App.beatSteps(p), s = c?.inside ?? 0;
+      // With a tempo or meter map, BPM and SIG show what the playhead is in; stopped, they are the values of bar 1.
+      const a = p.arrangement, live = (i, on, text) => {
+        const v = pms[i]?.firstChild && pms[i].querySelector(".v");
+        if (!v) return;
+        if (on) { if (v.textContent !== text) v.textContent = text; pms[i]._live = true; } else if (pms[i]._live) { pms[i]._live = false; pms[i].paint(); }
+      };
+      live(0, !!(c && a.tempo.length), c ? App.Conductor.bpm(p, c.absoluteStep).toFixed(1) : "");
+      live(2, !!(c && a.meters.length), c ? App.SIGS[App.Conductor.meter(p, c.absoluteStep).sig].join("/") : "");
       // The letter is the pattern that plays. Launched clips and a recorded take play no one pattern, and say so here.
       const src = p.performance.source, what = src === "live" ? "LIVE" : src === "take" ? "TAKE" : PATS[c ? c.pat : p.sel.p];
       const t = what + " " + String((c ? c.bar : 0) + 1).padStart(3, "0") + "." + (Math.floor(s / BS) + 1) + "." + ((s % BS) + 1);
@@ -167,6 +206,7 @@
       if (omT.textContent !== t) omT.textContent = t;
       om.classList.toggle("hot", E.limiting());
       if (App.taping) { const s = "TAPE " + mmss(App.taping.seconds()); if (tapeB.textContent !== s) tapeB.textContent = s; }
+      sampTick();
     }
 
     return { build, sync, pos, frame, history };
@@ -214,7 +254,8 @@
         nm.ondblclick = rename;
         nm.oncontextmenu = () => trackMenu(nm, t, rename);
         UI.drop(nm, {...drops, track: (src) => App.copyDevice(src, t), material:data=>App.Library.drop(data,{ti:t})});
-        const kd = h("div.mx-k", {tip:"INSTRUMENT TYPE · CHANGE IN DEVICE"});
+        const kd = h("div.mx-k", {tip:"INSTRUMENT TYPE · CLICK = CHOOSE · NOTES STAY · EACH TYPE KEEPS ITS OWN SETTINGS"});
+        kd.onclick = kd.oncontextmenu = () => { App.select(t); UI.menu(kd, Object.entries(instruments).map(([k, name]) => ({ label: name, value: k, on: P().tracks[t].kind === k })), (k) => changeKind(t, k), { label: "Instrument type" }); };
         kd.onclick = () => App.select(t);
         const mB = h("button.mx-b.m", { text: "M", tip: "MUTE · ALT-CLICK = MUTE ALL THE OTHERS, AGAIN = NONE", type: "button" }), sB = h("button.mx-b.s", { text: "S", tip: "SOLO · ALT-CLICK = SOLO ONLY THIS ONE, AGAIN = NONE", type: "button" });
         // ALT makes the switch exclusive; a second ALT-click on the same row clears the whole column.
@@ -259,7 +300,7 @@
           UI.msg("TRANSPORT PLAYS " + (App.Seq.songOn() ? "THE SONG" : "PATTERN " + PATS[p.sel.p]) + " AGAIN · LIVE… LAUNCHES CLIPS");
           sync(); App.Top.sync(); return;
         }
-        if (!p.chain.length) { App.Song.open(); return; }
+        if (!p.chain.length) { UI.msg("NO SONG YET · DRAG PATTERN LETTERS ONTO THE SLOTS, OR ARRANGE… · THE SELECTED PATTERN LOOPS"); return; }
         p.song ^= 1;
         App.commit();
         if (App.Seq.playing) App.Seq.play();
@@ -545,6 +586,22 @@
         const up = () => { wrap.removeEventListener("pointermove", mv); wrap.removeEventListener("pointerup", up); wrap.removeEventListener("pointercancel", up); if (ch) App.commit(); };
         wrap.addEventListener("pointermove", mv); wrap.addEventListener("pointerup", up); wrap.addEventListener("pointercancel", up);
       };
+      const base = wrap.dataset.tip;
+      wrap._tip = () => { const S = App.samples.get(getId()); return (S ? S.name + " · " + S.buffer.duration.toFixed(2) + " S · PEAK " + App.fDb(S.peak) + " DB    " : "") + (wrap.dataset.tip || base) + " · RIGHT-CLICK = MENU"; };
+      wrap.oncontextmenu = () => {
+        const has = !!App.samples.get(getId()), whole = obj.st === 0 && obj.en === 1;
+        UI.menu(wrap, [
+          { label: "Load audio…", value: "load" },
+          ...(o.edit ? [{ label: "Slices and warp…", value: "edit", disabled: !has, why: "LOAD AUDIO FIRST" }] : []),
+          { label: "Reset start and end", value: "span", disabled: !has || whole, why: has ? "START AND END ALREADY SPAN THE WHOLE SAMPLE" : "LOAD AUDIO FIRST" },
+          { label: "Remove audio", value: "remove", disabled: !has && !getId(), why: "NOTHING IS LOADED" },
+        ], (v) => {
+          if (v === "load") App.pickFile("audio/*", (f) => App.dropFiles(f, o.tg));
+          else if (v === "edit") o.edit();
+          else if (v === "span") { obj.st = 0; obj.en = 1; App.commit(); o.change(); paint(); App.E?.syncTrack(o.tg.ti); }
+          else if (v === "remove") { o.remove(); App.commit(); App.E?.syncTrack(o.tg.ti); build(); App.Ed.sync(); UI.msg("AUDIO REMOVED · UNDO REVERTS"); }
+        }, { label: "Sample" });
+      };
       UI.drop(wrap, { file: (f) => App.dropFiles(f, o.tg), take: () => App.dropTake(o.tg) });
       waves.push(wrap);
       return wrap;
@@ -553,12 +610,12 @@
     const smpTools = (tg, id) => {
       const S = App.samples.get(id), r = App.recTo, on = !!r && r.ti === tg.ti && r.pad === tg.pad;
       return [
-        h("span.sn", { text: S ? S.name + " · " + S.buffer.duration.toFixed(2) + " S · PEAK " + App.fDb(S.peak) + " DB" : "" }), h("span.sp"),
-        btn("LOAD", "LOAD AN AUDIO FILE", () => App.pickFile("audio/*", (f) => App.dropFiles(f, tg))),
+        h("span.sn", { text: S ? S.name : "", tip: S ? S.name + " · " + S.buffer.duration.toFixed(2) + " S · PEAK " + App.fDb(S.peak) + " DB" : "" }), h("span.sp"),
+        btn("LOAD…", "LOAD AN AUDIO FILE · OR DROP ONE ON THE WAVEFORM", () => App.pickFile("audio/*", (f) => App.dropFiles(f, tg))),
         on
           ? btn("STOP", "STOP RECORDING", () => App.recStop(), "rec.on")
           : btn("REC", "RECORD INTO THIS SAMPLER · INPUT = MIC / LINE · OUTPUT = RESAMPLE THE MIX", (e) =>
-              UI.menu(e.currentTarget, [{ label: "INPUT", value: "in", key: "MIC / LINE" }, { label: "OUTPUT", value: "out", key: "RESAMPLE" }], (src) => App.recStart(tg, src)), "rec"),
+              UI.menu(e.currentTarget, [{ label: "INPUT", value: "in", key: "MIC / LINE" }, { label: "OUTPUT", value: "out", key: "RESAMPLE" }], (src) => App.recStart(tg, src)), "rec.mnu"),
       ];
     };
 
@@ -566,7 +623,16 @@
       const el = $("dv"), p = P(), ti = p.sel.t, T = p.tracks[ti];
       el.innerHTML = "";
       waves = []; padEls = [];
-      const push = () => { App.E && App.E.syncTrack(ti); App.touch(); };
+      const repaint = () => { for (const pm of el.querySelectorAll(".pm")) pm.paint && pm.paint(); };
+      const push = () => { App.E && App.E.syncTrack(ti); App.touch(); repaint(); };
+      // Values that are set but do nothing in the state the device is in, and what would wake them.
+      const idle = (d, arp) => {
+        const lfo = () => !d.ldest && "NO EFFECT WHILE DEST IS OFF", fenv = () => !d.fenv && "NO EFFECT WHILE ENV IS 0";
+        const osc2 = () => d.lv2 === 0 && d.fm === 0 && "OSC 2 IS SILENT · RAISE ITS LEVEL OR FM", ar = () => arp && !arp.mode && "NO EFFECT WHILE THE ARP IS OFF";
+        return { lw: lfo, lrate: lfo, ldiv: lfo, lsync: lfo, ldep: lfo, fa: fenv, fd: fenv, fs: fenv, fr: fenv, w2: osc2, semi2: osc2, fine2: osc2,
+          glide: () => d.mode === 0 && "GLIDE NEEDS MONO MODE", rate: ar, oct: ar, gate: ar,
+          slices: () => d.mode !== 1 && "ONLY IN SLICE MODE", root: () => d.mode === 1 && "SLICES PLAY AT THEIR OWN PITCH · ROOT IS FOR PITCH AND GRAIN" };
+      };
       const kinds = Object.entries(instruments).map(([k,name]) =>
         btn(name.toUpperCase(), "INSTRUMENT TYPE · NOTES STAY · EACH TYPE KEEPS ITS OWN SETTINGS",
           () => changeKind(ti, k), T.kind === k ? "on" : ""));
@@ -580,7 +646,7 @@
       // FILTER / ENV / LFO blocks are identical for synth and sampler
       const shared = (d, dc) => {
         const fe = envView(() => [d.fa, d.fd, d.fs, d.fr]), ae = envView(() => [d.aa, d.ad, d.as, d.ar]);
-        const q = (k, cb, o) => UI.param(dc[k], d, () => { push(); cb && cb(); }, o);
+        const rule = idle(d), q = (k, cb, o) => UI.param(dc[k], d, () => { push(); cb && cb(); }, { ...o, idle: rule[k] });
         return [
           mod("FILTER", 2, [q("ftype"), q("cut"), q("res"), q("fenv"), q("ftrk")]),
           mod("FILTER ENV", 2, [q("fa", fe.paint), q("fd", fe.paint), q("fs", fe.paint), q("fr", fe.paint), fe]),
@@ -590,7 +656,11 @@
       };
 
       if (T.kind === "syn") {
-        const d = T.syn, q = (k,o) => UI.param(DEF.syn[k], d, push,o), a = (k) => UI.param(DEF.arp[k], T.arp, () => App.touch());
+        const d = T.syn, rule = idle(d, T.arp), q = (k,o) => UI.param(DEF.syn[k], d, push, { ...o, idle: rule[k] });
+        const a = (k) => UI.param(DEF.arp[k], T.arp, (key, v) => {
+          App.touch(); repaint();
+          if (key === "mode" && v) UI.msg("ARP PLAYS THE CLIP'S NOTES · NOTES PLAYED BY HAND SOUND AS THEY ARE");
+        }, { idle: k === "mode" ? null : rule[k] });
         body.append(
           ...(d.design === 0 ? [
             mod("OSC 1", 1, [q("w1"), q("oct1"), q("lv1")]),
@@ -603,16 +673,28 @@
           ...shared(d, DEF.syn),
           mod("VOICE", 1, [q("mode"), q("glide")]),
           mod("ARP", 2, [a("mode"), a("rate"), a("oct"), a("gate")]),
-          mod("SOURCE", 1, [q("design",{done:build})]), outMod(),
+          mod("SOURCE", 1, [q("design",{done:build, cls:"sm"})]), outMod(),
         );
       } else if (T.kind === "smp") {
         const d = T.smp, tg = { ti };
         let st, en, position;
         const wv = waveView(4, () => d.id, d, {
           tg, grain:()=>{position?.paint();push();}, slices: () => (d.mode === 1 ? d.slices : 0), change: () => { st.paint(); en.paint(); },
+          edit: () => App.AudioStudio.editSample(ti), remove: () => Object.assign(d, { id: "", st: 0, en: 1, markers: [], warpSource: "", warpSpec: null }),
           audition: () => { const E = App.audio(); E && E.play(ti, d.mode === 1 ? 36 : d.root, 0.9, 0, 4); },
         });
-        const q = (k, o) => UI.param(DEF.smp[k], d, (key) => { push(); if (key === "st" || key === "en" || key === "slices") wv.paint(); if (key === "slices") { d.markers = []; App.Ed.sync(); } }, o);
+        const rule = idle(d);
+        // A change of mode can leave the clip with nothing to play: it says so, and what to do.
+        const entered = () => {
+          const notes = T.clips.flat();
+          if (d.mode === 3 && !d.zones.length) UI.msg("NO ZONES YET, SO NOTHING PLAYS · ZONES… › " + (App.samples.has(d.id) ? "ADD LOADED SAMPLE, OR IMPORT SAMPLES" : "IMPORT SAMPLES"));
+          else if (d.mode === 1) { const out = notes.filter((nt) => nt.n < 36 || nt.n >= 36 + d.slices).length; if (out) UI.msg(out + (out === 1 ? " NOTE LIES" : " NOTES LIE") + " OUTSIDE THE " + d.slices + " SLICES AND STAY SILENT · CTRL/CMD A, THEN MOVE OR DELETE"); }
+        };
+        const q = (k, o) => UI.param(DEF.smp[k], d, (key) => {
+          if (key === "slices" && d.markers?.length) UI.msg("CUSTOM SLICE POINTS REPLACED BY " + d.slices + " EQUAL SLICES · UNDO REVERTS");
+          if (key === "mode") entered();
+          push(); if (key === "st" || key === "en" || key === "slices") wv.paint(); if (key === "slices") { d.markers = []; App.Ed.sync(); }
+        }, { ...o, idle: rule[k] });
         st = q("st"); en = q("en");
         const mode=q("mode",{done:()=>{build();App.Ed.sync();App.Mx.draw();}});
         const zoning=d.mode===3, grain=d.mode===2;
@@ -651,12 +733,18 @@
           return e;
         });
         padEls = pads;
-        const pp = (key, cb, o) => UI.param(DEF.pad[key], pd, () => { App.touch(); cb && cb(); }, o);
-        const levels = T.kit.pads.map(pad => UI.param(DEF.pad.lvl, pad, () => App.touch(), {label:pad.name}));
+        const init = App.newKit().pads; // where a right-click returns each value: this pad's own sound, not a common default
+        const pp = (key, cb, o) => UI.param(DEF.pad[key], pd, (changed, v) => {
+          // Back to the synth: the name and the long decay belonged to the audio that was loaded.
+          if (changed === "src" && !v) { if (pd.dec === 4) pd.dec = init[k].dec; if (pd.id) pd.name = init[k].name; }
+          App.touch(); cb && cb();
+        }, { ...o, def: () => init[k][key] });
+        const levels = T.kit.pads.map((pad, i) => UI.param(DEF.pad.lvl, pad, () => App.touch(), {label:pad.name, def: init[i].lvl}));
         body.append(mod("PADS", 4, pads, null, "pads"));
         if (pd.src) {
           let st, en;
-          const wv = waveView(5, () => pd.id, pd, { tg, change: () => { st.paint(); en.paint(); }, audition: () => { const E = App.audio(); E && E.play(ti, 36 + k, 0.9); } });
+          const wv = waveView(5, () => pd.id, pd, { tg, change: () => { st.paint(); en.paint(); }, audition: () => { const E = App.audio(); E && E.play(ti, 36 + k, 0.9); },
+            remove: () => Object.assign(pd, { ...init[k], lvl: pd.lvl }) });
           st = pp("st", wv.paint); en = pp("en", wv.paint);
           body.append(mod("SAMPLE", 5, [wv, st, en, pp("pit"), pp("dec"), pp("rev")], smpTools(tg, pd.id)));
         } else {

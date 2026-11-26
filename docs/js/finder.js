@@ -31,7 +31,10 @@
   function instrument(type){
     const P=App.P,ti=P.tracks[P.sel.t].kind==="syn"?P.sel.t:P.tracks.findIndex(t=>t.kind==="syn");
     if(ti<0){App.Workspace.focus("dv");App.UI.msg("CHOOSE SYNTH IN DEVICE TO DESIGN AN INSTRUMENT");return;}
+    const was=P.tracks[ti].syn.design;
     App.select(ti,P.sel.p);App.InstrumentLab.open(type,ti);
+    // Opening the editor from here switches the engine: that is said, with the way back.
+    if(P.tracks[ti].syn.design!==was)App.UI.msg("ENGINE OF TRACK "+String(ti+1).padStart(2,"0")+" IS NOW "+(type==="graph"?"MODULAR":"WAVETABLE")+" · UNDO, OR ENGINE › CLASSIC IN DEVICE, GOES BACK");
   }
   // Names and aliases lead to the same functions as each control at its normal location.
   function catalogue(){

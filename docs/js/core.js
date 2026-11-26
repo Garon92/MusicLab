@@ -103,12 +103,13 @@
   };
   const UNIT = { hz: " Hz", gain: " dB", db: " dB", oct: " OCT", st: " ST", bpm: " BPM" };
 
-  const parse = (d, s) => {
+  // `shown` is the value on display: a bare number is read in its unit (3 typed over "2.20S" is three seconds).
+  const parse = (d, s, shown) => {
     s = String(s).trim().toUpperCase().replace(",", ".");
     const x = parseFloat(s);
     switch (d.u) {
       case "hz": return /K/.test(s) ? x * 1000 : x;
-      case "t": return /MS/.test(s) ? x / 1000 : /S/.test(s) ? x : x / 1000;
+      case "t": return /MS/.test(s) ? x / 1000 : /S/.test(s) || shown >= 1 ? x : x / 1000;
       case "pc": case "pc1": return x / 100;
       case "gain": return /INF/.test(s) ? 0 : Math.sqrt(10 ** (x / 20));
       case "pan": return s[0] === "C" ? 0 : s[0] === "L" ? -parseFloat(s.slice(1)) / 100 : s[0] === "R" ? parseFloat(s.slice(1)) / 100 : x / 100;
@@ -452,6 +453,8 @@
     App.Top?.history?.();
     return true;
   };
+  // What the next undo or redo would bring, without taking the step.
+  App.undoPeek = (d) => { const i = hist.i + d; if (i < 0 || i >= hist.st.length) return null; return { project: JSON.parse(hist.st[i].data), projectChange: hist.st[d < 0 ? hist.i : i].projectChange }; };
   App.canUndo = () => hist.i > 0;
   App.canRedo = () => hist.i < hist.st.length - 1;
   App.undo = () => step(-1);

@@ -24,6 +24,7 @@
       sections:(Array.isArray(src.sections)?src.sections:[]).slice(0,32).filter(s=>s && Number.isInteger(s.first) && s.first>=0 && s.first<P.chain.length)
         .map(s=>({name:String(s.name||"Section").trim().slice(0,32),first:s.first,count:Math.round(bounded(s.count,1,P.chain.length-s.first,1))}))
     };
+    settle(P);
   }});
   const lookup=(list,x,key)=>{
     let lo=0,hi=list.length;
@@ -83,5 +84,13 @@
       return {p,from,end:at,offset:slot?.offset||0,rest:!!slot?.rest};
     });
   }
-  App.Conductor={time,step,bpm,meter,position,barStart,barsAfter,layout,cache};
+  // The tempo and the meter at bar 1 are the project's own BPM and SIG, the values the top bar shows and sets. A map
+  // point on bar 1 is folded into them (a ramp that starts there stays, with the project value kept equal to it).
+  function settle(P) {
+    const a=P.arrangement;if(!a)return P;
+    if(a.tempo[0]?.at===0){P.bpm=a.tempo[0].bpm;if(!a.tempo[0].ramp)a.tempo=a.tempo.slice(1);}
+    if(a.meters[0]?.at===0){P.sig=a.meters[0].sig;a.meters=a.meters.slice(1);}
+    return P;
+  }
+  App.Conductor={time,step,bpm,meter,position,barStart,barsAfter,layout,cache,settle};
 })();

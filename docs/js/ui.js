@@ -40,13 +40,19 @@
   };
   UI.tip = () => {
     const el = UI.tipEl?.isConnected ? UI.tipEl : (UI.tipEl = null);
-    const text = fixed ?? (el ? (el._tip ? el._tip() : el.dataset.tip) : null);
+    const text = fixed ?? (el ? UI.tipOf(el) : null);
     if (hintEl) hintEl.textContent = text ?? IDLE;
     // An open dialog covers the status line, so it carries its own strip: the same hint, else what the dialog is for.
     const dlg = [...document.querySelectorAll("dialog.console-dialog[open]")].pop();
     if (!dlg) return;
     const own = (el && dlg.contains(el) && text) || [...dlg.querySelectorAll(".dlg-tip")].map(n => n.textContent.trim()).filter(Boolean).join(" · ") || "ESC = CLOSE · CTRL/CMD K = FIND";
     if (dlg.dataset.st !== own) dlg.dataset.st = own;
+  };
+  // What a control says for itself. One that cannot be used now says why first (data-why), then what it is.
+  UI.off = (el) => el.getAttribute?.("aria-disabled") === "true";
+  UI.tipOf = (el) => {
+    const tip = el._tip ? el._tip() : el.dataset.tip;
+    return UI.off(el) ? (el.dataset.why || "NOT AVAILABLE NOW") + (tip ? "    " + tip : "") : tip;
   };
   // Canvases describe what is under the cursor themselves.
   UI.hint = (t) => { fixed = t; UI.tip(); };
@@ -118,13 +124,14 @@
     for (const it of items) {
       if (it === "-") { if (!rule) { m.append(h("div.mn-s")); rule = true; } continue; }
       rule = false;
-      const b = h("button.mn-i" + (it.on ? ".on" : ""), { type:"button", role:"menuitem", disabled:it.disabled, tip: it.tip }, h("span", { text: it.label }), it.key ? h("span.k", { text: it.key }) : null);
-      b.onclick = e => { UI.closeMenu(e.detail === 0); pick(it.value ?? it.label); };
+      const b = h("button.mn-i" + (it.on ? ".on" : ""), { type:"button", role:"menuitem", tip: it.tip || it.label.toUpperCase() }, h("span", { text: it.label }), it.key ? h("span.k", { text: it.key }) : null);
+      if (it.disabled) { b.setAttribute("aria-disabled", "true"); if (it.why) b.dataset.why = it.why; }
+      b.onclick = e => { if (it.disabled) { UI.msg(UI.tipOf(b)); return; } UI.closeMenu(e.detail === 0); pick(it.value ?? it.label); };
       m.append(b);
     }
     if (rule && m.lastChild) m.lastChild.remove();
     const rows = place(m, anchor, o);
-    const choices = [...m.querySelectorAll("button:enabled")];
+    const choices = [...m.querySelectorAll('button:not([aria-disabled="true"])')];
     choices.find(b => b.classList.contains("on"))?.focus({preventScroll:true});
     if (!m.contains(document.activeElement)) choices[0]?.focus({preventScroll:true});
     let typed = "", typedT = 0;
@@ -286,6 +293,8 @@
       if (ti>=0) { el.dataset.midiTarget="cutoff"; el.dataset.midiTrack=ti; }
     }
     const get = () => O()[d.k];
+    // Where a right-click returns: the parameter's default, or what this one object starts with (a drum pad's own sound).
+    const defOf = () => (o.def === undefined ? d.def : typeof o.def === "function" ? o.def() : o.def);
     const done = () => { App.commit(); o.done && o.done(); };
     const paint = (el.paint = () => {
       const v = get(), n = App.toN(d, v);
@@ -293,7 +302,9 @@
       if (d.bool) el.setAttribute("aria-checked", String(!!v));
       else if (!d.opts) { el.setAttribute("aria-valuenow", v); el.setAttribute("aria-valuetext", val.textContent); }
       else el.setAttribute("aria-label", (d.name || d.l) + " · " + val.textContent);
-      el.classList.toggle("df", v === d.def); // at its reset value: shown dim, so what was changed stands out
+      el.classList.toggle("df", v === defOf()); // at its reset value: shown dim, so what was changed stands out
+      const idle = o.idle ? o.idle() : "";         // set, but with no effect now: says what would give it one
+      el.classList.toggle("idle", !!idle); el._idle = idle || "";
       if (d.bool) el.classList.toggle("on", !!v);
       if (d.bi) { bar.style.left = Math.min(n, 0.5) * 100 + "%"; bar.style.width = Math.abs(n - 0.5) * 100 + "%"; }
       else if (d.opts || d.bool) { const k = d.max + 1; bar.style.left = (v / k) * 100 + "%"; bar.style.width = 100 / k + "%"; }
@@ -308,11 +319,11 @@
       if (UI.tipEl === el) UI.tip();
       return true;
     };
-    el.reset = () => put(d.def); // for whatever resets a whole module, strip or device at once
+    el.reset = () => put(defOf()); // for whatever resets a whole module, strip or device at once
     el.addEventListener("focus", () => { UI.tipEl = el; UI.tip(); });
     el.dataset.tip = d.name;
     el._tip = () =>
-      d.name + "  " + App.fmt(d, get()) + (App.UNIT[d.u] || "") + "    " +
+      (el._idle ? el._idle + "    " : "") + (el.dataset.why ? el.dataset.why + "    " : "") + d.name + "  " + App.fmt(d, get()) + (App.UNIT[d.u] || "") + "    " +
       (d.bool ? "CLICK = TOGGLE" : d.opts ? "CLICK = LIST · DRAG / WHEEL = STEP" : "CLICK = TYPE · DRAG / WHEEL = ADJUST · SHIFT = FINE") + " · RIGHT-CLICK = RESET";
     el.meter = mt;
 
@@ -367,9 +378,11 @@
         return;
       }
       UI.edit(el, App.fmt(d, get()), (s) => {
-        let v = App.parse(d, s);
-        if (!isFinite(v)) return;
+        let v = App.parse(d, s, get()); // a bare number is read in the unit the value is showing
+        const span = () => (d.name || d.l).split(" · ")[0] + " TAKES " + App.fmt(d, d.min) + " TO " + App.fmt(d, d.max) + (App.UNIT[d.u] || "");
+        if (!isFinite(v)) { UI.msg("NOT A VALUE: " + String(s).slice(0, 16).toUpperCase() + " · " + span()); return; }
         if (d.int) v = Math.round(v);
+        if (v < d.min || v > d.max) UI.msg(span());
         if (put(v)) done();
       }, 24, keyboard);
     }
@@ -383,7 +396,7 @@
         App.fromN(d,App.toN(d,get())+dir*(e.shiftKey ? 0.002 : 0.012),e.shiftKey);
       if (put(v)) { clearTimeout(wt); wt = setTimeout(done, 350); } // a held key is one change, like a turn of the wheel
     });
-    el.addEventListener("contextmenu", (e) => { e.preventDefault(); if (put(d.def)) done(); });
+    el.addEventListener("contextmenu", (e) => { e.preventDefault(); if (put(defOf())) done(); });
 
     paint();
     return el;
@@ -628,7 +641,10 @@
 
   UI.btn = (text, tip, fn, cls) => {
     const b = h("button.bt" + (cls ? "." + cls : ""), { text, tip, type: "button" });
-    b.onclick = fn;
+    // A button that cannot be used now stays within reach of the pointer, so the status line can say why
+    // (data-why): it only stops acting. Code reads and writes `disabled` as on any button.
+    Object.defineProperty(b, "disabled", { configurable: true, get: () => UI.off(b), set: (v) => { if (v) b.setAttribute("aria-disabled", "true"); else b.removeAttribute("aria-disabled"); } });
+    b.onclick = (e) => { if (UI.off(b)) { e.stopImmediatePropagation(); UI.msg(UI.tipOf(b)); return; } fn && fn(e); };
     return b;
   };
 

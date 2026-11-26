@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   const { h, btn } = App.UI;
-  const views = { mx: "Clip matrix", ed: "Note editor", dv: "Instrument", sg: "Signal analysis", fx: "Master effects" };
+  const views = { mx: "CLIP MATRIX", ed: "EDIT", dv: "DEVICE", sg: "SIGNAL", fx: "MASTER" };
   let focused = "";
   let dialog = null;
 
@@ -18,6 +18,7 @@
       const toggle = panel.querySelector(".view-toggle");
       if (toggle) {
         toggle.setAttribute("aria-label", key === id ? "Return to full console" : "Expand " + views[key]);
+        toggle.dataset.tip = (key === id ? "BACK TO THE FULL CONSOLE" : "EXPAND " + views[key] + " TO THE WHOLE SCREEN") + " · ESC = FULL CONSOLE";
         toggle.textContent = key === id ? "FULL CONSOLE" : "";
       }
     });
@@ -28,7 +29,7 @@
     const header = document.querySelector("#" + id + " > .hd");
     if (!header || header.querySelector(".view-toggle")) return;
     const active = id === focused, label = active ? "Return to full console" : "Expand " + views[id];
-    const button = btn(active ? "FULL CONSOLE" : "", label + " · ESC = FULL CONSOLE", () => focus(focused === id ? "" : id), "view-toggle");
+    const button = btn(active ? "FULL CONSOLE" : "", (active ? "BACK TO THE FULL CONSOLE" : "EXPAND " + views[id] + " TO THE WHOLE SCREEN") + " · ESC = FULL CONSOLE", () => focus(focused === id ? "" : id), "view-toggle");
     button.setAttribute("aria-label", label);
     header.append(button);
   }
@@ -134,7 +135,7 @@
     // button, which have their own use for the key; with Ctrl or Cmd it runs from anywhere.
     node.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" || e.defaultPrevented || e.isComposing) return;
-      const main = node.querySelector(".confirm-action:not(:disabled)"), t = e.target;
+      const main = node.querySelector('.confirm-action:not(:disabled):not([aria-disabled="true"])'), t = e.target;
       if (!main || t.closest?.(".mn")) return;
       if (!(e.ctrlKey || e.metaKey) && t.matches?.("input:not([type=checkbox]), textarea, select, button")) return;
       e.preventDefault();

@@ -56,6 +56,8 @@ canvas { display: block; }
 /* amber = what plays: launched clips or a take have taken the transport over from the pattern and the song */
 .bt.over.on, .mx-s .sgb.over.on { background: var(--am); border-color: var(--am); color: #000; }
 .bt:disabled { color: var(--ln2); pointer-events: none; }
+/* not available now: dim and inert, but still under the pointer so the status line can say why */
+.bt[aria-disabled=true], .bt[aria-disabled=true]:hover { border-color: #223b2b; background: transparent; color: #53745f; opacity: .75; cursor: default; }
 .bt.ic { width: 3.2rem; padding: 0; }
 .bt.ic svg { width: 1.1rem; height: 1.1rem; fill: currentColor; }
 
@@ -68,13 +70,17 @@ canvas { display: block; }
 .pm .mt { position: absolute; left: 0; right: 0; top: 0; bottom: 2px; background: var(--mt); transform: scaleX(0); transform-origin: 0 50%; }
 /* dim = where a right-click would leave it; bright = changed. The transport's own readouts in the top bar stay bright. */
 .pm.df:not(.in) .v { color: var(--t2); } .pm:not(.df) .b i { background: var(--t1); }
+/* set, but without effect in the state the device is in (an LFO with no destination): hatched, and its hint says why */
+.pm.idle .v, .pm.idle .l { color: var(--ln3); } .pm.idle .b i { background: var(--ln3); }
 .pm:hover { background: var(--pn2); } .pm:hover .l { color: var(--t2); }
 .pm.dr { background: var(--pn2); } .pm.dr .v { color: var(--am); } .pm.dr .b i { background: var(--am); }
 .pm.en, .pm.bo { cursor: pointer; }
 .pm.bo.on .v { align-self: flex-start; margin: -0.15rem -0.35rem; padding: 0.15rem 0.35rem; background: var(--t1); color: #000; }
 .pm.ro { cursor: default; } .pm.ro:hover { background: var(--pn); } .pm.ro .b i { background: var(--am); left: auto; right: 0; }
+.pm.map .l::after { content: " MAP"; color: var(--am); } /* a tempo or meter map takes over after bar 1 */
 .pm.in { flex-direction: row; align-items: center; gap: 0.8rem; padding: 0 1rem; border-right: 1px solid var(--ln2); }
 .pm.in .v { font-size: 1.4rem; }
+.pm.sm .v { font-size: var(--fm); letter-spacing: 0; } /* a long list value in a one-column module keeps its list mark */
 .pm.c { padding: 0 0.6rem; } .pm.c .l { display: none; } .pm.c .v { font-size: var(--fm); }
 
 /* ── top bar ── */
@@ -86,6 +92,7 @@ canvas { display: block; }
 .nm { min-width: 9rem; max-width: 20rem; overflow: hidden; text-overflow: ellipsis; color: var(--t2); cursor: text; }
 .pos { min-width: 14.5rem; justify-content: center; color: var(--t1); font-size: 1.9rem; letter-spacing: 0.06em; }
 .take { color: var(--am); cursor: grab; border-left: 1px solid var(--ln2); }
+.bt.samp { align-self: center; margin-right: 0.8rem; font-variant-numeric: tabular-nums; }
 .take:hover { background: var(--am2); }
 .om { gap: 0.8rem; border-left: 1px solid var(--ln2); }
 .om .l { color: var(--t3); font-size: var(--fs); letter-spacing: 0.16em; }
@@ -298,7 +305,8 @@ noscript { position: fixed; inset: 0; display: grid; place-items: center; backgr
 .bt:disabled {color:#53745f;border-color:#223b2b;opacity:.75;}
 .mn { padding:.3rem;min-width:17rem; }
 .mn-i {border:0;background:transparent;color:var(--t1);font:inherit;text-transform:uppercase;text-align:left;min-height:2.7rem;align-items:center;}
-.mn-i:disabled {opacity:.45;}
+.mn-i:disabled, .mn-i[aria-disabled=true] {opacity:.45;cursor:default;}
+.mn-i[aria-disabled=true]:hover, .mn-i[aria-disabled=true]:hover .k { background: transparent; color: var(--t2); }
 .mn-i:focus-visible {color:#000;background:var(--t1);}
 .mn-i:focus-visible .k {color:#17341e;}
 .mn-s { margin:.3rem 0; }

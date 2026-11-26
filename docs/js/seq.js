@@ -277,6 +277,15 @@
     if (!quiet) App.Top.sync();
   };
   // The player's own stop also ends a launcher session; restarts the console makes for itself (Seq.stop then Seq.play) do not.
+  // Undo and redo swap the project under a running transport. When what it plays through is unchanged, it goes on from
+  // where it is: what is already queued is sent, and the queue and the scene session are bound to the new project.
+  Seq.shape = (P) => JSON.stringify([P.chain, P.song, P.sig, P.pats, P.arrangement, P.performance?.source, P.performance?.loops, P.performance?.take?.steps, P.harmony?.chords, (P.audio?.regions || []).length]);
+  Seq.rebind = () => {
+    if (!Seq.playing || !App.E) return;
+    output?.flush();
+    output = eventQueue(App.E, App.P);
+    sceneSession = App.Scenes?.session?.(App.P);
+  };
   Seq.toggle = () => { if (Seq.playing) { Seq.stop(); return App.Live?.rest?.() ? "rested" : "stopped"; } Seq.play(); return "playing"; };
   // In pattern mode a new selection takes over at the next loop boundary.
   Seq.cue = (p) => { if (Seq.playing && App.P.performance?.source==="arrangement" && !songOn(App.P)) queued = p === pat ? null : p; };
