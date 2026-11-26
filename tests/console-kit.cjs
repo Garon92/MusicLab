@@ -188,14 +188,15 @@ module.exports = async function consoleKit(page) {
   assert.equal(await state(() => App.P.rack.strips[1].threshold), -12, "a click selects the value for typing");
   await page.mouse.move(4, 4);
   await threshold().click({ button: "right" });
-  assert.equal(+(await threshold().inputValue()), wheeled, "right-click resets a number to the value it appeared with");
-  assert.equal(await state(() => App.P.rack.strips[1].threshold), wheeled);
+  assert.equal(+(await threshold().inputValue()), -30, "right-click resets a number to the default it names, not to what it happened to show first");
+  await page.waitForFunction(() => document.querySelector('dialog[open] input[aria-label="Sidechain threshold"]').classList.contains("df"), null, { timeout: 2000 });
+  assert.equal(await state(() => App.P.rack.strips[1].threshold), -30);
 
   // A number never reaches its editor empty or out of range: empty goes back to the last good value, the rest is pulled in.
   await threshold().fill("");
   await page.keyboard.press("Tab");
-  assert.equal(+(await threshold().inputValue()), wheeled, "an emptied number returns to its last value");
-  assert.equal(await state(() => App.P.rack.strips[1].threshold), wheeled, "and the editor never hears of it");
+  assert.equal(+(await threshold().inputValue()), -30, "an emptied number returns to its last value");
+  assert.equal(await state(() => App.P.rack.strips[1].threshold), -30, "and the editor never hears of it");
   await threshold().fill("999");
   await page.keyboard.press("Tab");
   assert.equal(+(await threshold().inputValue()), 0, "a number past its limit stops at the limit");

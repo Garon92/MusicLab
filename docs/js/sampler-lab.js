@@ -121,8 +121,9 @@
     const current=()=>P===App.P && P.tracks[ti].smp===d && dlg.open;
     // A map with no zones plays nothing, so the sampler goes back to its own recording when the last one leaves.
     function commit(message) {if(!current())return;d.mode=zones.length?3:0;App.commit();App.Dv.build();App.Ed.sync();App.Mx.draw();info=message;draw();}
+    const zoneDefault={root:60,lo:0,hi:127,vl:1,vh:127};
     function number(label,key,lo,hi,z) {
-      const el=h("input",{type:"number","aria-label":label,value:z[key],min:lo,max:hi,step:1});
+      const el=h("input",{type:"number","aria-label":label,value:z[key],min:lo,max:hi,step:1,"data-reset":App.clamp(zoneDefault[key],lo,hi)});
       el.onchange=()=>{if(!el.reportValidity())return;z[key]=el.valueAsNumber;commit("");};
       return field(label,el);
     }

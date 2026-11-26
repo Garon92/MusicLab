@@ -66,6 +66,8 @@ dialog.console-dialog :is([role=status], .ast-status, .cycle-status, .il-status,
 /* under a label a number is as wide as its label, so neighbouring labels never read as one */
 dialog.console-dialog label > input[type=number] { width: 100%; min-width: 6.2em; }
 :is(dialog.console-dialog, .pop) input[type=number]:focus { cursor: text; }
+/* dim = where a right-click would leave it; bright = changed (fields that name a default) */
+:is(dialog.console-dialog, .pop) input[type=number].df:not(:focus) { color: var(--t2); }
 :is(dialog.console-dialog, .pop) input[type=number]::-webkit-inner-spin-button,
 :is(dialog.console-dialog, .pop) input[type=number]::-webkit-outer-spin-button,
 :is(dialog.console-dialog, .pop) input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; margin: 0; }

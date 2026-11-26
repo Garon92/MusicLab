@@ -80,8 +80,10 @@
     el.onchange = () => fn(el.value);
     return el;
   }
-  function number(label,value,min,max,step,fn) {
+  // `def` is where a right-click returns the field: the value a fresh strip, bus or insert has.
+  function number(label,value,min,max,step,fn,def) {
     const el = h("input",{type:"number","aria-label":label,value,min,max,step});
+    if (def != null) el.dataset.reset = def;
     el.onchange = () => {
       let x = el.valueAsNumber; if (!Number.isFinite(x)) x = value;
       x = App.clamp(x,min,max); el.value = x; value = x; fn(x);
@@ -104,7 +106,7 @@
       const macros = h("div.rack-macros");
       s.macros.forEach((value,j) => {
         const el = h("input",{type:"range",min:0,max:1,step:.001,value,"aria-label":"Macro "+(j+1),
-          "data-midi-target":macroIds[j],"data-midi-track":ti});
+          "data-midi-target":macroIds[j],"data-midi-track":ti,"data-reset":0});
         const output = h("output",{text:Math.round(value*100)+"%"});
         el.oninput = () => { setMacro(ti,j,+el.value); App.MidiIO?.record(ti,macroIds[j],+el.value); };
         el.onchange = () => App.commit();
@@ -120,7 +122,7 @@
         field("Instrument",select("Modulation track",trackOptions(),ti,v => { ti=+v; draw(); })),
         field("LFO shape",select("LFO shape",waves.map(w => [w,w]),s.lfoWave,v => { s.lfoWave=v; change(); })),
         field("LFO clock",select("LFO clock",divisions,s.lfoBeats,v => {s.lfoBeats=+v; change(); draw();})),
-        !s.lfoBeats && field("Rate · Hz",number("LFO rate",s.lfoRate,.02,30,.01,v => { s.lfoRate=v; change(); })));
+        !s.lfoBeats && field("Rate · Hz",number("LFO rate",s.lfoRate,.02,30,.01,v => { s.lfoRate=v; change(); },1)));
       const list = h("div.rack-list");
       const src = [...macroIds.map((id,j) => [id,macroLabel(ti,j)]),["lfo","LFO"],["velocity","Last velocity"],...sourceOptions()];
       const heading = h("div.rack-route.rack-labels",null,...["Source","Destination","Start %","End %",""].map(text => h("span",{text})));
@@ -133,8 +135,8 @@
           if (["cutoff","release"].includes(opt.value)) { opt.disabled = true; opt.textContent += " · SYN/SMP"; }
         }
         list.append(h("div.rack-route",null,source,dest,
-          number("Route "+(j+1)+" start",Math.round(r.low*100),-100,100,1,v => write("low",v/100)),
-          number("Route "+(j+1)+" end",Math.round(r.high*100),-100,100,1,v => write("high",v/100)),
+          number("Route "+(j+1)+" start",Math.round(r.low*100),-100,100,1,v => write("low",v/100),0),
+          number("Route "+(j+1)+" end",Math.round(r.high*100),-100,100,1,v => write("high",v/100),100),
           btn("×","Remove modulation route "+(j+1),() => {s.routes.splice(j,1); change(); draw();})));
       });
       const add = btn("Add route","Connect another source to an instrument, insert or mixer parameter",() => {
@@ -162,7 +164,7 @@
       const normalized = x => filter ? Math.log(x/30)/Math.log(600) : shelf ? (x+15)/30 : db ? -x/48 : x/100;
       inserts.append(h("div.rack-insert",null,enabled,h("span",{text:(j+1)+" · "+types[f.type]}),
         number("Insert "+(j+1)+" "+label,physical(f.value),Math.min(physical(0),physical(1)),Math.max(physical(0),physical(1)),shelf ? .1 : 1,
-          v => {f.value=normalized(v); change();}),h("small",{text:label}),up,down,
+          v => {f.value=normalized(v); change();},physical(.5)),h("small",{text:label}),up,down,
         btn("×","Remove insert "+(j+1),() => {chain.splice(j,1); change(); draw();})));
     });
     const type = select(branch ? "New branch effect" : "New insert effect",options(types),"lowpass",() => {});
@@ -185,7 +187,7 @@
           name.value = c.name = name.value.trim().slice(0,20) || "BUS "+(i+1);
           controls.querySelector('option[value="'+path+'"]').textContent=c.name; change();
         };
-        controls.append(field("Bus name",name),field("Level %",number("Bus level",Math.round(c.level*100),0,100,1,v => {c.level=v/100; change();})));
+        controls.append(field("Bus name",name),field("Level %",number("Bus level",Math.round(c.level*100),0,100,1,v => {c.level=v/100; change();},100)));
       }
       controls.append(btn("Scenes…","Capture or morph selected device and mix settings",() => App.Scenes.open(isTrack?i:8+i)));
       const split=c.split;
@@ -198,21 +200,21 @@
         branch=Math.min(branch,names.length-1);
         const active=split.paths[branch];
         if(split.mode==="bands"){
-          topology.append(field("Low split · Hz",number("Low crossover",split.low,30,Math.min(8000,split.high-20),1,v=>{split.low=v;change();draw();})),
-            field("High split · Hz",number("High crossover",split.high,split.low+20,18000,1,v=>{split.high=v;change();draw();})));
+          topology.append(field("Low split · Hz",number("Low crossover",split.low,30,Math.min(8000,split.high-20),1,v=>{split.low=v;change();draw();},180)),
+            field("High split · Hz",number("High crossover",split.high,split.low+20,18000,1,v=>{split.high=v;change();draw();},3200)));
         }
         const solo=btn("Solo","Hear this branch alone at its mix level",()=>{active.solo=!active.solo;change();draw();});
         solo.setAttribute("aria-pressed",String(active.solo));solo.classList.toggle("on",active.solo);
         paths.push(h("div.rack-row",null,
           field("Branch",select("Edit branch",names.map((name,j)=>[j,name+(split.paths[j].solo?" · solo":"")]),branch,v=>{branch=+v;draw();})),
-          field("Gain · dB",number("Branch gain",active.db,-60,12,.5,v=>{active.db=v;change();})),solo),
+          field("Gain · dB",number("Branch gain",active.db,-60,12,.5,v=>{active.db=v;change();},0)),solo),
           ...insertEditor(active.chain,draw,null,true));
       }
       const side = h("div.rack-row",null,field("Key input",select("Sidechain key",[["off","Off"],...sourceOptions()],c.key,v => {c.key=v; change(); draw();})),
-        field("Threshold · dB",number("Sidechain threshold",c.threshold,-60,0,.5,v => {c.threshold=v; change();})),
-        field("Ratio",number("Sidechain ratio",c.ratio,1,20,.1,v => {c.ratio=v; change();})),
-        field("Depth %",number("Sidechain depth",Math.round(c.depth*100),0,100,1,v => {c.depth=v/100; change();})),
-        field("Response · ms",number("Sidechain response",Math.round(c.release*1000),12,600,1,v => {c.release=v/1000; change();})));
+        field("Threshold · dB",number("Sidechain threshold",c.threshold,-60,0,.5,v => {c.threshold=v; change();},-30)),
+        field("Ratio",number("Sidechain ratio",c.ratio,1,20,.1,v => {c.ratio=v; change();},6)),
+        field("Depth %",number("Sidechain depth",Math.round(c.depth*100),0,100,1,v => {c.depth=v/100; change();},75)),
+        field("Response · ms",number("Sidechain response",Math.round(c.release*1000),12,600,1,v => {c.release=v/1000; change();},90)));
       const members = isTrack ? "" : App.P.tracks.map((t,j) => r.strips[j].bus === i ? t.name : "").filter(Boolean).join(" + ");
       return [controls,...(isTrack?[]:[h("p.rack-note",{text:"Inputs · "+(members || "No tracks assigned")})]),
         section("Insert chain",...insertEditor(c.chain,draw,isTrack && btn("Parametric EQ…","Edit the post-insert spectrum and parametric bands",() => App.ParametricEQ.open(i)))),

@@ -581,7 +581,10 @@
   UI.fields = (root = document) => {
     for (const el of root.querySelectorAll("select,input[type=number],input[type=range]")) {
       seen(el);
-      if (el.tagName === "INPUT") bar(el);
+      if (el.tagName !== "INPUT") continue;
+      bar(el);
+      // A field that names its default is dim while it sits there, like a value on the console.
+      if (el.dataset.reset != null) el.classList.toggle("df", +el.value === +el.dataset.reset);
     }
   };
   document.addEventListener("input", (e) => { const k = kindOf(e.target); if (k === "num" || k === "range") bar(e.target); });

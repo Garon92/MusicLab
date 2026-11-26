@@ -100,7 +100,9 @@
           const opts=key==="wave"?["sine","triangle","sawtooth","square"]:["lowpass","highpass","bandpass","notch"];
           inspector.append(field(key==="wave"?"Waveform":"Filter type",select(key,opts.map(x=>[x,x]),n[key],update)));
         }else{
-          const [name,min,max,step]=specs[key];inspector.append(field(name,numeric(name,n[key],min,max,step,update)));
+          const [name,min,max,step]=specs[key],input=numeric(name,n[key],min,max,step,update);
+          input.dataset.reset=L.moduleOf(n.type,"x")[key]; // a right-click returns to what a new module of this type has
+          inspector.append(field(name,input));
         }
       }
       inspector.append(action("Remove module",()=>{
