@@ -72,6 +72,43 @@
     rain:path("M12 31q-8-3-4-11 2-4 9-4 0-8 9-9 9-1 13 6 9-3 13 5 10 1 9 8-1 7-9 7Z","#a8b7d3")+
       path("M15 38q-1 5-4 8m16-8-5 11m18-12-4 9m17-10-5 11",blue,'stroke="#49859d" stroke-width="3.3"')
   };
+  // Every pad has its own silhouette; the same picture follows it into the score.
+  const puff=(fill)=>path("M12 37q-9-3-5-11 2-5 8-4-1-10 8-10 6-8 14-3 7 0 10 7 9 0 10 7 8 8-1 14-12 5-19 2l-8 8 1-8q-9 2-18-2Z",fill);
+  Object.assign(pictures,{
+    horse:path("m17 44 3-13-9-7q3-11 14-15l3-7 4 7 6-6 3 10 9 8 7 10-6 7-10-2-5-7-2 16Z","#c08b64")+
+      path("M23 12q-9 1-15 14l9-2-4 9 9-4 4-10Z","#786050")+path("m40 28 10 5 5-2",ivory)+dot(38,21)+dot(50,29,1.1),
+    duck:path("M4 34q10 1 11-3-3-9 7-11 9-2 13 6 3-2 3-7-2-11 9-12 11 0 11 10l-8 7q2 8-3 14-6 9-23 9-17 1-20-13Z",yellow)+path("m52 17 9 2-8 5Z",coral)+path("M17 32q10 12 21-2")+dot(49,14),
+    owl:path("M13 16 10 5l13 7q9-3 18 0l13-7-3 14q7 29-17 31-24-1-21-34Z","#a78570")+ellipse(23,24,10,10,ivory)+ellipse(42,24,10,10,ivory)+eyes(24,24,17)+path("m29 28 8 0-4 6Z",yellow)+path("m21 37 3 3 3-3m4 4 3 3 3-3m3-4 2 3 3-4"),
+    cricket:path("m7 39 13-14 11 4 12-10 8 3-7 14-16 3Z",green)+path("m15 39 10-15 17 15m-18-8-9 14H6m23-7 4 8h9m-2-13 10 8h6m-8-23q5-12 12-13m-11 14q2-10 4-13")+path("M20 30q5-12 13-12 7-1 9 8Z","#aad6a3")+dot(47,23),
+    kettle:path("M19 22q0-17 12-17 11 0 13 17",ivory)+path("m13 24-7-9 7-2 9 11q19-9 25 1l7 15q3 6-4 6H15q-5-3-2-10Z",blue)+path("M20 22h25m-16-4h8m-24 24h38m-41-32q-6-5-2-9"),
+    knock:path("M12 48V6h31v42", "#c79971")+path("M17 10h20v15H17Z",peach)+dot(37,34,2)+path("m43 39-4-8q-1-4 3-5 1-4 4-4 2-4 6-2l7 9-1 10-7 5Z",yellow)+path("m41 27 4 4m0-8 4 5m0-8 4 5m-8-14 4 5m4-8v6"),
+    siren:path("M13 40h39v6H13Z","#718992")+path("M18 39V28q0-14 14-14t15 14v11Z",coral)+path("M24 29q1-9 7-9",ivory,'stroke="#fff4db" stroke-width="3"')+path("M32 4v5M9 14l5 4m42-5-6 5M5 28l7 1m42-2 6-1"),
+    thunder:puff("#94a8c3")+path("m29 29 11-2-6 10h7L23 54l5-14h-6Z",yellow),
+    elephant:path("M9 40q-5-6 0-19 4-10 17-12 12-4 20 5 7-1 10 6l1 14q0 7 5 3 1 9-7 9-8-2-9-15l-3 15h-7l-1-11-9 1-2 10h-7l1-12Z","#9daeca")+path("M24 14q-11 11 2 22 10 1 14-14 3-12-7-12Z","#b4c5de")+path("m48 29 5 1-4 5Z",ivory)+dot(48,21),
+    monkey:ellipse(11,27,7,8,peach)+ellipse(52,26,7,8,peach)+path("M13 30q-3-13 9-19l-3-5q10 0 13 5 15-7 19 11 6 16-10 23-19 7-28-6Z","#956e51")+path("M17 26q0-10 10-7l6 4q9-10 15-2 5 7-1 11 6 11-13 13-15-1-18-9Z","#f1c39b")+eyes(25,26,15)+path("M22 34q10 11 22-2"),
+    tiger:path("m14 18-4-5q-2-7 6-8 5-1 9 7 7-3 15 0 5-8 11-6 8 2 4 10l-5 5q9 20-13 27-16 4-25-10-4-10 2-20Z","#ecaa62")+path("m15 17 6 6-9-2m39-5-9 8 10-4m-25-8 4 8 3-10 3 8 2-7",ink)+ellipse(32,38,12,7,ivory,false)+eyes(22,28,19)+path("m27 33 9-1-3 6Z",peach)+path("m32 38-1 3m-9-6-12-3m13 6-12 1m29-4 13-4m-13 7 12 1"),
+    parrot:path("M43 12q12 1 14 12l-8 7-1-8-8-2Z",yellow)+path("M18 33q0-12 9-16-1-12 12-11 12 0 12 12-7 1-8 7-2 12-12 17L9 51l9-15Z",coral)+path("M16 35q9-11 24-13-4 11-15 17L8 47Z",blue)+ellipse(41,14,6,6,ivory,false)+dot(43,14)+path("m28 41-2 6m6-7 1 5"),
+    snake:path("M8 42q2-11 16-8 15 5 17 0 2-5-9-8-12-5-7-14 5-9 19-5 8 1 8 7-1 7-9 5l-7-2q-5 2 4 5 19 6 16 16-3 13-24 7-14-6-24-3Z",green)+path("m50 14 8 1 4-3m-4 3 3 4",coral)+dot(44,11)+path("m15 37 4 4 3-4m18-11 3 5 3-4"),
+    toucan:path("M10 41q-6-14 5-23 0-10 10-11 10-1 13 10l-3 13q-2 11-14 15l-11 5 4-9Z",ink)+path("M22 17q12-7 13 7 0 11-11 15-6-3-2-9Z",ivory)+path("M29 13q16-6 28 1 7 5 3 16-4-7-18-6l-13-1Z",yellow)+path("m51 13 7 2q6 7 2 14l-5-4Z",coral)+dot(26,14,1.4)+path("m18 43 1 5m7-7 2 5"),
+    burp:puff("#bfda91")+path("M16 26q6-7 11-1t11 0 10-2", "none",'stroke="#637e52" stroke-width="3"')+ellipse(8,45,3,2.5,"#c7dd9e")+ellipse(57,10,3,3,"#c7dd9e"),
+    fart:path("M12 37q-2-15 13-19l-4-9 7 1 7 9q18 1 20 15 0 12-21 13-16 1-22-10Z","#ec9b9f")+path("m22 9 4-4 5 6-3 1M18 33q13-12 29-4m-24 7q10-5 19-4")+path("M11 28q-7-1-6-6m9 0q-7-4-4-10",green,'stroke="#638957"'),
+    hiccup:ellipse(29,31,20,17,"#efbb8b")+eyes(22,27,13)+ellipse(30,35,4,5,ink,false)+path("m16 24 6-3m9-.5 6 2m8-6 5-10 1 7 7-1-7 9",yellow),
+    sneeze:path("M10 17q8-10 17-7 10 1 12 11l6 5-10 2-6 14-16-2Z",peach)+path("m22 22 6 1m-7 10q5-1 8 2")+path("m29 39 8-12 17 5 5 9-13 8-18-3Z",ivory)+path("m45 20 9-6m-6 10 12-1",blue),
+    raspberry:ellipse(31,28,21,19,"#eebe95")+path("m17 23q4-5 9-1m10 0q5-5 9 0m-25 9q11-7 23-1-10 9-23 1Z",ink)+path("M28 31q5-2 9 0l1 9q-1 8-7 6-5-1-4-7Z","#df868a")+path("m33 33 0 7m18-11 7-3m-7 8 8 2"),
+    giggle:ellipse(32,28,22,20,yellow)+path("m16 23q5-7 11-1m9-1q6-8 12 0m-28 9q13 8 25-2-1 17-14 15-9-1-11-13Z",ink)+path("M26 37q9-4 13 1-6 6-13-1Z",peach)+path("m6 17 3 3m47 8 5-2"),
+    squeak:path("M7 35q5-4 12-3 4-9 12-8-3-12 7-15 12-4 15 8l4 4-7 5q6 10-1 16-10 9-28 4Q8 45 7 35Z",yellow)+path("m48 20 13 1-9 6Z",coral)+dot(45,16)+path("M20 34q8 8 17-1")+ellipse(31,45,14,2,"#bc8d65",false),
+    spring:path("M12 44q12-7 35-2l3 5-34 3Z",green)+path("M21 42q22-7 13-11l-14-3q-5-2 19-8t-13-9","none",'stroke-width="3.5"')+ellipse(28,9,10,5,coral)+path("M12 16q1-7 6-9m29 17q5 6 1 12"),
+    rattle:path("m28 31 5 4-13 16-7-5Z",yellow)+ellipse(38,20,16,15,coral)+path("m25 12 21 19m-22-12 15 14","#f2c572")+dot(38,13,2)+dot(44,20,2)+path("m10 20 5-6m35-7 5 3"),
+    whistle:path("m9 20 24-6 21 5-4 10-11 1q-5 13-18 10-12-5-12-20Z",coral)+path("m20 20 11-3 8 2-9 4Z",ink)+ellipse(22,28,6,6,ivory)+path("m49 12 3-7m1 9 7-3m-5 8 7 2"),
+    top:path("M5 24q25-15 52 0-1 11-23 18l-6 6-2-7Q8 35 5 24Z",blue)+ellipse(31,23,25,6,coral)+path("M24 18q3-3 4-10h6l3 10Z",yellow)+path("M8 39q-9 3-1 7 8 3 16 1m20-4q10 2 14-3"),
+    musicbox:path("m7 27 31-6 17 7-31 8Zm0 0 17 9v13L8 40Zm17 9 31-8-1 14-30 7Z","#dfab72")+path("m8 25 1-16 28-5 2 16Z",blue)+path("m16 13 15-3-1 7-13 3Z",ivory)+path("M54 33q10-4 7 3l-4 4m-15-24v-8l8 1v7")+ellipse(39,18,4,2,ink,false)+ellipse(48,17,4,2,ink,false),
+    laser:path("m8 22 27-5 13 6-1 6-16 2-4 12-8-1 1-11-12-1Z",blue)+ellipse(43,24,5,6,coral)+path("m48 23 13-4m-12 8 11 1",yellow,'stroke="#bc694d" stroke-width="3"')+path("M15 20q1-5 5-5l10-1 3 4Z",ivory),
+    ufo:path("M16 25q2-15 15-15 13 1 16 15Z","#b5dacc")+ellipse(32,29,27,9,blue)+ellipse(32,27,25,5,"#a1c3bd")+dot(16,29)+dot(29,30)+dot(45,28)+path("m22 39-6 8m17-8-1 11m11-13 5 8",yellow,'stroke="#b7904e"'),
+    robot:path("M14 17q0-2 4-3l28-1q4 1 4 5v22q-1 4-6 4H19q-5-1-5-5Z",blue)+path("m30 14 1-7m-8 27h18v5H23Z",ivory)+ellipse(32,6,3,3,coral)+ellipse(23,25,4,4,yellow)+ellipse(40,24,4,4,yellow)+path("M8 21h5v12H8Zm43-1h5v13h-5Z","#9eabba"),
+    rocket:path("M17 35 8 48l14-6 4-6Z",yellow)+path("m14 27-8 4 1-9 15-7 3 3m4 19 1 10 7-6 2-15",coral)+path("M15 31Q28 8 52 5q-1 23-24 35l-12-4Z",ivory)+path("M41 9q1 7 8 9l3-13Z",coral)+ellipse(33,23,6,6,blue)+path("m8 38-5 4m11 3-5 6"),
+    star:path("m32 5 8 15 17 3-12 12 2 16-16-8-14 8 2-17L7 23l17-3Z",yellow)+eyes(27,28,10)+path("M28 34q4 4 8-1m19-23 1 4 4 1-4 1-1 4-1-4-4-1 4-1Z",ivory),
+    radar:ellipse(31,27,21,20,green)+ellipse(31,27,14,13,"#c9d6ac")+path("M31 14v13l13 5m-13-5 10-10")+dot(38,21,2.5)+dot(22,29,2)+path("m17 45-4 5h36l-4-5",blue)
+  });
   const covers=[
     path("M5 46h53",green)+path("M10 44V23l18-13 17 12v22Z",coral)+path("m7 23 8-11L28 5l14 9 7 10-5 1-5-8-11-7-10 6-7 10Z",ivory)+
     path("M19 27h18v17H19Z","#f5d7aa")+path("m20 28 16 15m0-15L20 43m28 0V23q1-8 7-8t7 8v20Z",yellow)+path("M49 25h12m-12 6h13"),
@@ -86,6 +123,7 @@
     path("M6 33h40l6 7H6Z",blue)+path("M9 32V17h31q5 0 11 13l-2 3Z",coral)+path("M13 20h8v8h-8Zm12 0h9v8h-9Zm13 0 6 1 4 7H38Z","#cce7e1")+
     ellipse(16,40,4,4,ink)+ellipse(42,40,4,4,ink)+path("m4 48 54-2")
   ];
+  covers.push(pictures.elephant,pictures.fart,pictures.rattle,pictures.rocket);
   // A wide view keeps the side profiles readable inside the tempo thumb.
   const speeds=[
     path("M3 30q8 0 14-9l14 2 5-8q2-4 6-1 5 2 4 7-1 7-10 10H6Z","#b8ca86")+

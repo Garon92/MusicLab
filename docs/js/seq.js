@@ -329,7 +329,7 @@
     await Promise.all([App.compLagReady,App.restoreSamples(P)]);
     const lag=stems?.length ? 0 : 2*App.compLagFrames(sr); // compressor and limiter on the master; stems are taken before them
     // The render ends when the sound does: reverb, then the delay line ringing down 60 dB, then the longest release in use.
-    const echo=P.tracks.some(t=>t.dly>0) ? (()=>{
+    const echo=P.fx.mixDelay>0 || P.tracks.some(t=>t.dly>0 || t.automation.some(l=>l.dly?.points?.length)) ? (()=>{
       const dt=clamp([0.125,1/6,0.25,1/3,0.375,0.5,2/3,0.75,1,2][P.fx.dtime]*60/P.bpm,.01,2.4);
       return P.fx.dfb>0.001 ? 2*dt*Math.log(.001)/Math.log(P.fx.dfb) : 2*dt;
     })() : 0;
@@ -411,7 +411,7 @@
 
   /* ── standard MIDI file, format 1, one track per console track ── */
   Seq.midi = () => {
-    const P=App.P, layout=plan(P), list=layout.source==="arrangement" ? layout.list : Array.from({length:8},(_,i)=>i), TPS = 240, sd = 15 / P.bpm, GM = [36, 38, 39, 42, 46, 45, 37, 56];
+    const P=App.P, layout=plan(P), list=layout.source==="arrangement" ? layout.list : Array.from({length:8},(_,i)=>i), TPS = 240, sd = 15 / P.bpm, GM = App.drumMap;
     const vlq = (n) => { const b = [n & 127]; while ((n >>= 7)) b.unshift((n & 127) | 128); return b; };
     const be = (n, k) => Array.from({ length: k }, (_, i) => (n >>> (8 * (k - 1 - i))) & 255);
     const txt = (s) => [...s].map((c) => (c.charCodeAt(0) < 128 && c.length === 1 ? c.charCodeAt(0) : 63)); // non-ASCII → "?"
@@ -471,7 +471,8 @@
       for (const off of noteOffs[ti]) if(off[0]>tick)off[0]=tick;
       noteOffs[ti]=[];
     }, play(ti, pitch, velocity, time, duration) {
-      const note = P.tracks[ti].kind === "kit" ? GM[pitch - 36] : pitch;
+      const T=P.tracks[ti];
+      const note = T.kind === "kit" ? (T.kit.pads[pitch-36] && GM[pitch-36]) : pitch;
       if (note == null) return;
       const c = channels[ti], start = Math.round(time / sd * TPS);
       const stop = Math.max(start + 1, Math.round((time + duration) / sd * TPS));
@@ -508,6 +509,9 @@
     midiQueue.flush();
     P.tracks.forEach((T, ti) => {
       if (!events[ti].length) return;
+      if(T.kind==="kit" && T.kit.pads.length>8){
+        const mark=txt("MusicLab Kit 16");events[ti].push([0,0xff,1,mark.length,...mark]);
+      }
       tracks.push(track(T.name, events[ti], endTick, ports[ti]));
     });
     return new Blob([new Uint8Array([...chunk("MThd", [0, 1, ...be(tracks.length, 2), ...be(TPS * 4, 2)]), ...tracks.flat()])], { type: "audio/midi" });

@@ -11,8 +11,15 @@ module.exports=async function kidsSound(reference) {
   const key=(k,host=room)=>host.locator('[data-sound="'+k+'"]');
   const band=(k,i)=>page.locator('#kids-band [data-k="'+k+'"]'+(i===undefined?"":'[data-index="'+i+'"]')).filter({visible:true});
   const mode=(m,host=room)=>host.locator('[data-sound="mode"][data-mode="'+m+'"]');
+  async function scope(which,host=room){
+    await host.locator(".ks-scope summary").click();await host.locator('[data-scope="'+which+'"]').click();
+  }
   const automation=()=>page.evaluate(()=>App.sanitize(App.P).tracks[2].automation[0]);
   const extent=lane=>Math.max(...lane.points.map(p=>p.v))-Math.min(...lane.points.map(p=>p.v));
+  async function at(host,x,y){
+    const r=await host.locator(".ks-trail").boundingBox();
+    await page.mouse.click(r.x+x*r.width,r.y+(1-y)*r.height);
+  }
   async function paintPath(host=room) {
     const b=await key("pad",host).boundingBox();assert.ok(b);
     const pos=(x,y)=>page.mouse.move(b.x+b.width*x,b.y+b.height*y);
@@ -52,6 +59,8 @@ module.exports=async function kidsSound(reference) {
         }
         const box=s=>root.querySelector(s).getBoundingClientRect();
         const pad=box(".ks-pad"),left=box("[data-end='0']"),right=box("[data-end='1']"),down=box("[data-end='2']"),up=box("[data-end='3']");
+        const trail=box(".ks-trail"),xRuler=box(".ks-axis-x .ks-ruler"),yRuler=box(".ks-axis-y .ks-ruler");
+        if(Math.abs(trail.width-trail.height)>1 || Math.abs(pad.width-pad.height)>1 || Math.abs(xRuler.width-yRuler.height)>1)out.push("XY pad and rulers must be square");
         if(left.top<pad.bottom || left.right>=right.left || down.right>pad.left || up.right>pad.left ||
           up.bottom>pad.top+pad.height/2 || down.top<pad.top+pad.height/2)out.push("Axis ends must sit on the matching sides of the playing field");
         if(box(".ks-puck").width<42 || box("button[data-mode] svg").width<32)out.push("Sound pictures too small");
@@ -70,12 +79,37 @@ module.exports=async function kidsSound(reference) {
       assert.equal(await inline.locator(".ks-pad.held").count(),0);
     });
     await band("back").click();
-    assert.equal(await inline.locator(".ks-target-name").innerText(),"Farma");
-    assert.deepEqual(await inline.locator("[data-mode] .ks-key-name").allTextContents(),["Ozvěna","Ostrost","Chvění"]);
+    assert.equal(await inline.locator(".ks-target-name").innerText(),"Farma + Džungle");
+    assert.deepEqual(await inline.locator("[data-mode]:visible .ks-key-name").allTextContents(),["Ozvěna","Ostrost","Chvění","Poloha"]);
     assert.equal(await inline.locator(".ks-cue").isVisible(),false);
     assert.equal(await key("arm",inline).getAttribute("aria-label"),"Nahrát pohyb");
-    assert.equal(await key("clear",inline).isVisible(),false);
+    assert.equal(await key("reset",inline).isEnabled(),true);await key("reset",inline).click();
+    assert.equal(await key("reset",inline).isDisabled(),true);
     await checkBounds(inline);
+    await scope("piece",inline);await mode("position",inline).click();await checkBounds(inline);
+    const farm=()=>page.evaluate(()=>{
+      const t=App.P.tracks[3];
+      return {vol:t.vol,pan:t.pan,lanes:t.automation,map:App.P.rack.strips[3].macros};
+    });
+    const cleanFarm=await farm();
+    await at(inline,.23,.68);const local=await farm();
+    assert.equal(local.vol,cleanFarm.vol);assert.equal(local.pan,cleanFarm.pan);
+    assert.ok(Math.abs(local.lanes[0].pan.points[0].v-.23)<.02 && Math.abs(local.lanes[0].vol.points[0].v-.68)<.02);
+    assert.deepEqual(local.lanes.slice(1),cleanFarm.lanes.slice(1));
+    await scope("family",inline);await at(inline,.82,.47);const family=await farm();
+    assert.ok(Math.abs(family.pan-.64)<.03 && Math.abs(family.vol-.47)<.02);assert.deepEqual(family.lanes,local.lanes);
+    await key("reset",inline).click();assert.deepEqual(await farm(),local);
+    await scope("piece",inline);await key("reset",inline).click();assert.deepEqual(await farm(),cleanFarm);
+    await band("undo").click();assert.deepEqual(await farm(),local);await key("reset",inline).click();
+    await scope("master",inline);await checkBounds(inline);await at(inline,.8,.61);
+    const mix=()=>page.evaluate(()=>[App.P.fx.mixDelay,App.P.fx.mixReverb,App.P.fx.low,App.P.fx.high]);
+    const master=await mix();assert.ok(Math.abs(master[0]-.8)<.02 && Math.abs(master[1]-.61)<.02);
+    assert.deepEqual(await farm(),cleanFarm);
+    await mode("balance",inline).click();await checkBounds(inline);await at(inline,.25,.75);
+    assert.ok((await mix())[2]<-5 && (await mix())[3]>5);await key("reset",inline).click();assert.deepEqual(await mix(),master);
+    await mode("echo",inline).click();await key("reset",inline).click();assert.deepEqual(await mix(),[0,0,0,0]);
+    await band("undo").click();assert.deepEqual(await mix(),master);await key("reset",inline).click();
+    await scope("family",inline);
     await band("track",6).click();
     await page.locator('#kids-band [data-k="pad"][data-row="2"]').click();
     const objectName=await page.evaluate(()=>App.KidsView.rowLabel(6,2));
@@ -97,7 +131,7 @@ module.exports=async function kidsSound(reference) {
     // Lock x while travelling up and down, then lock y while moving across.
     // The marker alongside each ruler must match the real puck and the audible parameter.
     for(const [id,bottom,top,xKey,yKey] of [["echo","Bez dozvuku","Doznívá","dly","rev"],["colour","Čistý","Drsný","macro2","macro1"],["motion","Klid","Silně","macro4","macro3"]]){
-      await mode(id,inline).click();
+      await mode(id,inline).click();await checkBounds(inline);
       assert.deepEqual(await inline.locator(".ks-axis-y .ks-end").allTextContents(),[top,bottom]);
       const trial=async(x,y)=>{
         const r=await inline.locator(".ks-trail").boundingBox();
@@ -134,15 +168,15 @@ module.exports=async function kidsSound(reference) {
     assert.equal(await key("arm",inline).getAttribute("aria-pressed"),"false","lifting the finger ends the take");
     assert.ok((await inline.locator(".ks-trail polyline").getAttribute("points"))?.length);
     await band("play").click();
-    await checkBounds(inline); // The recorded path adds a direct erase action at every size.
+    await checkBounds(inline); // The recorded path can be restored at every size.
     assert.equal(await inline.locator(".ks-cue").isVisible(),false);
-    await key("clear",inline).click();assert.deepEqual(await automation(),{});
+    await key("reset",inline).click();assert.deepEqual(await automation(),{});
     await band("undo").click();assert.deepEqual(await automation(),first);
     await mode("echo",inline).click();await band("sound").click();await key("pad").waitFor();
     assert.equal(await room.locator(".ks-target-name").innerText(),"Melodie");
     assert.equal(await room.locator("canvas[data-kid-screen]").count(),2);
     assert.deepEqual(await automation(),first);
-    await checkBounds(room);
+    for(const id of ["position","motion","colour","echo"]){await mode(id).click();await checkBounds(room);}
     await key("play").click();
     await page.waitForFunction(()=>{
       const screens=Array.from(document.querySelectorAll("#kids-sound canvas[data-kid-screen]"));
@@ -159,11 +193,13 @@ module.exports=async function kidsSound(reference) {
     assert.deepEqual(await pixels(),frozen);
     await key("freeze").click();
     await page.waitForFunction(()=>Array.from(document.querySelectorAll("#kids-sound canvas")).every(c=>+c.dataset.level<.001));
+    await scope("master");
     for(const [action,param] of [["time","dtime"],["repeat","dfb"]]){
       const values=[];
       for(let i=0;i<3;i++){await key(action).click();values.push(await page.evaluate(k=>App.P.fx[k],param));}
       assert.equal(new Set(values).size,3);
     }
+    await scope("piece");
     const recordings={...first};
     for(const name of ["echo","motion"]) {
       await mode(name).click();
@@ -207,7 +243,7 @@ module.exports=async function kidsSound(reference) {
     const mirrored=await automation();
     assert.notDeepEqual(mirrored.macro3,complete.macro3);
     assert.deepEqual(mirrored.rev,complete.rev);
-    await key("clear").click();
+    await key("reset").click();
     const cleared=await automation();
     assert.ok(!cleared.macro3 && !cleared.macro4);
     assert.deepEqual(cleared.dly,complete.dly);
@@ -274,6 +310,28 @@ module.exports=async function kidsSound(reference) {
     assert.deepEqual(wet.portable,transferred);
     assert.ok(wet.high.rms>.00005 && wet.high.rms>3*wet.low.rms,JSON.stringify(wet));
     assert.ok(wet.bright>3*wet.dark,JSON.stringify([wet.bright,wet.dark]));
+    const masterDSP=await page.evaluate(async()=>{
+      const P=App.sanitize(App.P);
+      P.tracks.forEach(t=>{t.dly=0;t.rev=0;});P.fx.dtime=2;P.fx.dfb=.22;
+      P.rack.strips[2].bus=1;
+      async function render(input,dly,rev,subset){
+        P.fx.mixDelay=dly;P.fx.mixReverb=rev;
+        const sr=24000,ctx=new OfflineAudioContext(2,sr,sr);
+        const E=App.Engine(ctx,()=>P,{offline:true,stems:[{type:"returns",onlyTracks:subset}]});E.syncAll();
+        const sine=ctx.createOscillator();sine.frequency.value=420;
+        sine.connect(E.tracks[input].instrument);sine.start(.06);sine.stop(.095);
+        const buffer=await ctx.startRendering();let energy=0,peak=0,n=0;
+        for(let c=0;c<2;c++){for(const v of buffer.getChannelData(c).subarray(.12*sr)){if(!Number.isFinite(v))throw Error("Invalid master return");energy+=v*v;peak=Math.max(peak,Math.abs(v));n++;}}
+        return {rms:Math.sqrt(energy/n),peak};
+      }
+      const dry=await render(0,0,0),kit=await render(0,.8,0),group=await render(2,.8,0),verb=await render(1,0,.8),other=await render(2,.8,.8,[0]);
+      const {blob}=await App.ProjectFiles.blob(P),{raw}=await App.ProjectFiles.read(blob);
+      return {dry,kit,group,verb,other,portable:[App.sanitize(raw).fx.mixDelay,App.sanitize(raw).fx.mixReverb]};
+    });
+    assert.ok(masterDSP.dry.peak===0 && masterDSP.other.peak===0);
+    for(const name of ["kit","group","verb"])assert.ok(masterDSP[name].rms>.0001,JSON.stringify(masterDSP));
+    assert.deepEqual(masterDSP.portable,[.8,.8]);
+    console.log("Master returns · dry/isolated silence, direct and grouped sources · RMS "+[masterDSP.kit,masterDSP.group,masterDSP.verb].map(v=>v.rms.toFixed(5)).join(", ")+" · peak "+masterDSP.kit.peak.toFixed(4));
     assert.deepEqual(errors,[]);
     console.log("Kids sound room · two-axis drawing, measured scopes and freeze, live override, reverse, clear, undo, portable lanes · echo tail RMS "+wet.low.rms.toFixed(5)+"–"+wet.high.rms.toFixed(5)+" · high harmonic ratio "+(wet.bright/wet.dark).toFixed(1));
   } finally {await context.close();}

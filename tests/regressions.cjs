@@ -350,9 +350,11 @@ module.exports = async function regressions(page) {
   // the grid its display shows, and a notch moves it by whole units of that grid.
   await state(() => { App.P.fx.dfb = 0.4; App.commit(); App.refresh(); });
   await page.locator('#fx .pm[aria-label="DELAY FEEDBACK"]').hover();
-  const landed = [];
-  for (let i = 0; i < 5; i++) { await page.mouse.wheel(0, -120); landed.push(await page.locator('#fx .pm[aria-label="DELAY FEEDBACK"] .v').textContent()); }
-  assert.deepEqual(landed, ["41%", "42%", "43%", "44%", "45%"], "every percent can be reached with the wheel");
+  // The browser delivers wheel events asynchronously. Check each exact value before sending the next notch.
+  for (const percent of ["41%", "42%", "43%", "44%", "45%"]) {
+    await page.mouse.wheel(0, -120);
+    await page.waitForFunction(value => document.querySelector('#fx .pm[aria-label="DELAY FEEDBACK"] .v').textContent === value, percent, {timeout:3000});
+  }
   await page.waitForFunction(() => Math.abs(App.P.fx.dfb - 0.45) < 1e-9);
 
   // A number field in a dialog was the browser's own, which writes 0,5 on a Czech machine beside the console's 0.5.
@@ -365,6 +367,17 @@ module.exports = async function regressions(page) {
   await ratio.focus(); await page.keyboard.press("ArrowUp");
   await page.waitForFunction(() => App.P.rack.strips[1].ratio === 2.6, null, { timeout: 4000 });
   await close();
+  await reset();
+
+  // Loading files on pads 9–16 used to stop immediately at the old eight-pad limit.
+  await state(() => { App.P.tracks[0].kit=App.newKit(16);App.P.sel.pad=14;App.commit();App.refresh(); });
+  await page.locator('#dv .pd[data-note="50"]').click({button:"right"});
+  const [padFiles]=await Promise.all([page.waitForEvent("filechooser"),page.getByRole("menuitem",{name:"Load audio…"}).click()]);
+  await padFiles.setFiles(["cow","pig","sheep"].map(name=>require.resolve("../docs/audio/kids/"+name+".wav")));
+  await page.waitForFunction(()=>App.P.tracks[0].kit.pads[15].name==="PIG");
+  assert.deepEqual(await state(()=>App.P.tracks[0].kit.pads.filter(p=>p.id).map(p=>p.name)),["COW","PIG"]);
+  await page.getByRole("button",{name:"UNDO",exact:true}).click();
+  assert.equal(await state(()=>App.P.tracks[0].kit.pads.filter(p=>p.id).length),0);
   await reset();
 
   // Reported from use: an mp3 dropped into a sampler was treated as a hit. One click on a note played the whole of it,

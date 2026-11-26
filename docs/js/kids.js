@@ -5,25 +5,29 @@
   let bridge,root,surface,sound,entry,parked=null,switching=false,armed=false,recordSince=0,ready=false;
   let shelves=[],signalFrame=0,feedback="",feedbackTimer=0,noticeEpoch=0;
   const lastRows=music.tracks.map(()=>0);
+  const pieces=[0,1,2,3];
   const valid=(n,max)=>Number.isInteger(n) && n>=0 && n<max;
-  const part=()=>Math.max(0,music.tracks.indexOf(App.P.sel.t));
+  const part=()=>music.part(App.P);
   const pattern=()=>App.clamp(App.P.sel.p,0,3);
   function updateShelves(){shelves=store.slots();}
   function state(){
-    const P=App.P, grid=music.grid(P,part(),pattern());
-    const patternMotifs=Array.from({length:4},()=>Array(8).fill(0));
-    const partMotifs=music.tracks.map(ti=>{
+    const P=App.P,who=part(),pi=pattern(),grid=music.grid(P,who,pi);
+    const eraseRowPitch=music.pitch(who,lastRows[who]),sourceClips=P.tracks[music.tracks[who]].clips,clip=sourceClips[pi];
+    const patternMotifs=pieces.map(()=>Array(8).fill(0));
+    const partMotifs=music.tracks.map((ti,source)=>{
       const partMotif=Array(8).fill(0);
       const clips=P.tracks[ti].clips;
       patternMotifs.forEach((motif,p)=>{
-        for(const n of clips[p])if(n.s>=0 && n.s<16){
+        for(const n of clips[p])if(n.s>=0 && n.s<16 && music.owns(source,n.n)){
           const beat=Math.floor(n.s/2);motif[beat]++;
-          if(p===pattern())partMotif[beat]++;
+          if(p===pi)partMotif[beat]++;
         }
       });
       return partMotif;
     });
-    return {track:part(),pattern:pattern(),row:lastRows[part()],patternMotifs,partMotifs,partHasNotes:partMotifs.map(hits=>hits.some(Boolean)),grid,expression:grid.map(row=>row.map(v=>Math.max(0,v-1))),
+    return {track:who,pattern:pi,row:lastRows[who],patternMotifs,partMotifs,partHasNotes:partMotifs.map(hits=>hits.some(Boolean)),grid,expression:grid.map(row=>row.map(v=>Math.max(0,v-1))),
+      canEraseRow:clip.some(n=>n.n===eraseRowPitch),canEraseSource:clip.some(n=>music.owns(who,n.n)),canErasePiece:P.tracks.some(t=>t.clips[pi].length),
+      canEraseSourceInBand:pieces.some(p=>sourceClips[p].some(n=>music.owns(who,n.n))),
       costumes:music.costumes(P),tempo:music.tempoIndex(P),playing:App.Seq.playing,song:!!P.song,chain:P.chain.slice(),
       armed,micState:music.recording(),recording:music.recording()==="recording",hasVoice:!!P.tracks[6].smp.id,canUndo:store.canUndo(),shelf:shelves,
       slot:store.slot,lastRemoval:store.lastRemoval,feedback};
@@ -108,17 +112,21 @@
     else await enter();
   }
   function livePad(row){
-    if(!valid(row,4))return;
+    if(!valid(row,music.rows))return;
     const P=App.P,who=part();
     music.audition(who,row);
     if(!armed || !App.Seq.playing)return;
-    const frame=App.Seq.frame(),clock=App.Seq.now(music.tracks[who]);
-    let p=clock?.pat??pattern(),col=Math.round((clock?.step||0)/2);
-    if(col>=8){
-      if(P.song && P.chain.length)p=P.chain[((frame?.si||0)+1)%P.chain.length];
-      col=0;
+    const track=music.tracks[who],clock=App.Seq.now(track),p=pattern();
+    const beat=Math.round((clock?.step??0)/2),col=beat%8;
+    if(music.grid(P,who,p)[row][col])return;
+    music.edit(P,who,p,row,col);
+    // The pad already sounded under the finger. When the nearest beat lies
+    // ahead of the audio scheduler, let its first sequenced hit wait one lap.
+    if(clock && 2*beat>clock.step){
+      const note=P.tracks[track].clips[p].find(n=>n.n===music.pitch(who,row) && n.s===2*col);
+      if(note)App.Seq.skip.set(note,App.E.ctx.currentTime+clock.sd+.005);
     }
-    if(music.grid(P,who,p)[row][col]===0){music.edit(P,who,p,row,col);App.commit();paint();}
+    App.commit();
   }
   function changeSong(on){
     App.P.song=on?1:0;App.P.arrangement.slots=App.P.chain.map(()=>null);
@@ -132,13 +140,13 @@
       case "sound":soundPage(true);return;
       case "track":
         if(!valid(i,music.tracks.length))return;
-        App.KidsSound.release();P.sel.t=music.tracks[i];App.touch();paint();
+        App.KidsSound.release();music.select(P,i);App.touch();paint();
         music.audition(i,lastRows[i]);return;
       case "pattern":
         if(!valid(i,4))return;
-        App.KidsSound.release();P.sel.p=i;if(App.Seq.playing && !P.song)App.Seq.cue(i);App.touch();paint();return;
+        App.KidsSound.release();armed=false;P.sel.p=i;if(App.Seq.playing && !P.song)App.Seq.cue(i);App.touch();paint();return;
       case "stamp":{
-        if(!valid(i,4)||!valid(j,8))return;
+        if(!valid(i,music.rows)||!valid(j,8))return;
         lastRows[who]=i;
         if(music.grid(P,who,pi)[i][j]){paint();return;}
         music.edit(P,who,pi,i,j);break;
@@ -150,18 +158,21 @@
         music.audition(who,toRow,strength);break;
       }
       case "removeNote":
-        if(!valid(i,4)||!valid(j,8)||!music.grid(P,who,pi)[i][j])return;
+        if(!valid(i,music.rows)||!valid(j,8)||!music.grid(P,who,pi)[i][j])return;
         music.edit(P,who,pi,i,j);break;
       case "note":case "expression":{
-        if(!valid(i,4)||!valid(j,8))return;
+        if(!valid(i,music.rows)||!valid(j,8))return;
         lastRows[who]=i;
         const intensity=music.edit(P,who,pi,i,j,action==="expression");
         if(intensity)music.audition(who,i,intensity);
         break;
       }
-      case "pad":if(valid(i,4)){lastRows[who]=i;livePad(i);paint();}return;
+      case "pad":if(valid(i,music.rows)){lastRows[who]=i;livePad(i);paint();}return;
       case "arm":
-        armed=!armed;if(armed && !App.Seq.playing){App.Seq.startAt(0);App.Seq.play();}paint();return;
+        // Record the piece printed on the button and shown in the grid, even
+        // if the transport had a different piece queued in the song.
+        if(P.song){P.song=0;App.commit();}
+        App.Seq.play();armed=App.Seq.playing;paint();return;
       case "disarm":armed=false;paint();return;
       case "costume":
         if(!valid(i,4)||!valid(j,4))return;
@@ -178,12 +189,24 @@
         P.chain=i.slice();changeSong(!!P.song && i.length>0);if(running && P.song)App.Seq.play();break;
       }
       case "random":music.variation(P,who,pi);music.audition(who,2);break;
-      case "erase":music.clear(P,who,pi);break;
+      case "eraseRow":if(!music.clearRow(P,who,pi,lastRows[who]))return;break;
+      case "erase":if(!music.clear(P,who,pi))return;break;
+      case "eraseSourceInBand":{
+        let changed=false;
+        for(const p of pieces)if(music.clear(P,who,p))changed=true;
+        if(!changed)return;
+        break;
+      }
+      case "erasePiece":{
+        if(!P.tracks.some(t=>t.clips[pi].length))return;
+        for(const t of P.tracks)t.clips[pi].length=0;
+        break;
+      }
       case "mic":
         void music.record((mode,error)=>{
           if(!store.active)return;if(mode==="recording")recordSince=performance.now();
           if(error)flash(error==="empty"?"quiet":error==="storage"?"error":"micError");else paint();
-        },()=>{if(store.active){P.sel.t=6;App.commit();App.E?.syncTrack(6);music.audition(3,3);flash("recorded");}});return;
+        },()=>{if(store.active){music.select(P,3);App.commit();App.E?.syncTrack(6);music.audition(3,3);flash("recorded");}});return;
       case "undo":case "new":case "load":{
         if(action==="undo" && !store.canUndo() || action==="load" && !valid(i,8))return;
         const restoringSong=action==="undo" && store.lastRemoval>=0;

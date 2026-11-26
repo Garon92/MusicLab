@@ -49,14 +49,17 @@
     add("Stop, all sound off","Transport","panic all notes off ticho",()=>App.silence(),"ESC");
     add("Kids music studio","View / Kids","kids mode child band loops echo modulation sound playground dětské kapela polička",()=>App.Kids.enter());
     note("Studio","Costumes · hold a musician","HOLD","kids band change sound");
-    note("Studio","Play a pictured row or record its hits","RYTMUS","kids pads farm animals pets toys objects clock recorded rhythm zapsat ťukání");
-    note("Studio","Clear or vary the rhythm of one sound group","RYTMUS","kids erase random smazat rytmus vymyslet");
+    note("Studio","Six rows in each of 12 sets","PICTURE","kids pads farm animals jungle silly burp fart toy space Czech legrace krknutí prdík vesmír hračky džungle");
+    note("Studio","Play pictures into a piece","RYTMUS / ESC","kids live record sound row hrát na obrázky hotovo");
+    note("Studio","Erase a row, set or piece","GUMA","kids erase smazat guma current letter dílek all pieces A–D instrument sound");
+    note("Studio","Vary this rhythm","RYTMUS","kids random vylosovat rytmus");
     note("Studio","Drag a row picture to a beat or onto the effect pad","DRAG","kids animal instrument drag place hear pozice efekt ozvěna");
     note("Studio","Move a placed sound to an empty beat or another row","DRAG","kids note picture sticker sound move change time");
     note("Studio","Remove a note or song piece and restore it with Zpět","RIGHT CLICK","kids control click odebrat notu dílek undo");
     note("Studio","Drag notes back to the sounds or pieces out of the song strip","DRAG OUT","kids remove trash smazat odebrat");
     note("Studio","Accents and long notes","HOLD","kids note expression roll");
-    note("Studio","Shape the selected sound group beside its score","DRAG","kids echo colour vibrato sound playground modulation XY ozvěna ostrost chvění");
+    note("Studio","Set effect scope","EFFECTS","kids channel instrument one piece whole master band echo reverb position vibrato colour EQ stereo ozvěna ostrost chvění poloha");
+    note("Studio","Reset the selected effect","RESET","kids default reset effect původní vrátit");
     note("Studio","Record or erase a movement","NAHRÁT POHYB","kids gesture automation reverse smazat pohyb");
     note("Studio","Freeze the signal displays","SNOWFLAKE","kids waveform spectrum");
     note("Studio","Drag A–D onto the song strip or slide its pictures to reorder","PLUS / DRAG","kids arrange chain pořadí dílků");
@@ -161,6 +164,8 @@
     const active=document.querySelector("dialog[open]:not(.find-dialog)");
     for(const root of (active?[active]:[...document.querySelectorAll("#top,#dv,#fx")])){
       const place=active?active.getAttribute("aria-label"):({top:"Transport",dv:"Device",fx:"Master"})[root.id];
+      const bank=root.querySelector('button[aria-label="Pad bank"]');
+      if(bank)add("Drum pad bank","Controls / Device","drum pads 1–8 9–16 sample banks keyboard Q W E R T Y U I",()=>bank.click());
       const seen=new Set();
       for(const el of root.querySelectorAll('[role="slider"],[role="switch"],.pm.en,input:not([type=hidden]),select')){
         const label=(el.getAttribute("aria-label")||"").split(" · ")[0];if(!label || el.disabled || !el.getClientRects().length || seen.has(label))continue;

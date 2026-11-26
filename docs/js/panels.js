@@ -80,7 +80,7 @@
     App.releaseAll(); App.E?.cutTrack(ti);
     if (T.kind === "syn") { T.syn = App.defs(App.DEF.syn); T.arp = App.defs(App.DEF.arp); }
     else if (T.kind === "smp") { const { id, st, en, root, markers, warpSource, warpSpec, zones, mode, slices } = T.smp; T.smp = { ...fresh.smp, ...App.defs(App.DEF.smp), id, st, en, root, markers, warpSource, warpSpec, zones, mode, slices }; }
-    else T.kit.pads = T.kit.pads.map((pad, i) => ({ ...App.newKit().pads[i], id: pad.id, src: pad.src, st: pad.st, en: pad.en, name: pad.name }));
+    else T.kit.pads = T.kit.pads.map((pad, i) => ({ ...App.newPad(i), id: pad.id, src: pad.src, st: pad.st, en: pad.en, name: pad.name }));
     App.commit(); App.E?.syncTrack(ti); App.refresh();
     UI.msg(T.name + " DEVICE BACK TO DEFAULT · UNDO REVERTS");
   }
@@ -557,7 +557,7 @@
   App.Dv = (() => {
     let waves = [], padEls = [];
     // Pads whose note is sounding (sequence or keys) get a lamp.
-    const hit = (notes) => padEls.forEach((e, i) => e.classList.toggle("hit", notes.has(36 + i)));
+    const hit = (notes) => padEls.forEach(e => e.classList.toggle("hit", notes.has(Number(e.dataset.note))));
 
     // Envelope shape. Time axis is compressed so both a 2 ms click and an 8 s swell stay readable.
     const envView = (get) => {
@@ -758,9 +758,22 @@
           filler(2), outMod(),
         );
       } else {
-        const k = p.sel.pad, pd = T.kit.pads[k], tg = { ti, pad: k };
-        const pads = T.kit.pads.map((x, i) => {
+        const kit=T.kit.pads;
+        // A patch or a copied device can replace a 16-pad kit with an 8-pad kit.
+        const k=p.sel.pad=Math.min(p.sel.pad,kit.length-1),pd=kit[k],tg={ti,pad:k};
+        const first=k<8?0:8,bank=kit.slice(first,first+8);
+        const bankButton=kit.length>8?btn(first?"9–16":"1–8","CHOOSE EIGHT PADS TO VIEW AND PLAY",e=>{
+          const anchor=e.currentTarget;
+          UI.menu(anchor,[0,8].map(start=>({label:start?"Pads 9–16":"Pads 1–8",value:String(start),on:first===start})),value=>{
+            p.sel.pad=Number(value)+k%8;App.touch();build();App.Ed.draw();
+            UI.msg("SHOWING PADS "+(Number(value)+1)+" TO "+(Number(value)+8));
+          },{label:"Pad bank"});
+        },"mnu"):null;
+        if(bankButton)bankButton.setAttribute("aria-label","Pad bank");
+        const pads = bank.map((x, within) => {
+          const i=first+within;
           const e = h("div.pd.dg" + (i === k ? ".on" : ""), { tip: "PAD " + (i + 1) + " · CLICK = SELECT + PLAY · DRAG ONTO ANOTHER PAD = COPY THE SOUND, ALT = SWAP · DROP AUDIO = LOAD · RIGHT-CLICK = MENU" }, h("i", { text: i + 1 }), h("span", { text: x.name }), x.src ? h("u", { text: "SMP" }) : null);
+          e.dataset.note=String(36+i);
           e.onpointerdown = (ev) => {
             if (ev.button !== 0) return;
             const E = App.audio();
@@ -773,18 +786,18 @@
           return e;
         });
         padEls = pads;
-        const init = App.newKit().pads; // where a right-click returns each value: this pad's own sound, not a common default
+        const init=App.newPad(k);
         const pp = (key, cb, o) => UI.param(DEF.pad[key], pd, (changed, v) => {
           // Back to the synth: the name and the long decay belonged to the audio that was loaded.
-          if (changed === "src" && !v) { if (pd.dec === 4) pd.dec = init[k].dec; if (pd.id) pd.name = init[k].name; }
+          if (changed === "src" && !v) { if (pd.dec === 4) pd.dec = init.dec; if (pd.id) pd.name = init.name; }
           App.touch(); cb && cb();
-        }, { ...o, def: () => init[k][key] });
-        const levels = T.kit.pads.map((pad, i) => UI.param(DEF.pad.lvl, pad, () => App.touch(), {label:pad.name, def: init[i].lvl}));
-        body.append(mod("PADS", 4, pads, null, "pads"));
+        }, { ...o, def: () => init[key] });
+        const levels = bank.map((pad,i) => UI.param(DEF.pad.lvl, pad, () => App.touch(), {label:pad.name,def:App.newPad(first+i).lvl}));
+        body.append(mod("PADS", 4, pads, bankButton, "pads"));
         if (pd.src) {
           let st, en;
           const wv = waveView(5, () => pd.id, pd, { tg, change: () => { st.paint(); en.paint(); }, audition: () => { const E = App.audio(); E && E.play(ti, 36 + k, 0.9); },
-            remove: () => Object.assign(pd, { ...init[k], lvl: pd.lvl }) });
+            remove: () => Object.assign(pd, { ...init, lvl: pd.lvl }) });
           st = pp("st", wv.paint); en = pp("en", wv.paint);
           body.append(mod("SAMPLE", 5, [wv, st, en, pp("pit"), pp("dec"), pp("rev")], smpTools(tg, pd.id)));
         } else {
@@ -826,7 +839,7 @@
           has("eq", btn("TRACK EQ…", "PARAMETRIC EQ OF THE SELECTED TRACK · FOUR BANDS OVER ITS LIVE SPECTRUM · THE EQ MODULE BELOW IS THE MASTER'S", () => App.ParametricEQ.open(P().sel.t))),
           has("scenes", btn("SCENES…", "SNAPSHOTS OF MIX AND DEVICE SETTINGS · RECALL, MORPH AND SONG CUES", () => App.Scenes.open()))),
         h("div.dv-b.f5", null,
-          mod("DELAY", 2, [q("dtime"), q("dfb"), q("dtone"), q("dwid")]),
+          mod("DELAY / MIX SENDS", 2, [q("dtime"), q("dfb"), q("dtone"), q("dwid"), q("mixDelay"), q("mixReverb")]),
           mod("REVERB", 1, [...(P().impulse?.sample ? [h("div.inst-overview",{style:"grid-row:span 2",text:App.samples.get(P().impulse.sample)?.name || "CUSTOM IR",tip:"THE REVERB IS A RECORDED IMPULSE RESPONSE · IR… CHANGES OR REMOVES IT"})] : [q("rsize"), q("rdamp")]),
             btn("IR…","IMPULSE RESPONSE · USE A RECORDED SPACE INSTEAD OF THE GENERATED REVERB",()=>App.SignalWorkshop.openImpulse())]),
           mod("EQ", 1, [q("high"), q("mid"), q("low")]),

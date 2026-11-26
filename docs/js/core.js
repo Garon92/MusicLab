@@ -283,6 +283,8 @@
       N("dfb", "FEEDBACK", "DELAY FEEDBACK", 0, 0.95, 0.4, { u: "pc" }),
       N("dtone", "TONE", "DELAY FEEDBACK LOW-PASS", 200, 16000, 4500, { c: "exp", u: "hz" }),
       N("dwid", "WIDTH", "DELAY PING-PONG WIDTH", 0, 1, 0.7, { u: "pc" }),
+      N("mixDelay", "ALL DLY", "SEND THE WHOLE DRY MIX TO THE DELAY RETURN", 0, 1, 0, { u: "gain" }),
+      N("mixReverb", "ALL REV", "SEND THE WHOLE DRY MIX TO THE REVERB RETURN", 0, 1, 0, { u: "gain" }),
       N("rsize", "DECAY", "REVERB DECAY TIME", 0.2, 10, 2.2, { c: "exp", u: "t" }),
       N("rdamp", "DAMP", "REVERB HIGH DAMPING", 0, 1, 0.5, { u: "pc" }),
       N("low", "LOW", "MASTER EQ · LOW SHELF 120 Hz", -12, 12, 0, { u: "db", bi: 1 }),
@@ -353,7 +355,15 @@
     ["SAMPLE B", "smp", 48, {}, {}],
   ];
 
-  const newKit = () => ({ pads: KIT.map((p) => ({ ...defs(DEF.pad), ...p, id: null })) });
+  const extraPads = [
+    {name:"HI BONGO",tune:335,dec:.11}, {name:"LO BONGO",tune:230,dec:.14},
+    {name:"MT CONGA",tune:280,dec:.055}, {name:"HI CONGA",tune:244,dec:.22},
+    {name:"LO CONGA",tune:169,dec:.29}, {name:"HI TIMB",tune:310,nz:.26,dec:.2},
+    {name:"LO TIMB",tune:207,nz:.32,dec:.26}, {name:"CABASA",tone:0,nz:.85,col:4900,ndec:.11,burst:2}
+  ];
+  const drumMap = [36,38,39,42,46,45,37,56,60,61,62,63,64,65,66,69];
+  const newPad = i => ({...defs(DEF.pad),...(KIT[i] || extraPads[i-8]),id:null});
+  const newKit = (count=8) => ({pads:Array.from({length:count>8?16:8},(_,i)=>newPad(i))});
   const extensions = [];
   App.extendProject = extension => extensions.push(extension);
   function extend(P, raw) {
@@ -433,13 +443,14 @@
         ...fit(DEF.trk, s), lo: num(s.lo, 0, 116, d.lo, 1),
         arp: fit(DEF.arp, s.arp), syn: fit(DEF.syn, s.syn, d.syn),
         smp: { ...fit(DEF.smp, s.smp), id: sid(s.smp?.id) },
-        kit: { pads: d.kit.pads.map((pd, k) => ({ ...fit(DEF.pad, s.kit?.pads?.[k], pd), name: str(s.kit?.pads?.[k]?.name, pd.name, 8), id: sid(s.kit?.pads?.[k]?.id) })) },
+        kit: { pads: (Array.isArray(s.kit?.pads) && s.kit.pads.length>8 ? newKit(16) : d.kit).pads.map((pd, k) => ({ ...fit(DEF.pad, s.kit?.pads?.[k], pd), name: str(s.kit?.pads?.[k]?.name, pd.name, 8), id: sid(s.kit?.pads?.[k]?.id) })) },
         clips: d.clips.map((_, k) => notes(s.clips?.[k])),
         automation: d.automation.map((_, k) => loadCurves(s.automation?.[k])),
       };
     });
     P.fx = fit(DEF.fx, src.fx);
-    P.sel = { t: num(src.sel?.t, 0, 7, 0, 1), p: num(src.sel?.p, 0, 7, 0, 1), pad: num(src.sel?.pad, 0, 7, 0, 1) };
+    P.sel = { t: num(src.sel?.t, 0, 7, 0, 1), p: num(src.sel?.p, 0, 7, 0, 1), pad: 0 };
+    P.sel.pad = num(src.sel?.pad,0,P.tracks[P.sel.t].kit.pads.length-1,0,1);
     return extend(P,src);
   };
 
@@ -699,7 +710,7 @@
      only a tab that is open alone cleans (another tab's undo history may still hold a sample), it keeps all that
      this tab has decoded or can undo to, and a build older than the one that last saved cleans nothing, because a
      later build may keep sample ids where this one does not look. Raise REFS with every such new place. */
-  const REFS = 3, REFS_KEY = KEY + ".refs", TABS = "musiclab.tabs";
+  const REFS = 4, REFS_KEY = KEY + ".refs", TABS = "musiclab.tabs";
   App.tidySamples = async (projects) => {
     const locks = navigator.locks;
     let known = 0, removed = 0;
@@ -727,7 +738,7 @@
 
   Object.assign(App, {
     clamp, NOTES, PATS, SCALES, SIGS, DEF, pc, noteName, mtof, uid, pad2, spb, beatSteps, maxBars, patSteps, inScale,
-    chordNotes, chordName, fmt, parse, toN, fromN, UNIT, fHz, fTime, fDb, defs, newProject, newKit, sanitize, wav, peaks, N,
+    chordNotes, chordName, fmt, parse, toN, fromN, UNIT, fHz, fTime, fDb, defs, newProject, newKit, newPad, drumMap, sanitize, wav, peaks, N,
     automationKeys, curveBase, curveValue, curveShape, MAX_STEPS, MAX_BARS, songPatterns, snap, nudge,
   });
 })();

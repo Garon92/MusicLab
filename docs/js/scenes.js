@@ -20,7 +20,7 @@
       if(keys.length===4 && ["syn","smp","arp"].includes(sub) && Object.hasOwn(App.DEF[sub],a)){
         def=App.DEF[sub][a];part="device";
       }
-      if(keys.length===6 && sub==="kit" && a==="pads" && isIndex(b,8) && Object.hasOwn(App.DEF.pad,c)){def=App.DEF.pad[c];part="device";}
+      if(keys.length===6 && sub==="kit" && a==="pads" && isIndex(b,16) && Object.hasOwn(App.DEF.pad,c)){def=App.DEF.pad[c];part="device";}
     }
     if(top==="rack" && i==="groups" && isIndex(sub,4) && keys.length===4 && ["chain","split"].includes(a)){
       ti=8+Number(sub);type=a;part="effects";
@@ -44,7 +44,7 @@
     fieldMap.set(path,d);return d;
   }
   const get=(P,keys)=>keys.reduce((o,k)=>o?.[k],P);
-  const set=(P,keys,val)=>{let o=P;for(const k of keys.slice(0,-1))o=o[k];o[keys.at(-1)]=val;};
+  const set=(P,keys,val)=>{let o=P;for(const k of keys.slice(0,-1))o=o?.[k];if(o)o[keys.at(-1)]=val;};
   const allowedFx=new Set(["lowpass","highpass","lowshelf","highshelf","saturate","compress"]);
   function safeValue(d,x) {
     if(d.type==="split")return x && typeof x==="object" && !Array.isArray(x)?App.Rack.cleanSplit(x):undefined;

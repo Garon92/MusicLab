@@ -32,7 +32,7 @@ module.exports = async function kidsMusic(reference) {
     assert.equal(checks.blank,true);assert.deepEqual(checks.transitions,[1,2,3]);
     assert.equal(checks.drum.s,0);assert.equal(checks.drum.r,2);assert.equal(checks.drum.n,36);
     assert.equal(checks.long.s,4);assert.equal(checks.long.l,4);assert.equal(checks.grid[2][2],3);
-    assert.ok(checks.other.length && checks.other.every(n=>[36,38,40,43].includes(n)));
+    assert.ok(checks.other.length && checks.other.every(n=>[31,33,36,38,40,43].includes(n)));
     assert.equal(checks.unique,4);assert.deepEqual(checks.costumes,[0,0,3,0]);assert.equal(checks.scale,"PENTA MAJOR");
     assert.equal(checks.bpm,checks.tempos.at(-1));assert.ok(checks.vol<=.55);
     assert.ok(checks.peak>.01 && checks.peak<=checks.vol**2+.0001 && checks.rms>.001);

@@ -50,8 +50,8 @@
 .kv-mic.recording::before{content:"";position:absolute;inset:1px;border-radius:inherit;pointer-events:none;background:conic-gradient(#b22d36 var(--record-arc,0deg),transparent 0);mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;padding:4px}
 .kv-lock{background:#40555a;color:#c2ddd0;margin-left:clamp(0px,.45vw,8px)}
 .kv-lock>svg{width:73%;height:72%}
-.kv-main{display:grid;grid-template-columns:clamp(156px,14.2vw,250px) minmax(614px,1fr) minmax(218px,25%);gap:clamp(8px,.8vw,15px);min-width:0;min-height:0}
-.kv-sources{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(4,minmax(0,1fr));gap:clamp(5px,.72vh,10px);padding:clamp(4px,.45vw,8px);border:var(--kv-rim) solid #59665e;border-radius:19px;background:#daccae;box-shadow:inset 0 2px 3px #947f5c44}
+.kv-main{display:grid;grid-template-columns:clamp(214px,19.3vw,316px) minmax(600px,1fr) minmax(226px,24%);gap:clamp(6px,.65vw,14px);min-width:0;min-height:0}
+.kv-sources{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(4px,.58vh,9px);padding:clamp(3px,.34vw,6px);border:var(--kv-rim) solid #59665e;border-radius:19px;background:#daccae;box-shadow:inset 0 2px 3px #947f5c44}
 .kv-musician{min-width:64px;min-height:64px;width:100%;height:100%;padding:2px;position:relative;isolation:isolate;overflow:hidden;border-radius:12px;border-color:#73766a;background:color-mix(in srgb,var(--part) 22%,#f9edcd);box-shadow:0 2px #777766}
 .kv-character-wrap{display:grid;place-items:center;height:100%;width:100%;min-height:0;min-width:0}
 .kv-character-wrap .kv-picture{height:100%;width:100%}.kv-character-wrap .kv-character{height:100%;width:120%}
@@ -63,10 +63,10 @@
 .kv-musician.populated .kv-source-lamp{background:var(--kid-ink)}
 .kv-musician[aria-pressed=true] .kv-source-lamp{background:#fff1b1;box-shadow:0 0 0 1.5px var(--kid-ink)}
 .kv-source-lamp{transform:scale(calc(1 + var(--amplitude,0)*.8))}
-.kv-board{--head-width:clamp(82px,7.6vw,148px);--lane-gap:clamp(4px,.45vw,10px);position:relative;min-width:0;min-height:0;display:grid;grid-template-rows:clamp(30px,4.4vh,47px) minmax(0,1fr);padding:clamp(4px,.5vw,9px);padding-top:0;
+.kv-board{--head-width:clamp(72px,6.6vw,128px);--lane-gap:clamp(4px,.4vw,8px);position:relative;min-width:0;min-height:0;display:grid;grid-template-rows:clamp(26px,3.8vh,42px) minmax(0,1fr);padding:clamp(3px,.35vw,7px);padding-top:0;
   border:var(--kv-rim) solid #43555a;border-radius:clamp(15px,2.2vh,26px);background:#4a6064;box-shadow:inset 0 3px #829589,0 3px #857862}
 .kv-score-head,.kv-lane{min-height:0;display:grid;grid-template-columns:var(--head-width) minmax(0,1fr);gap:var(--lane-gap);align-items:stretch}
-.kv-score{min-height:0;display:grid;grid-template-rows:repeat(4,minmax(0,1fr));gap:clamp(4px,.75vh,11px)}
+.kv-score{min-height:0;display:grid;grid-template-rows:repeat(6,minmax(0,1fr));gap:clamp(2px,.45vh,7px)}
 .kv-beats,.kv-step-keys{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));min-height:0}
 .kv-beats{align-items:center;justify-items:center}
 .kv-beats i{width:6px;height:4px;border-radius:10px;background:#8da89c}
@@ -96,6 +96,7 @@
 .kv-sources:focus-within{background:#cfdec3}
 .kv-board:focus-within{background:#365a53}
 .kv-sources-title{align-self:center;text-align:center;font-size:clamp(12px,1.35vh,16px);font-weight:750;color:#3b514b}
+.kv-sources-title:first-child{grid-column:span 2}
 .kv-musician{grid-template-rows:minmax(0,1fr) auto;padding:1px 1px 7px;background:#f2e8d3;border-color:#aa9f83;box-shadow:0 1px #958b75}
 .kv-musician[aria-pressed=true]{background:var(--part);border-color:var(--kid-selected);box-shadow:inset 0 -6px var(--kid-selected),0 1px var(--kid-selected);padding-bottom:9px}
 .kv-musician[aria-pressed=true] .kv-source-print i{background:#aec7ad}
@@ -164,12 +165,20 @@
 .kv-header-menu summary::after{content:"";position:absolute;right:8px;top:7px;width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);pointer-events:none}
 .kv-header-menu[open] summary{background:#f4c977;border-color:#78592e}
 .kv-header-menu[open] summary::after{top:10px;transform:rotate(225deg)}
-.kv-rhythm-tools{margin-bottom:3px}
-.kv-rhythm-trigger{display:grid;width:clamp(89px,8.25vw,127px)}
-.kv-rhythm-trigger.armed{background:#f2a38e}
+.kv-edit-tools{display:flex;align-items:center;gap:clamp(4px,.45vw,8px);margin-bottom:3px}
+.kv-rhythm-trigger,.kv-rhythm-finish{width:clamp(74px,6.2vw,96px)}
+.kv-eraser-tools summary{width:clamp(66px,5.5vw,78px)}
+.kv-header .kv-eraser-tools summary>svg{color:#835040}
+.kv-rhythm-finish{background:#eea58e;border-color:#834538}
+.kv-rhythm-finish::after{content:"";position:absolute;top:5px;right:5px;width:8px;height:8px;border-radius:50%;background:#ad382b}
+.kv-board.kv-live-input .kv-board-title{border-radius:8px;background:#ffd9b9;color:#5c3028}
+.kv-live-input .kv-board-title::before{content:"↓ Ťukej sem";font:700 clamp(11px,1.3vh,16px)/1 system-ui,sans-serif}
+.kv-live-input .kv-board-title>*{display:none}
+.kv-live-input .kv-row-pad{border-color:#9a4634;box-shadow:inset 0 0 0 2px #ffe0aa,0 2px #423b32}
+.kv-live-input .kv-row-pad .kv-pad-lamp{width:8px;height:8px;background:#b13e2e;box-shadow:0 0 0 1px #ffe6cc}
 .kv-menu-tray{position:absolute;top:calc(100% + 8px);left:0;display:grid;gap:6px;width:max-content;max-width:70vw;padding:8px;
   border:2px solid var(--kid-ink);border-radius:16px;background:#fff5df;box-shadow:0 4px 0 #49574f70}
-.kv-rhythm-tools .kv-menu-tray{left:50%;transform:translateX(-50%)}
+.kv-rhythm-tools .kv-menu-tray,.kv-eraser-tools .kv-menu-tray{left:50%;transform:translateX(-50%)}
 .kv-edit-scope{font:700 15px/1.25 system-ui,sans-serif;padding:3px 5px}
 .kv-header .kv-menu-tray .kv-button{grid-template:1fr / 40px minmax(0,1fr);justify-items:start;align-items:center;gap:10px;
   width:100%;min-width:clamp(178px,15vw,220px);height:64px;padding:5px 12px 5px 7px;border-radius:11px;color:var(--kid-ink);background:#fcf1da}
@@ -179,6 +188,10 @@
 .kv-header .kv-menu-tray .kv-arm[aria-pressed=true]{background:#f2a38e}
 .kv-header .kv-menu-tray .kv-random>svg{background:#f1cf76}
 .kv-header .kv-menu-tray .kv-erase>svg{background:#b4d5c6}
+.kv-header .kv-eraser-tools .kv-menu-tray .kv-button>svg{padding:2px;background:#f3dbc1}
+.kv-eraser-tools .kv-caption,.kv-arm .kv-caption{display:grid;gap:2px}
+.kv-eraser-tools .kv-caption small,.kv-arm .kv-caption small{font-size:12px;font-weight:550;line-height:1.2;color:#4a594e}
+.kv-header .kv-menu-tray .kv-arm{width:clamp(225px,21vw,285px);min-height:78px}
 .kv-menu-tray .kv-button:disabled>.kv-caption{opacity:.64}
 .kv-header .kv-menu-tray .kv-menu-choice{padding-right:29px}
 .kv-header .kv-menu-tray [data-k=songPiece]>svg{background:var(--piece)}
@@ -210,8 +223,9 @@
 .kv-chain-print{min-width:0;display:grid;grid-template-columns:repeat(var(--piece-columns,1),minmax(0,1fr));width:min(100%,calc(var(--piece-columns,1) * (var(--preview-size) + 2px) - 2px));gap:2px}
 .kv-chain-print:empty{display:none}
 .kv-chain-print i{display:block;width:100%;aspect-ratio:1;border-radius:5px}
-.kv-chain-print i{background:var(--piece);border:1px solid #807d69}
-.kv-chain-print i>svg{position:absolute;inset:1px;width:calc(100% - 2px);height:calc(100% - 2px)}
+.kv-chain-print i{display:grid;grid-template-columns:40% 60%;align-items:center;background:var(--piece);border:1px solid #807d69;container-type:inline-size}
+.kv-chain-print i>b{pointer-events:none;text-align:center;font:800 clamp(10px,36cqw,19px)/1 system-ui,sans-serif}
+.kv-chain-print i>svg{width:100%;height:auto;padding-right:1px}
 .kv-chain-add{width:64px;height:var(--kv-key);color:#655c48}
 .kv-chain-add>svg{width:min(90%,var(--preview-size));height:auto;max-height:54px;aspect-ratio:1;border:2px dashed #897b5e;border-radius:7px;padding:7px;background:#f9edd3}
 .kv-chain-print i.sounding{background:#ffe09b;border-color:#7d5628;box-shadow:inset 0 -3px #a46922}
@@ -280,6 +294,10 @@
 .kv-piece.sounding{outline:3px solid #f2b95d;outline-offset:1px}
 .kv-sheet[hidden]{display:none}
 @media(prefers-reduced-motion:reduce){.kv-button,.kv-tempo-thumb{transition:none}.kv-row-pad.hit{animation:none}.kv-flash.visible{animation:none;opacity:1}}
+@media(max-height:690px){
+  .kv-shell{height:calc(100% - 12px);padding:6px 8px;gap:5px}
+  .kv-score{gap:2px}
+}
 
 /* The effects face has a large printed playing surface and two real signal displays. */
 .ks-room {--room:#83d9cb;background-color:#e9d5b7}
@@ -311,13 +329,6 @@
 .ks-echo-controls .ks-key[data-level="3"]:after{box-shadow:-10px 0 #334250,10px 0 #334250}
 .ks-echo-controls[hidden],.kids-surface[hidden]{display:none}
 .ks-players{display:flex;align-items:center;gap:clamp(7px,.8vw,15px)}
-.ks-performer{display:flex;align-items:center;justify-content:center;gap:2px;padding:0 5px 0 0;width:calc(var(--kv-key)*1.7);
-  background:linear-gradient(180deg,#fff5da 1%,#ffe7bc 85%);border-radius:22px}
-.ks-portrait{display:grid;place-items:center;position:relative;isolation:isolate;width:71%;height:100%;pointer-events:none}
-.ks-portrait:before{content:"";position:absolute;inset:9% 3% 10% 5%;z-index:-1;border-radius:50%;background:var(--part);opacity:.54}
-.ks-portrait svg{width:100%;height:100%}
-.ks-cycle{width:21%;aspect-ratio:1;display:grid;place-items:center;background:#fff5dc;border-radius:50%;border:1.5px solid #53606a;pointer-events:none}
-.ks-cycle svg{width:90%;height:90%;stroke-width:3.8}
 
 /* On the score the child can touch the sound and its rhythm at the same time. */
 .ks-inline {min-width:0;min-height:0;height:100%;--room:#83d9cb}
@@ -410,15 +421,69 @@
 .ks-cue.ks-gesture-cue svg{display:block}
 .ks-inline .ks-cue{font-size:clamp(11px,1.4vh,15px);padding:3px 6px}
 .ks-trail{z-index:2}
-.ks-performer{width:auto;min-width:155px;padding:0 8px 0 2px}
-.ks-performer .ks-portrait{width:clamp(37px,5.7vh,60px)}
-.ks-performer .ks-target{display:grid;justify-items:start;text-align:left;gap:4px}
-.ks-performer .ks-cycle{width:20px}
 .ks-screen{position:relative;display:grid;grid-template-rows:auto minmax(0,1fr);gap:4px}
 .ks-screen>span{padding-inline:6px;color:#f5ebd2;font:650 clamp(12px,1.45vh,17px)/1.1 system-ui,sans-serif}
 .ks-room .ks-echo-controls .ks-key{padding-bottom:11px}
 .ks-room .ks-echo-controls .ks-key::after{bottom:2px;width:4px;height:4px}
 
+/* Put both rulers on the same square, even when the available panel is tall. */
+.ks-stage{container-type:size;display:grid;place-items:center;min-width:0;min-height:0}
+.ks-stage .ks-instrument{
+  --axis-w:clamp(65px,6vw,93px);--axis-h:clamp(32px,4.5vh,52px);
+  --side:min(calc(100cqw - var(--axis-w) - 4px),calc(100cqh - var(--axis-h) - 4px));
+  grid-template:"y pad" var(--side) ". x" var(--axis-h) / var(--axis-w) var(--side);
+  width:max-content;height:max-content;background:transparent;padding:0;border:0;box-shadow:none;gap:4px
+}
+.ks-inline .ks-stage .ks-instrument{--axis-w:clamp(47px,4.6vw,65px);--axis-h:clamp(29px,4vh,39px)}
+.ks-stage .ks-pad{height:100%;width:100%}
+.ks-scope{position:relative;min-width:0;z-index:4}
+.ks-scope summary,.ks-scope-list .kv-button{
+  width:100%;height:64px;min-height:64px;display:flex;align-items:center;gap:7px;padding:4px 8px;
+  font:650 clamp(12px,1.4vh,16px)/1.15 system-ui,sans-serif;text-align:left
+}
+.ks-scope summary{list-style:none;border-color:#9e8a69;border-radius:12px;background:#f4e3bf;box-shadow:0 2px #9c8b6e}
+.ks-scope summary::-webkit-details-marker{display:none}
+.ks-scope summary>.ks-family{flex:0 0 clamp(32px,3vw,45px);height:40px}
+.ks-scope summary>svg{width:17px;height:17px;margin-left:auto}
+.ks-scope[open] summary>svg{transform:rotate(180deg)}
+.ks-scope summary .ks-target,.ks-scope-list button span{display:grid;gap:2px;min-width:0;justify-items:start}
+.ks-scope .ks-target-name,.ks-scope-list strong{font-size:clamp(13px,1.6vh,18px);line-height:1.06}
+.ks-scope small{color:#4f554c;font-size:clamp(11px,1.4vh,14px);line-height:1.08}
+.ks-room .ks-scope{width:clamp(173px,17vw,260px)}
+.ks-scope-list{position:absolute;top:calc(100% + 4px);inset-inline:0;display:grid;gap:4px;padding:5px;border:2px solid var(--kid-ink);border-radius:13px;background:#fff4d8;box-shadow:0 4px #847760}
+.ks-scope:not([open]) .ks-scope-list{display:none}
+.ks-scope-list button>svg{width:32px;height:32px;flex:none}
+.ks-scope-list [aria-pressed=true]{background:#abd9b8;border-color:#325945}
+.ks-inline{container-type:inline-size}
+.ks-inline .ks-modes{grid-template-columns:repeat(4,minmax(0,1fr));gap:3px}
+.ks-inline.ks-master .ks-modes{grid-template-columns:repeat(2,minmax(0,1fr))}
+.ks-key[data-mode=position]{background:#aad8e7}
+.ks-key[data-mode=balance]{background:#efd27d}
+.ks-pad[data-room=position]{background:#dbedf1}
+.ks-pad[data-room=balance]{background:#f7eac3}
+.ks-inline .ks-inline-tools .ks-key{max-width:none}
+.ks-master .ks-family{display:none}
+@container (max-width:285px){
+  .ks-inline:not(.ks-master) .ks-shell{
+    grid-template-areas:"scope scope arm" "echo colour reset" "motion position expand" "stage stage stage";
+    grid-template-rows:auto auto auto minmax(0,1fr);grid-template-columns:repeat(3,minmax(64px,1fr));column-gap:3px
+  }
+  .ks-inline:not(.ks-master) :is(.ks-modes,.ks-inline-tools){display:contents}
+  .ks-inline:not(.ks-master) .ks-scope{grid-area:scope}
+  .ks-inline:not(.ks-master) .ks-scope summary{gap:3px;padding-inline:4px}
+  .ks-inline:not(.ks-master) .ks-stage{grid-area:stage}
+  .ks-inline:not(.ks-master) [data-sound=arm]{grid-area:arm}
+  .ks-inline:not(.ks-master) [data-sound=reset]{grid-area:reset}
+  .ks-inline:not(.ks-master) [data-sound=expand]{grid-area:expand}
+  .ks-inline:not(.ks-master) [data-mode=echo]{grid-area:echo}
+  .ks-inline:not(.ks-master) [data-mode=colour]{grid-area:colour}
+  .ks-inline:not(.ks-master) [data-mode=motion]{grid-area:motion}
+  .ks-inline:not(.ks-master) [data-mode=position]{grid-area:position}
+  .ks-inline:not(.ks-master) .ks-inline-tools .ks-key{width:100%}
+  .ks-inline:not(.ks-master) .ks-scope-list{width:max(100%,200px)}
+  .ks-inline .ks-axis-x .ks-end{gap:1px}
+  .ks-inline .ks-axis-x .ks-end svg{width:23px}
+}
 /* A lifted picture lights up only the places that accept it. */
 .kv-pattern,.kv-piece,.kv-add-piece,.kv-cell[aria-pressed=true],.kv-chain-print i{touch-action:none}
 @media(hover:hover){

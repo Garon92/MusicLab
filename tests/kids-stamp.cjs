@@ -33,7 +33,7 @@ module.exports=async function kidsStamp(reference){
     assert.equal(await suggestion.count(),0);
     await root.getByRole("button",{name:"Vybrat sadu: Zvířata"}).tap();
     assert.equal(await root.locator(".kv-board-name").innerText(),"Zvířata");
-    assert.deepEqual(await root.locator(".kv-pad-name").allTextContents(),["Pes","Kočka","Pták","Žába"]);
+    assert.deepEqual(await root.locator(".kv-pad-name").allTextContents(),["Pes","Kočka","Pták","Žába","Sova","Cvrček"]);
     assert.deepEqual(await root.locator(".kv-beats i").allTextContents(),["1","2","3","4","5","6","7","8"]);
     await root.getByRole("button",{name:"Vybrat sadu: Farma"}).tap();
     assert.equal(await pad(1).getAttribute("aria-label"),"Přehrát zvuk: Prase");
@@ -65,6 +65,12 @@ module.exports=async function kidsStamp(reference){
       await ghost.waitFor({state:"detached"});
     });
     assert.deepEqual(await notes(),[]);
+    await drag(5,2,6,async()=>{
+      await page.evaluate(()=>App.Kids.dispatch("track",8));
+      await ghost.waitFor({state:"detached"});
+    });
+    assert.deepEqual(await notes(),[],"changing families on the same strip cancels the old stamp");
+    await root.getByRole("button",{name:"Vybrat sadu: Farma"}).tap();
     await drag(0,3,2,async()=>{
       await control("shelf").evaluate(b=>b.click());
       await ghost.waitFor({state:"detached"});

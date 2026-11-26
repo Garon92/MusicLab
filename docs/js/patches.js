@@ -41,7 +41,7 @@
     const [, , params,extra,hat,open] = recipe;
     if (t.kind === "syn") return {syn:{...App.defs(App.DEF.syn),...params}, arp:{...App.defs(App.DEF.arp),...extra}};
     if (t.kind === "smp") return saveable({kind:"smp",smp:{...App.defs(App.DEF.smp),...params}});
-    const kit = App.newKit();
+    const kit = App.newKit(t.kit.pads.length);
     [params,extra,hat,open].forEach((body,i) => Object.assign(kit.pads[[0,1,3,4][i]],body));
     return saveable({kind:"kit",kit});
   }

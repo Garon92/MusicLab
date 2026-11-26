@@ -229,7 +229,7 @@
         if (active.scope === "clip" && active.op === "stretch" && active.size < current) lines.push("The remaining bars stay empty on this track.");
         if (active.op === "overlay") lines.push("Conflict priority also applies to overlapping automation lanes.");
         if (active.scope === "clip" && external(active.op) && active.track !== t) {
-          const T = P.tracks[t], pads = T.kind === "kit" ? 8 : T.kind === "smp" && T.smp.mode === 1 ? T.smp.slices : 0;
+          const T = P.tracks[t], pads = T.kind === "kit" ? T.kit.pads.length : T.kind === "smp" && T.smp.mode === 1 ? T.smp.slices : 0;
           const outside = pads ? plan.tracks[0].notes.filter(n => n.n < 36 || n.n >= 36 + pads).length : 0;
           if (outside) lines.push(outside + " result notes fall outside the target's playable pad range.");
           else if (T.kind !== P.tracks[active.track].kind) lines.push("Source MIDI pitches play on the target instrument.");

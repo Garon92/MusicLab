@@ -5,11 +5,11 @@
   const fail = (message) => { throw new Error(message); };
   const controllers = new Map([[7,"vol"],[10,"pan"],[74,"filter"],[91,"rev"],[94,"dly"]]);
   const ccValue = (key,v) => key !== "pan" ? v / 127 : v <= 64 ? v / 128 : .5 + (v - 64) / 126;
-  const exactDrums = [36, 38, 39, 42, 46, 45, 37, 56];
+  const exactDrums = App.drumMap.slice(0,8);
   const programFamily = ["Piano", "Mallets", "Organ", "Guitar", "Bass", "Strings", "Ensemble", "Brass",
     "Reed", "Pipe", "Synth lead", "Synth pad", "Synth FX", "Ethnic", "Percussion", "Sound FX"];
-  const drumPad = (n) => {
-    const exact = exactDrums.indexOf(n);
+  const drumPad = (n,map) => {
+    const exact = map.indexOf(n);
     if (exact >= 0) return 36 + exact;
     if (n === 35) return 36;
     if (n === 40) return 37;
@@ -62,7 +62,7 @@
       if (id !== "MTrk") { pos = end; continue; }
       limit = end;
       const channels = new Map();
-      let tick = 0, running = 0, port = 0, name = "";
+      let tick = 0, running = 0, port = 0, name = "", largeKit = false;
       const channel = (ch) => {
         const address = port * 16 + ch;
         if (!channels.has(address)) channels.set(address, { ti, ch, address, notes: [], pressed: new Map(), sustained: [], pedal: false, program: null });
@@ -88,6 +88,7 @@
             const marker = /^MusicLab (?:Pattern ([A-H])|Rest)$/.exec(textDecoder.decode(data.subarray(pos, pos + len)));
             if (marker) markers.push(marker[1] ? { tick, pattern: marker[1].charCodeAt(0) - 65 } : { tick, rest: true });
           }
+          if (type===1 && tick===0 && len===15 && textDecoder.decode(data.subarray(pos,pos+len))==="MusicLab Kit 16") largeKit=true;
           if (type === 33 && len === 1) port = data[pos];
           if (type === 1 && ti === 0 && tick === 0 && len <= 18) {
             const match = /^MusicLab Swing (\d{1,3})$/.exec(textDecoder.decode(data.subarray(pos,pos+len)));
@@ -138,7 +139,7 @@
       names.push(name);
       for (const part of channels.values()) {
         finishNotes(part);
-        parts.push({ name, ti, ch:part.ch, address:part.address, program:part.program, notes:part.notes });
+        parts.push({ name, ti, largeKit, ch:part.ch, address:part.address, program:part.program, notes:part.notes });
       }
       ti++;
     }
@@ -470,11 +471,13 @@
         if (nt.v < 3) soft++;
         maxEnd = Math.max(maxEnd, end);
         if (s >= maxTimeline) continue;
-        const n = track.kit ? drumPad(nt.n) : nt.n;
-        if (track.kit && !exactDrums.includes(nt.n)) pitched.add(nt.n);
+        const map=source.largeKit?App.drumMap:exactDrums;
+        const n = track.kit ? drumPad(nt.n,map) : nt.n;
+        if (track.kit && !map.includes(nt.n)) pitched.add(nt.n);
         histogram[n]++;
         notes.push({ t: track.index, s, end, n, v: nt.v, r: nt.r || 1, off:Math.abs(off)>.001 ? Math.round(off*1000)/1000 : 0 });
       }
+      if (track.kit && track.parts.some(p=>p.largeKit)) T.kit=App.newKit(16);
       if (!track.kit) {
         let best = -1;
         for (let lo = 0; lo <= 104; lo++) {

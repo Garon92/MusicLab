@@ -82,6 +82,7 @@
     const ct = s.t !== t, cp = s.p !== p;
     if (ct) releaseAll();
     s.t = t; s.p = p;
+    if(ct)s.pad=Math.min(s.pad,App.P.tracks[t].kit.pads.length-1);
     App.touch();
     if (cp) Seq.cue(p);
     // Launched clips and a take do not follow the selection: say what plays and how to get the pattern back.
@@ -195,7 +196,7 @@
     UI.msg("PAD " + (a + 1) + (swap ? " AND " + (b + 1) + " SWAPPED" : " COPIED TO PAD " + (b + 1)) + " · UNDO REVERTS");
   };
   App.resetPad = (ti, i) => {
-    const P = App.P, fresh = App.newKit().pads[i];
+    const P = App.P, fresh = App.newPad(i);
     P.tracks[ti].kit.pads[i] = fresh;
     App.commit();
     App.E?.syncTrack(ti);
@@ -249,7 +250,7 @@
     tg = resolve(tg);
     let n = 0, last = tg;
     for (const f of audio) {
-      if (tg.pad != null && tg.pad + n > 7) break;
+      if (tg.pad != null && tg.pad + n >= App.P.tracks[tg.ti].kit.pads.length) break;
       try {
         const id = await App.addSample(f.name.replace(/\.[^.]+$/, "").toUpperCase().slice(0, 40), f);
         if (generation !== session) return;
@@ -650,7 +651,7 @@
   const KEYS = ["KeyA", "KeyW", "KeyS", "KeyE", "KeyD", "KeyF", "KeyT", "KeyG", "KeyY", "KeyH", "KeyU", "KeyJ", "KeyK", "KeyO", "KeyL", "KeyP", "Semicolon"];
   const PADS = ["KeyA", "KeyS", "KeyD", "KeyF", "KeyG", "KeyH", "KeyJ", "KeyK", "KeyQ", "KeyW", "KeyE", "KeyR", "KeyT", "KeyY", "KeyU", "KeyI"];
   let octave = 4;
-  const rowCount = (T) => (T.kind === "kit" ? 8 : T.kind === "smp" && T.smp.mode === 1 ? T.smp.slices : 0);
+  const rowCount = (T) => (T.kind === "kit" ? T.kit.pads.length : T.kind === "smp" && T.smp.mode === 1 ? T.smp.slices : 0);
   const noteFor = (code) => {
     const T = App.P.tracks[App.P.sel.t], rows = rowCount(T);
     if (rows) { const i = PADS.indexOf(code); return i >= 0 && i < rows ? 36 + i : null; }
@@ -683,7 +684,7 @@
     const P = App.P, ti = P.sel.t, T = P.tracks[ti];
     const same = [...held.values()].find(key => key.ti === ti && key.note === note);
     if (same) { held.set(id, same); return; }
-    if (T.kind === "kit" && note >= 36 && note < 44 && P.sel.pad !== note - 36) { P.sel.pad = note - 36; App.Dv.build(); App.Ed.draw(); }
+    if (T.kind === "kit" && note >= 36 && note < 36+T.kit.pads.length && P.sel.pad !== note - 36) { P.sel.pad = note - 36; App.Dv.build(); App.Ed.draw(); }
     E.noteOn(ti, note, vel);
     App.Ed.reveal(note); // what is played is seen: the grid comes to the octave of the keys
     if (App.recArm && !Seq.playing) UI.msg("REC IS ARMED BUT THE TRANSPORT IS STOPPED · PRESS PLAY TO RECORD WHAT YOU PLAY");

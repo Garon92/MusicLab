@@ -35,7 +35,7 @@
     // Armed pads belong to live recording as soon as they are pressed.
     if(kind==="pad" && surface.querySelector('[data-k="arm"]')?.getAttribute("aria-pressed")==="true")return;
     const music=kind==="pad" || kind==="note";
-    drag={id:e.pointerId,source,capture:source,kind,music,secondary,project:App.P,track:App.P.sel.t,pattern:App.P.sel.p,
+    drag={id:e.pointerId,source,capture:source,kind,music,secondary,project:App.P,part:App.KidsMusic.part(App.P),pattern:App.P.sel.p,
       chain:music?null:App.P.chain.slice(),row:Number(source.dataset.row),col:Number(source.dataset.col),
       sourceIndex:mini?Array.from(source.parentElement.children).indexOf(source):Number(source.dataset.index),
       x:e.clientX,y:e.clientY,panel:source.closest(".kv-sheet-arrange"),board:source.closest(".kv-board"),
@@ -50,7 +50,7 @@
     if(drag.ghost && drag.panel){
       if(drag.panel.hidden || !drag.panel.classList.contains("kv-sheet-arrange"))return false;
     }else if(!surface.contains(drag.source) || drag.source.closest("[hidden],[inert]"))return false;
-    if(drag.music)return drag.track===App.P.sel.t && drag.pattern===App.P.sel.p &&
+    if(drag.music)return drag.part===App.KidsMusic.part(App.P) && drag.pattern===App.P.sel.p &&
       (drag.kind!=="note" || drag.source.getAttribute("aria-pressed")==="true");
     return App.P.chain.length===drag.chain.length && drag.chain.every((p,i)=>p===App.P.chain[i]);
   }

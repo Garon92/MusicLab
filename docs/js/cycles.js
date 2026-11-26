@@ -43,7 +43,7 @@
     return n?(Number(n[3])+1)*12+{C:0,D:2,E:4,F:5,G:7,A:9,B:11}[n[1].toUpperCase()]+(n[2]==="#"?1:n[2]==="b"?-1:0):NaN;
   }
   function open(){
-    const P=App.P,ti=P.sel.t,T=P.tracks[ti],config=P.cycles[ti],kit=T.kind==="kit";
+    const P=App.P,ti=P.sel.t,T=P.tracks[ti],config=P.cycles[ti],kit=T.kind==="kit",lastPad=35+T.kit.pads.length;
     const node=App.Workspace.begin("Cycle sequencer"),body=h("div.dlg-body"),status=h("output.cycle-status",{role:"status"});
     node.classList.add("tool-dialog","cycle-dialog");
     const number=(label,v,min,max)=>h("input",{type:"number","aria-label":label,value:v,min,max,step:1});
@@ -54,15 +54,15 @@
     for(const key of lanes){
       const line=config[key],title={pitch:"Pitch",accent:"Accent",gate:"Gate"}[key];
       const input=h("input",{type:"text","aria-label":title+" steps",value:line.values.map(v=>v===-1?"-":key==="pitch"&&!kit?App.noteName(v):v).join(" "),maxlength:200,
-        tip:key==="pitch"?(kit?"PAD NOTES 36 TO 43, SPACE BETWEEN, - FOR A REST · FOR EXAMPLE 36 - 38":"NOTE NAMES OR NUMBERS, SPACE BETWEEN, - FOR A REST · FOR EXAMPLE C3 E3 G3 -"):"PERCENT PER STEP, SPACE BETWEEN · FOR EXAMPLE 80 55 90"});
+        tip:key==="pitch"?(kit?"PAD NOTES 36 TO "+lastPad+", SPACE BETWEEN, - FOR A REST · FOR EXAMPLE 36 - 38":"NOTE NAMES OR NUMBERS, SPACE BETWEEN, - FOR A REST · FOR EXAMPLE C3 E3 G3 -"):"PERCENT PER STEP, SPACE BETWEEN · FOR EXAMPLE 80 55 90"});
       const clock=option(title+" clock",Object.keys(periods),line.clock),dir=option(title+" direction",directions,line.dir),phase=number(title+" phase",line.phase,0,31);
       const strip=h("div.cycle-cells",{"aria-label":title+" cycle position"});
       const paint=()=>strip.replaceChildren(...line.values.map(v=>h("span",{text:key==="pitch"?(v<0?"–":kit?String(v):App.noteName(v)):v+"%"})));
-      const hint=key==="pitch"?(kit?"Drum keys 36–43 · dash rests":"MIDI keys or C4, D#4 · dash rests"):key==="accent"?"Velocity · 0–100%":"Duration · 0–400% of the pitch clock";
+      const hint=key==="pitch"?(kit?"Drum keys 36–"+lastPad+" · dash rests":"MIDI keys or C4, D#4 · dash rests"):key==="accent"?"Velocity · 0–100%":"Duration · 0–400% of the pitch clock";
       input.dataset.tip=hint;input.onchange=()=>{
         const tokens=input.value.trim().split(/[\s,]+/).filter(Boolean);
         const values=tokens.map(s=>key==="pitch"?pitch(s):/^\d+$/.test(s)?Number(s):NaN);
-        if(values.length>32 || values.some(v=>!Number.isInteger(v) || (key==="pitch"?(v!==-1 && (v<(kit?36:0) || v>(kit?43:127))):(v<0 || v>(key==="gate"?400:100))))){
+        if(values.length>32 || values.some(v=>!Number.isInteger(v) || (key==="pitch"?(v!==-1 && (v<(kit?36:0) || v>(kit?lastPad:127))):(v<0 || v>(key==="gate"?400:100))))){
           input.setCustomValidity("Use up to 32 steps. "+hint);input.reportValidity();return;
         }
         input.setCustomValidity("");line.values=values;paint();App.commit();

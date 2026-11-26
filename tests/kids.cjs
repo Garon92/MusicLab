@@ -101,6 +101,43 @@ async function checkDeskDrags(page) {
   await src.tap();await other.tap();assert.deepEqual(await track(),initial);
 }
 
+async function checkEraser(page,key) {
+  const clips=()=>page.evaluate(()=>App.P.tracks.map(t=>t.clips));
+  const initial=await clips();
+  await page.evaluate(()=>{
+    const music=App.KidsMusic;
+    for(const [part,section,row,beat] of [[4,0,0,1],[4,0,0,6],[4,0,5,3],[8,0,0,2],[6,0,2,2],[4,1,0,1],[8,1,3,4],[4,3,4,3]]){
+      music.edit(App.P,part,section,row,beat);
+    }
+    const shared=App.P.tracks[music.tracks[4]];
+    for(const p of [4,7])shared.clips[p].push({...shared.clips[0][0]});
+    shared.automation[0].pan={mode:"linear",points:[{s:0,v:-.42},{s:8,v:.42}]};
+    App.commit();App.Kids.dispatch("track",4);App.Kids.dispatch("pad",0);
+  });
+  const full=await clips();
+  const automation=()=>page.evaluate(()=>App.P.tracks[App.KidsMusic.tracks[4]].automation[0]);
+  const movement=await automation();
+  const counts=()=>page.evaluate(()=>[4,8,6].map(p=>App.KidsMusic.grid(App.P,p,0).flat().filter(Boolean).length));
+  for(const [action,expected] of [["eraseRow",[1,1,1]],["erase",[0,1,1]],["erasePiece",[0,0,0]]]){
+    await key("eraser").tap();await key(action).tap();
+    assert.deepEqual(await counts(),expected,action+" affects precisely the pictured target, including when two sources share a console strip");
+    assert.deepEqual((await clips()).map(t=>t.slice(1)),full.map(t=>t.slice(1)),"other pieces are kept");
+    assert.deepEqual(await automation(),movement,"erasing notes leaves the recorded effect movement in place");
+    await key("undo").tap();assert.deepEqual(await clips(),full,"one Undo restores all deleted notes");
+  }
+  const withoutSource=await page.evaluate(()=>App.P.tracks.map((t,ti)=>t.clips.map((clip,p)=>
+    ti===App.KidsMusic.tracks[4] && p<4?clip.filter(n=>!App.KidsMusic.owns(4,n.n)):clip)));
+  await key("pattern",'[data-index="2"]').tap();
+  await key("eraser").tap();assert.ok(await key("erase").isDisabled(),"this piece has no farm notes");
+  await key("eraseSourceInBand").tap();
+  assert.deepEqual(await clips(),withoutSource,"remove the farm across A–D, keep both shared-strip partners in A/B and console pieces E–H");
+  assert.deepEqual(await automation(),movement);
+  await key("eraser").tap();assert.ok(await key("eraseSourceInBand").isDisabled());await key("eraser").tap();
+  await key("undo").tap();assert.deepEqual(await clips(),full,"one Undo restores the farm across all four pieces");
+  await key("pattern",'[data-index="0"]').tap();
+  await key("undo").tap();assert.deepEqual(await clips(),initial);
+}
+
 module.exports = async function kidsUI(reference) {
   const context=await reference.context().browser().newContext({hasTouch:true,viewport:{width:1100,height:620}});
   const page=await context.newPage(),errors=[];
@@ -187,8 +224,8 @@ module.exports = async function kidsUI(reference) {
       window.addEventListener("drop",observe);root.dispatchEvent(drop);window.removeEventListener("drop",observe);
       return drop.defaultPrevented && !reachedConsole;
     }));
-    assert.equal(await key("note").count(),32);
-    assert.equal(await key("track").count(),8);assert.equal(await key("pad").count(),4);
+    assert.equal(await key("note").count(),48);
+    assert.equal(await key("track").count(),12);assert.equal(await key("pad").count(),6);
     assert.equal(await key("pattern").count(),4);assert.equal(await page.locator("#kids-band canvas[data-kid-screen]").count(),2);
     assert.equal(await key("pad",'[data-row="0"]').getAttribute("aria-label"),"Přehrát zvuk: Kráva");
     for(const [k,title] of [["play","Přehrát"],["rhythmTools","Rytmus"],["mic","Nahrát hlas"],["shelf","Písničky"]])
@@ -200,7 +237,9 @@ module.exports = async function kidsUI(reference) {
       await page.setViewportSize({width,height});await checkPanel(page,"Band");
       await key("song").tap();await checkPanel(page,"Playback choices",".kv-play-menu[open]");
       await key("rhythmTools").tap();await checkPanel(page,"Rhythm choices",".kv-rhythm-tools[open]");
-      assert.equal(await key("songAll").count(),0);await key("rhythmTools").tap();
+      assert.equal(await key("songAll").count(),0);
+      await key("eraser").tap();await checkPanel(page,"Eraser targets",".kv-eraser-tools[open]");
+      assert.ok(await key("erasePiece").isDisabled());assert.ok(await key("eraseSourceInBand").isDisabled());await key("eraser").tap();
     }
     await page.setViewportSize({width:1100,height:620});
     await key("song").tap();assert.equal(await key("songPiece").getAttribute("aria-pressed"),"true");
@@ -214,7 +253,8 @@ module.exports = async function kidsUI(reference) {
     await key("song").tap();await page.locator(".kv-monitor-wave canvas").click();assert.equal(await key("songAll").count(),0);
     assert.ok(await page.evaluate(()=>App.Seq.playing));await key("play").tap();
     await checkDeskDrags(page);
-    // The source, its four row pads, its steps and its effects stay on this desk.
+    await checkEraser(page,key);
+    // The source, its six row pads, its steps and its effects stay on this desk.
     // Compose two different collections, then verify that switching keeps the
     // previous rhythm visible in its eight-beat miniature on the source card.
     for(const [source,track,row,step,name] of [[4,3,0,1,"Kráva"],[6,5,2,4,"Klíče"]]){
@@ -252,17 +292,21 @@ module.exports = async function kidsUI(reference) {
     await held(cell(3,6),()=>page.waitForFunction(()=>App.P.tracks[6].clips[0][0]?.v>.85));
     await held(item("track",3),()=>key("costume").first().waitFor());
     await checkPanel(page,"Sound wardrobe");await item("costume",2).tap();
-    await key("rhythmTools").tap();await checkPanel(page,"Rhythm actions",".kv-rhythm-tools[open]");
+    await key("eraser").tap();await checkPanel(page,"Eraser actions",".kv-eraser-tools[open]");
     assert.match(await key("erase").getAttribute("aria-label"),/Hlas.*dílek A/);
     await key("erase").tap();assert.equal(await page.evaluate(()=>App.P.tracks[6].clips[0].length),0);
     await key("undo").tap();assert.equal(await page.evaluate(()=>App.P.tracks[6].clips[0].length),1);
     await key("rhythmTools").tap();await key("random").tap();assert.ok(await page.evaluate(()=>App.P.tracks[6].clips[0].length));
     await key("undo").tap();assert.equal(await page.evaluate(()=>App.P.tracks[6].clips[0].length),1);
-    await checkPanel(page,"Live pads on score");await key("rhythmTools").tap();await key("arm").tap();
+    await checkPanel(page,"Live pads on score");await key("song").tap();await key("songAll").tap();
+    await key("rhythmTools").tap();assert.match(await key("arm").getAttribute("aria-label"),/obrázky vlevo.*dílku A/);await key("arm").tap();
+    assert.ok(await key("finishTaps").isVisible());assert.equal(await page.evaluate(()=>App.P.song),0,"the take records the pictured piece");
+    assert.equal(await page.locator(".kv-live-input").count(),1);
     await page.waitForFunction(()=>App.Seq.playing && App.Seq.frame()?.step>=1);
     await key("pad",'[data-row="0"]').tap();
     assert.equal(await page.evaluate(()=>App.P.tracks[6].clips[0].length),2);
-    await key("play").tap();
+    await key("finishTaps").tap();assert.equal(await page.locator(".kv-live-input").count(),0);
+    assert.equal(await page.evaluate(()=>App.Seq.playing),true);await key("play").tap();
     const tempo=key("tempo"), bounds=await tempo.boundingBox();
     await tempo.tap({position:{x:Math.floor(bounds.width-6),y:Math.floor(bounds.height/2)}});
     assert.equal(await page.evaluate(()=>App.P.bpm),148);
@@ -272,6 +316,7 @@ module.exports = async function kidsUI(reference) {
     assert.equal(await key("appendPiece").count(),0,"there is one add action at the end of the strip");
     await key("appendSlot").tap();
     assert.deepEqual(await page.evaluate(()=>App.P.chain),[0,1],"append the selected piece without leaving the score");
+    assert.deepEqual(await page.locator(".kv-chain-print i>b").allTextContents(),["A","B"],"every piece shows its letter in running order");
     await key("openArrange").tap();
     await checkPanel(page,"Song arrangement");
     assert.deepEqual(await page.evaluate(()=>App.P.chain),[0,1]);
@@ -329,6 +374,21 @@ module.exports = async function kidsUI(reference) {
         rms:Math.sqrt(sum/buf.length),peak};
     });
     assert.deepEqual(imported.shape,expected);assert.ok(imported.rms>.0005 && imported.peak>.01 && imported.peak<=1);
+    // The second sample family on a strip is editable in the ordinary console.
+    await page.evaluate(()=>App.select(4,0));
+    const bank=page.getByRole("button",{name:"Pad bank",exact:true});
+    await bank.click();await page.getByRole("menuitem",{name:"Pads 9–16"}).click();
+    const highPad=page.locator('#dv .pd[data-note="51"]');
+    await highPad.click();assert.equal(await page.evaluate(()=>App.P.sel.pad),15);
+    for(const [width,height] of sizes){
+      await page.setViewportSize({width,height});
+      assert.equal(await bank.evaluate(b=>{
+        const module=b.closest(".md"),square=module.querySelectorAll(".pd");
+        return square.length===8 && [...square].every(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));});
+      }),true,"all upper-bank pads are playable at "+width+"×"+height);
+    }
+    await page.evaluate(()=>App.select(0,0));
+    assert.equal(await bank.count(),0);assert.equal(await page.evaluate(()=>App.P.sel.pad),7);
     await page.getByRole("button",{name:"UNDO",exact:true}).click();
     await page.waitForFunction(()=>App.P.name==="DESK ORIGINAL");
     assert.deepEqual(await page.evaluate(()=>App.sanitize(App.P)),adult);

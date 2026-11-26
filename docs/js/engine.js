@@ -57,7 +57,8 @@
     const set = (p, v, tc = 0.015) => { if (hard || !live) p.value = v; else p.setTargetAtTime(v, ctx.currentTime, tc); };
 
     /* ── master: EQ → compressor → limiter → hard ceiling → volume ── */
-    const mix = G(), returns = G();
+    const mix = G(), dry = G(), returns = G();
+    dry.connect(mix);
     returns.connect(mix);
     const sub = BQ("highpass", 20, -3); // nothing below hearing reaches the compressor or eats headroom
     const low = BQ("lowshelf", 120), mid = BQ("peaking", 1000, 0.8), high = BQ("highshelf", 6500);
@@ -130,7 +131,15 @@
       tr.push(t);
     }
     E.tracks = tr;
-    const rack = E.rack = App.makeRackGraph(ctx, getP, tr, mix, returns, opt.stems);
+    const rack = E.rack = App.makeRackGraph(ctx, getP, tr, dry, returns, opt.stems);
+    // Tap the dry output of the groups once. The shared returns must never
+    // feed their own inputs. A selected stem sends only its own dry signal.
+    const mixDelay=G(0),mixReverb=G(0);
+    const selected=opt.stems?.find(s=>s.type==="returns")?.onlyTracks;
+    const group=opt.stems?.find(s=>s.type==="group");
+    const feeds=Array.isArray(selected)?(group?[rack.pickTap("group",group.index)]:selected.map(i=>rack.pickTap("track",i))):[dry];
+    for(const feed of feeds){feed.connect(mixDelay);feed.connect(mixReverb);}
+    mixDelay.connect(dIn);mixReverb.connect(rIn);
     // A parameter only follows its schedule while its node is being rendered, and a node that nothing audible passes
     // through is not. A silent source into every strip and a muted sink for the modulation buses keep them rendered
     // between notes: a control moved in silence is already there when the next note starts, an LFO runs at the rate
@@ -264,6 +273,7 @@
       for (const d of [dL, dR, dOut]) set(d.delayTime, dt, 0.06);
       set(dFb.gain, f.dfb); set(dTone.frequency, f.dtone);
       set(pL.pan, -f.dwid); set(pR.pan, f.dwid);
+      set(mixDelay.gain, f.mixDelay ** 2); set(mixReverb.gain, f.mixReverb ** 2);
       const ir = App.SignalWorkshop?.impulse(P,sr);
       const sig = ir ? P.impulse.sample + "/" + sr : f.rsize.toFixed(3) + "/" + f.rdamp.toFixed(3);
       if (sig !== irSig) {
@@ -561,6 +571,14 @@
         outG.connect(sh).connect(pn); v.nodes.push(sh);
       } else outG.connect(pn);
       pn.connect(t_.instrument);
+      // The two picture collections on a strip have independent activity lamps.
+      // Tap each bank before their shared mix; the analyser has no audible output.
+      if (live && T.kit.pads.length>8 && getP().kidsBand) {
+        const bank=k<10?0:1;
+        const meters=t_.padMeters??=[];
+        if (!meters[bank]) { meters[bank]=ctx.createAnalyser(); meters[bank].fftSize=512; }
+        pn.connect(meters[bank]);
+      }
       if (k === 0) pn.connect(t_.kick);
       v.nodes.push(outG, pn);
       const lv = p.lvl * p.lvl * (0.3 + 0.7 * vel);
@@ -752,7 +770,7 @@
           inputStream = stream;
           E.input = G(); inputNode = ctx.createMediaStreamSource(stream);
           inputNode.connect(E.input); E.input.connect(rack.mic); mon = G(0);
-          E.input.connect(mon).connect(mix);
+          E.input.connect(mon).connect(dry);
           return E.input;
         }).finally(() => { if (version === inputVersion) opening = null; });
       return opening;

@@ -213,8 +213,8 @@
       const {id,warpSource,warpSpec,markers,slices,zones}=track.smp;
       return {smp:{...factory.smp,id,warpSource,warpSpec,zones,...(markers?.length ? {markers,slices} : {})}};
     }
-    return {kit:{pads:factory.kit.pads.map((pad,i) => {
-      const current = track.kit.pads[i];
+    return {kit:{pads:track.kit.pads.map((current,i) => {
+      const pad=App.newPad(i);
       return current.id ? {...pad,id:current.id,src:current.src,name:current.name,dec:current.src ? App.DEF.pad.dec.max : pad.dec} : pad;
     })}};
   }

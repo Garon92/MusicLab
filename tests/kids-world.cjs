@@ -17,6 +17,14 @@ module.exports=async function kidsWorld(reference){
       const old=JSON.stringify(legacy.tracks[5]),melody=JSON.stringify(legacy.tracks[2]);
       M.prepare(legacy);
       const P=App.P=M.newProject(), ids=[...App.sampleIds(P)];
+      const v1=M.newProject();v1.kidsBand.world=1;
+      for(const ti of [3,4,5,7])v1.tracks[ti].kit.pads.length=8;
+      Object.assign(v1.tracks[3].kit.pads[5],{name:"MY PAD",id:"myCustomRecording",src:1});
+      const firstEight=JSON.stringify(v1.tracks[3].kit.pads);
+      v1.tracks[3].clips[0].push({s:0,n:41,l:1,v:.5,p:1});
+      M.prepare(v1);
+      const migrated=v1.tracks[3].kit.pads.length===16 && firstEight===JSON.stringify(v1.tracks[3].kit.pads.slice(0,8)) &&
+        v1.tracks[3].clips[0][0].n===41 && App.sampleIds(v1).has("myCustomRecording");
       const liveBefore=!!App.E;
       await W.ready(P);
       const samples=W.groups.flatMap((g,i)=>g.sounds.map((s,row)=>{
@@ -32,19 +40,21 @@ module.exports=async function kidsWorld(reference){
           duration:audio.buffer.duration,hash:hash>>>0,bytes:audio.blob.size,
           brightness:Math.sqrt(slope/sum)*audio.buffer.sampleRate/(2*Math.PI)};
       }));
-      return {liveBefore,liveAfter:!!App.E,selected:P.sel.t,blank:P.tracks.every(t=>t.clips.every(c=>!c.length)),
+      return {migrated,liveBefore,liveAfter:!!App.E,selected:P.sel.t,blank:P.tracks.every(t=>t.clips.every(c=>!c.length)),
         tracks:M.tracks,ids,defaults:App.sampleIds(App.newProject()).size,
         old:old===JSON.stringify(legacy.tracks[5]),melody:melody===JSON.stringify(legacy.tracks[2]),
         oldKits:[3,4,7].every(i=>legacy.tracks[i].kind==="kit"),oldCostumes:M.costumes(legacy),samples};
     });
     assert.equal(initial.liveBefore,false);assert.equal(initial.liveAfter,false,"preparing the samples opens no live audio context");
     assert.equal(initial.defaults,0);assert.equal(initial.selected,3);assert.equal(initial.blank,true);
-    assert.deepEqual(initial.tracks,[0,1,2,6,3,4,5,7]);
+    assert.deepEqual(initial.tracks,[0,1,2,6,3,4,5,7,3,4,5,7]);assert.ok(initial.migrated);
     assert.equal(initial.old,true);assert.equal(initial.melody,true);assert.equal(initial.oldKits,true);
     assert.deepEqual(initial.oldCostumes,[1,2,0,0]);
-    const sounds=["cow","pig","sheep","rooster","dog","cat","bird","frog","doorbell","clock","keys","glass","train","bike-bell","horn","rain"];
-    assert.deepEqual(initial.samples.map(s=>s.id),sounds);assert.equal(new Set(initial.ids).size,16);
-    assert.equal(new Set(initial.samples.map(s=>s.hash)).size,16,"all sixteen pads have distinct PCM");
+    const sounds=("cow pig sheep rooster horse duck dog cat bird frog owl cricket doorbell clock keys glass kettle knock "+
+      "train bike-bell horn rain siren thunder elephant monkey tiger parrot snake toucan burp fart hiccup sneeze raspberry giggle "+
+      "squeak spring rattle whistle top musicbox laser ufo robot rocket star radar").split(" ");
+    assert.deepEqual(initial.samples.map(s=>s.id),sounds);assert.equal(new Set(initial.ids).size,48);
+    assert.equal(new Set(initial.samples.map(s=>s.hash)).size,48,"all forty-eight pads have distinct PCM");
     for(const s of initial.samples){
       assert.equal(s.pad,s.sampleId);assert.ok(s.rms>.01 && s.rms<.8 && s.peak>.1 && s.peak<=1,s.id+" usable level");
       assert.ok(s.duration>.08 && s.duration<4 && s.bytes>1000,s.id+" short playable one-shot");
@@ -56,29 +66,43 @@ module.exports=async function kidsWorld(reference){
     assert.ok(sample("bike-bell").brightness>3*sample("cow").brightness);
     assert.ok(sample("clock").peak/sample("clock").rms>8);
     // A real click unlocks the live engine; the first manual hit on each strip
-    // reaches its audio meter. The clip grid retains all four independent parts.
+    // reaches its audio meter. Each logical family measures only its own audio.
     await page.getByRole("button",{name:"Play pattern or song",exact:true}).click();
     await page.getByRole("button",{name:"Stop playback",exact:true}).click();
-    for(let part=4;part<8;part++){
+    for(let part=4;part<12;part++){
       await page.evaluate(part=>App.KidsMusic.audition(part,0),part);
       await page.waitForFunction(part=>App.KidsMusic.levels()[part]>.006,part);
+      if(part<8) assert.equal(await page.evaluate(i=>App.KidsMusic.levels()[i+4],part),0,"idle partner meter");
     }
     const summary=await page.evaluate(async()=>{
-      const P=App.P,M=App.KidsMusic,parts=[4,5,6,7];
+      const P=App.P,M=App.KidsMusic,parts=[4,5,6,7,8,9,10,11], strips=[3,4,5,7];
       for(const part of parts){
-        for(let row=0;row<4;row++)M.edit(P,part,0,row,row*2);
+        for(let row=0;row<M.rows;row++)M.edit(P,part,0,row,row);
       }
-      const notes=parts.map(part=>P.tracks[M.tracks[part]].clips[0].map(n=>[n.s,n.n]));
+      const notes=parts.map(part=>P.tracks[M.tracks[part]].clips[0].filter(n=>M.owns(part,n.n)).map(n=>[n.s,n.n]));
       const unchanged=JSON.stringify(P.tracks[M.tracks[5]].clips[0]);
-      M.variation(P,4,1);M.clear(P,4,1);
+      M.edit(P,8,1,5,0);M.edit(P,8,1,4,0);
+      M.variation(P,4,1);M.clear(P,4,1);M.clearRow(P,8,1,4);
+      const independent=P.tracks[3].clips[1].length===1 && P.tracks[3].clips[1][0].n===51;
+      M.clear(P,8,1);
       M.edit(P,7,3,2,0,true);M.edit(P,7,3,2,0,true);
       const double=P.tracks[7].clips[3][0].r;
-      const {full,cut}=await App.Seq.renderSong({project:P,stems:parts.map(i=>({type:"track",index:M.tracks[i],point:"post"}))});
-      const mixes=parts.map((_,i)=>{
+      const {full,cut}=await App.Seq.renderSong({project:P,stems:strips.map(index=>({type:"track",index,point:"post"}))});
+      const mixes=strips.map((_,i)=>{
         const x=full.getChannelData(i*2);let peak=0,sum=0;
         for(let t=cut;t<x.length;t++){sum+=x[t]*x[t];peak=Math.max(peak,Math.abs(x[t]));}
         return {peak,rms:Math.sqrt(sum/(x.length-cut))};
       });
+      const bytes=await App.Seq.midi().arrayBuffer(), restored=App.MidiImport.read(bytes,"band.mid").project;
+      const midi=restored.tracks.filter(t=>t.kind==="kit"&&t.clips[0].length).map(t=>[t.kit.pads.length,...new Set(t.clips[0].map(n=>n.n).sort((a,b)=>a-b))]);
+      // Without our private track hint ordinary GM shakers and toms keep the
+      // mappings used when importing percussion from other sequencers.
+      const genericBytes=new Uint8Array(bytes.slice(0)),marker=new TextEncoder().encode("MusicLab Kit 16");
+      for(let i=0;i<=genericBytes.length-marker.length;i++){
+        if(genericBytes[i]===marker[0] && marker.every((v,k)=>genericBytes[i+k]===v))genericBytes[i]=88;
+      }
+      const generic=App.MidiImport.read(genericBytes.buffer,"other.mid").project.tracks.filter(t=>t.clips[0].length)
+        .every(t=>t.kit.pads.length===8 && t.clips[0].every(n=>n.n<=43) && t.clips[0].some(n=>n.n===41));
       const master=await App.Seq.renderSong({project:P}),x=master.full.getChannelData(0);
       let peak=0,sum=0;for(let i=master.cut;i<x.length;i++){peak=Math.max(peak,Math.abs(x[i]));sum+=x[i]*x[i];}
       const rms=Math.sqrt(sum/(x.length-master.cut));
@@ -88,20 +112,23 @@ module.exports=async function kidsWorld(reference){
       try {
         const {blob,count}=await App.ProjectFiles.blob(P),{raw,entries}=await App.ProjectFiles.read(blob);
         const saved=App.sanitize(raw),stored=await App.ProjectFiles.importSamples(saved,entries);
-        const original=saved.tracks[3].kit.pads[0].id;
+        const original=saved.tracks[3].kit.pads[10].id;
         const pig=entries.find(e=>e.id===saved.tracks[3].kit.pads[1].id);
         const changed=entries.map(e=>e.id===original?{...pig,id:original}:e);
         const different=App.sanitize(saved),remapped=await App.ProjectFiles.importSamples(different,changed);
-        const reference=different.tracks[3].kit.pads[0].id;
-        return {notes,kept:unchanged===JSON.stringify(P.tracks[M.tracks[5]].clips[0]),double,mixes,peak,rms,
+        const reference=different.tracks[3].kit.pads[10].id;
+        return {notes,midi,generic,independent,kept:unchanged===JSON.stringify(P.tracks[M.tracks[5]].clips[0]),double,mixes,peak,rms,
           count,stored,remapped,conflict:reference!==original && !!App.samples.get(reference),same:[...App.sampleIds(saved)].every(id=>App.sampleIds(P).has(id))};
       } finally {App.ProjectFiles.streamFrom=threshold;}
     });
     assert.ok(summary.kept);assert.equal(summary.double,2);
-    for(const notes of summary.notes)assert.deepEqual(notes,[[0,36],[4,37],[8,38],[12,39]]);
+    assert.ok(summary.independent);assert.ok(summary.generic);
+    for(const [i,notes] of summary.notes.entries())assert.deepEqual(notes,(i<4?[36,37,38,39,44,45]:[46,47,48,49,50,51]).map((n,r)=>[r*2,n]));
+    assert.equal(summary.midi.length,4);
+    for(const kit of summary.midi)assert.deepEqual(kit,[16,36,37,38,39,44,45,46,47,48,49,50,51]);
     for(const m of summary.mixes)assert.ok(m.peak>.012 && m.rms>.001 && Number.isFinite(m.rms),JSON.stringify(m));
     assert.ok(summary.rms>.001 && summary.peak>.015 && summary.peak<1,JSON.stringify(summary));
-    assert.equal(summary.count,16);assert.ok(summary.stored && summary.remapped && summary.same && summary.conflict);
+    assert.equal(summary.count,48);assert.ok(summary.stored && summary.remapped && summary.same && summary.conflict);
 
     const file=async(p,name)=>{await p.getByRole("button",{name:"File",exact:true}).click();await p.getByRole("menuitem",{name}).click();};
     const [exported]=await Promise.all([page.waitForEvent("download"),file(page,/Save project/i)]);
@@ -116,7 +143,7 @@ module.exports=async function kidsWorld(reference){
       await picker.setFiles({name:"Band.musiclab.json",mimeType:"application/json",buffer:copy});
       await receiver.locator("dialog[open] .confirm-action").click();
       await receiver.waitForFunction(()=>App.P.name==="POCKET BAND" && [...App.sampleIds(App.P)].every(id=>App.samples.has(id)));
-      const imported=await receiver.evaluate(()=>App.KidsMusic.tracks.slice(4).map(ti=>App.P.tracks[ti].clips[0].map(n=>[n.s,n.n])));
+      const imported=await receiver.evaluate(()=>App.KidsMusic.tracks.slice(4).map((ti,i)=>App.P.tracks[ti].clips[0].filter(n=>App.KidsMusic.owns(i+4,n.n)).map(n=>[n.s,n.n])));
       assert.deepEqual(imported,summary.notes);
     } finally {await fresh.close();}
     // A separate load sees only the disk cache, including after the local WAV
@@ -128,16 +155,31 @@ module.exports=async function kidsWorld(reference){
       const S=App.KidsStore;S.enter(M.newProject);M.edit(App.P,4,0,0,0);S.save(2);S.leave();
       return n;
     });
-    assert.equal(local,16);
+    assert.equal(local,48);
     await page.reload();
     const shelf=await page.evaluate(async()=>{
       const P=App.KidsStore.read(2);await App.KidsWorld.ready(P);
       const id=P.tracks[3].kit.pads[0].id;
       return {note:P.tracks[3].clips[0][0].n,bytes:(await App.sampleBlob(id)).size,count:[...App.sampleIds(P)].filter(v=>App.samples.has(v)).length};
     });
-    assert.equal(shelf.count,16);assert.equal(shelf.note,36);assert.ok(shelf.bytes>1000);
+    assert.equal(shelf.count,48);assert.equal(shelf.note,36);assert.ok(shelf.bytes>1000);
+    const view=await page.evaluate(()=>{
+      const M=App.KidsMusic,S=App.KidsStore;S.enter(M.newProject);
+      M.select(App.P,4);M.edit(App.P,4,0,2,2);App.commit();
+      M.select(App.P,8);App.commit();
+      M.edit(App.P,8,0,5,7);App.commit();
+      App.undo();
+      const first=M.part(App.P)===8 && !M.grid(App.P,8,0)[5][7] && M.grid(App.P,4,0)[2][2];
+      App.undo();
+      const second=M.part(App.P)===8 && !M.grid(App.P,4,0)[2][2];
+      App.redo();App.redo();
+      const restored=M.part(App.sanitize(App.P))===8 && M.grid(App.P,8,0)[5][7];
+      S.leave();
+      return !!(first && second && restored);
+    });
+    assert.ok(view,"selection of a paired source survives undo without adding a checkpoint");
     assert.deepEqual(errors,[]);
-    console.log("Sound library · 16 distinct one-shots, independent strips, streaming project/ID collision, offline shelf · peak "+
+    console.log("Sound library · 48 distinct one-shots, 8 independently editable sample banks, 16-pad MIDI, streaming project/ID collision, offline shelf · peak "+
       summary.peak.toFixed(4)+" RMS "+summary.rms.toFixed(4));
   } finally {await context.close();}
 };
