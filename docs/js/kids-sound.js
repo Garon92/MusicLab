@@ -3,20 +3,22 @@
 (() => {
   "use strict";
   const rooms={
-    echo:{label:"Echo lake",keys:["dly","rev"],axes:["Echo","Room"],colour:"#83d9cb"},
-    colour:{label:"Colour cave",keys:["macro2","macro1"],axes:["Brightness","Saturation"],colour:"#ffb36f",
+    echo:{label:"Ozvěna",keys:["dly","rev"],axes:["Ozvěna","Dozvuk"],across:"Více ozvěny",up:"Větší prostor",colour:"#83d9cb"},
+    colour:{label:"Ostrost",keys:["macro2","macro1"],axes:["Jas","Zkreslení"],across:"Jasnější",up:"Drsnější",colour:"#ffb36f",
       routes:[["macro2","tone",-1,"Shade"],["macro1","drive",.85,"Saturation"]]},
-    motion:{label:"Wobble workshop",keys:["macro4","macro3"],axes:["Vibrato speed","Vibrato depth"],colour:"#bda8ec",
+    motion:{label:"Chvění",keys:["macro4","macro3"],axes:["Rychlost","Síla chvění"],across:"Rychlejší",up:"Silnější",colour:"#bda8ec",
       routes:[["macro4","vibratoRate",1,"Vibrato speed"],["macro3","vibratoDepth",1,"Vibrato depth"]]}
   };
+  const eighth='<path d="M13 23V5l12 4v6l-9-4v12c0 7-14 10-14 4 0-4 6-7 11-6Z" fill="currentColor" stroke="none"/>';
   const marks={
     back:'<path d="M20 9 9 20l11 11M10 20h22"/>',
     expand:'<path d="M7 16V7h9m8 0h9v9m0 8v9h-9m-8 0H7v-9m3-14 6 6m14-6-6 6m6 14-6-6m-14 6 6-6"/>',
     play:'<path d="m13 7 18 13-18 13z" fill="currentColor"/>',stop:'<rect x="10" y="10" width="20" height="20" rx="4" fill="currentColor"/>',
-    echo:'<ellipse cx="20" cy="26" rx="16" ry="7"/><ellipse cx="20" cy="25" rx="7" ry="3"/><path d="M20 5q-10 14 0 14t0-14z" fill="#5bbace"/>',
-    colour:'<path d="m19 6 12 26H7z" fill="#ffd781"/><path d="m2 20 13 1m11-3 11-5m-10 9 11-1m-10 6 10 3"/>',
-    motion:'<path d="M3 21q4-19 9-2t8 0 8 0 9-1"/><circle cx="19" cy="8" r="3" fill="#ffce70"/>',
-    arm:'<path d="M5 30c4 5 8-10 14-4s8 2 13-4" stroke-dasharray="2 4"/><path d="m13 22 2-7L27 4l7 7-12 11-8 2Z" fill="#ffdb91"/><path d="m23 8 7 7"/><circle cx="7" cy="8" r="4" fill="#ec655e" stroke-width="2"/>',
+    echo:'<g transform="translate(0 0) scale(.80)">'+eighth+'</g><g transform="translate(16 10) scale(.56)" opacity=".72">'+eighth+'</g><g transform="translate(29 19) scale(.37)" opacity=".52">'+eighth+'</g>',
+    colour:'<g transform="translate(3 5) scale(.94)">'+eighth+'</g><path d="m25 4 2-3m3 9 5-3m-4 10 6-1m-7 8 5 2"/>',
+    motion:'<g transform="translate(9 3) rotate(7 12 20)">'+eighth+'</g><path d="M6 7q-5 4-3 10m4-6q-2 2-1 4m27 6q1 2-1 5m4-7q3 6-2 11"/>',
+    arm:'<circle cx="20" cy="20" r="12" fill="#ec796d"/>',
+    drag:'<path d="M6 16V7h9M6 7l8 8m7 6-3-11q-1-4 2-4t4 3l3 9 4-1 5 6-1 8-6 5-7-2-9-9q-2-3 0-5t5 0l4 4"/>',
     reverse:'<path d="m18 9-9 8 9 8m-8-8h14a8 8 0 0 1 0 16h-6"/>',
     clear:'<path d="m8 25 15-15a3 3 0 0 1 4 0l6 6-16 16h-3z" fill="#f09c98"/><path d="m16 17 9 9m-9 6h17"/>',
     undo:'<path d="M15 7 5 16l10 8M6 16h15c14 0 14 15 1 16"/>',
@@ -25,7 +27,8 @@
     repeat:'<path d="M4 18q3-8 6 1t7 0 7 0 5 0 6 0"/><path d="M4 27h6m3 0h4m4 0h2"/>'
   };
   const svg=(body,box="0 0 40 40")=>'<svg viewBox="'+box+'" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+body+'</svg>';
-  const key=(action,label,mark,extra="")=>'<button type="button" class="kv-button ks-key" data-sound="'+action+'" aria-label="'+label+'" '+extra+'>'+svg(marks[mark])+'</button>';
+  const face=(mark,label)=>svg(marks[mark])+'<span class="ks-key-name">'+label+'</span>';
+  const key=(action,label,mark,extra="")=>'<button type="button" class="kv-button ks-key" data-sound="'+action+'" aria-label="'+label+'" '+extra+'>'+face(mark,label)+'</button>';
   // Each landscape has motion cues at its edges. The flying puck and its path
   // are drawn above this printed face, so they can move without repainting the illustration.
   const scenery={
@@ -60,7 +63,7 @@
       ["x-low","x-high","y-low","y-high"].map((end,i)=>'<i class="ks-guide ks-'+end+'">'+svg(guideMarks[room][i],"0 0 42 28")+'</i>').join("")+'</div>';
   }
   let root=null,ui=null,mode="echo",held=null,armed=false,frozen=false,compact=false;
-  let controls,performer,pad,puck,path,scene,trail,steps=[],oldBank=null,playingStep=-1;
+  let controls,performer,pad,puck,path,scene,trail,oldBank=null;
   const config=()=>rooms[mode];
   const ti=()=>App.KidsMusic.tracks[ui.part()];
   const current=()=>App.Seq.now(ti());
@@ -144,6 +147,7 @@
     if(!held)return;
     const g=held;capture();held=null;
     if(g.note!==null)App.E?.noteOff(g.i,g.note);
+    if(g.record)armed=false;
     pad?.classList.remove("held");App.commit();oldBank=null;ui?.paint();
   }
   function line(p){
@@ -151,7 +155,7 @@
     for(const b of controls.querySelectorAll("[data-mode]")){
       const room=rooms[b.dataset.mode],recorded=room.keys.some(k=>lanes[k]?.points?.length);
       b.classList.toggle("ks-recorded",recorded);
-      b.setAttribute("aria-label",room.label+(recorded?", recorded movement":""));
+      b.setAttribute("aria-label",room.label+(recorded?", s nahraným pohybem":""));
     }
     const active=cfg.keys.some(k=>lanes[k]?.points?.length);
     if(active){
@@ -161,13 +165,17 @@
       });
       path.setAttribute("points",points.join(" "));
     }else path.removeAttribute("points");
-    if(compact){
-      steps.forEach((dot,col)=>{
-        const recorded=cfg.keys.some(k=>lanes[k]?.points?.some(point=>Math.floor(point.s/2)===col));
-        dot.classList.toggle("drawn",recorded);
-      });
-    }else{
-      for(const a of ["clear","reverse"])controls.querySelector('[data-sound="'+a+'"]').disabled=!active;
+    const clear=controls.querySelector('[data-sound="clear"]');
+    if(compact)clear.hidden=!active;
+    else {clear.disabled=!active;controls.querySelector('[data-sound="reverse"]').disabled=!active;}
+    const cue=controls.querySelector(".ks-cue");
+    let message="Táhni po obrázku";
+    if(active)message=App.P.tracks[i].clips[p].length?(App.Seq.playing?"Pohyb se přehrává":"Pohyb je nahraný"):"Pohyb uložen · přidej zvuk do rytmu";
+    if(armed)message="Táhni pro nahrání";
+    if(held)message=held.record?"Nahrávám pohyb":"";
+    if(cue.dataset.message!==message){
+      cue.dataset.message=message;cue.lastElementChild.textContent=message;
+      cue.hidden=!message;cue.classList.toggle("ks-gesture-cue",!active || armed);
     }
     oldBank=p;
   }
@@ -175,11 +183,6 @@
     if(!root)return;
     if(levels && performer)performer.style.setProperty("--amplitude",levels[ui.part()]||0);
     const c=current(),p=c?.pat??ui.pattern();
-    const step=c?Math.floor(c.step/2):-1;
-    if(compact && step!==playingStep){
-      steps[playingStep]?.classList.remove("playing");steps[step]?.classList.add("playing");
-      playingStep=step;
-    }
     if(held){
       capture();
       if(held.repeatAt!==null && App.E.ctx.currentTime>=held.repeatAt)auditionHit(held);
@@ -197,16 +200,15 @@
       performer.querySelector(".ks-portrait").innerHTML=App.KidsView.character(part,costume);
       performer.style.setProperty("--part",App.KidsView.partColour(part));
       performer.style.setProperty("--amplitude",0);
-      performer.setAttribute("aria-label","Switch sound group, now "+App.KidsView.partName(part));
+      performer.setAttribute("aria-label","Změnit sadu, nyní "+App.KidsView.partLabel(part));
       performer.dataset.portrait=part+"."+costume;
     }
-    if(compact){
-      const family=controls.querySelector(".ks-family");
-      if(family.dataset.source!==part+"."+costume){
-        family.innerHTML=App.KidsView.character(part,costume);
-        family.dataset.source=part+"."+costume;
-      }
+    const family=controls.querySelector(".ks-family");
+    if(family && family.dataset.source!==part+"."+costume){
+      family.innerHTML=App.KidsView.character(part,costume);
+      family.dataset.source=part+"."+costume;
     }
+    controls.querySelector(".ks-target-name").textContent=App.KidsView.partLabel(part);
     const sound=part>=4?part+"."+row:"band";
     if(puck.dataset.soundId!==sound){
       puck.dataset.soundId=sound;puck.classList.toggle("ks-sound-token",part>=4);
@@ -214,17 +216,28 @@
     }
     for(const b of controls.querySelectorAll("[data-mode]"))b.setAttribute("aria-pressed",String(b.dataset.mode===mode));
     const play=el("play"),playing=App.Seq.playing;
-    if(play && play.dataset.playing!==String(playing)){play.innerHTML=svg(marks[playing?"stop":"play"]);play.dataset.playing=playing;play.setAttribute("aria-label",playing?"Stop":"Play");}
-    el("arm").setAttribute("aria-pressed",String(armed));
+    if(play && play.dataset.playing!==String(playing)){const label=playing?"Zastavit":"Přehrát";play.innerHTML=face(playing?"stop":"play",label);play.dataset.playing=playing;play.setAttribute("aria-label",label);}
+    const arm=el("arm"),armState=held?.record?"recording":armed?"armed":"idle";
+    if(arm.dataset.state!==armState){
+      const name=armState==="idle"?"Nahrát pohyb":armState==="armed"?"Zrušit nahrávání":"Ukončit záznam";
+      arm.innerHTML=face(armState==="idle"?"arm":"stop",name);
+      arm.dataset.state=armState;arm.setAttribute("aria-label",name);arm.setAttribute("aria-pressed",String(armed));
+    }
     const cfg=config();root.style.setProperty("--room",cfg.colour);pad.dataset.room=mode;
-    pad.setAttribute("aria-label",cfg.label+" for "+App.KidsView.partName(part)+", preview "+App.KidsView.rowName(part,row));
-    if(scene.dataset.room!==mode){scene.innerHTML='<svg viewBox="0 0 500 280" preserveAspectRatio="none" aria-hidden="true">'+scenery[mode]+'</svg>'+guides(mode);scene.dataset.room=mode;}
+    pad.setAttribute("aria-label",cfg.label+" pro celou sadu "+App.KidsView.partLabel(part)+", poslech: "+App.KidsView.rowLabel(part,row));
+    if(scene.dataset.room!==mode){
+      scene.innerHTML='<svg viewBox="0 0 500 280" preserveAspectRatio="none" aria-hidden="true">'+scenery[mode]+'</svg>'+guides(mode);
+      controls.querySelector(".ks-axis-x").textContent="→ "+cfg.across;controls.querySelector(".ks-axis-y").textContent="↑ "+cfg.up;
+      scene.dataset.room=mode;
+    }
     if(!compact){
-      el("freeze").setAttribute("aria-pressed",String(frozen));el("undo").disabled=!App.KidsStore.canUndo();
+      const freeze=el("freeze"),freezeName=frozen?"Rozhýbat obraz":"Zastavit obraz";
+      freeze.setAttribute("aria-pressed",String(frozen));freeze.setAttribute("aria-label",freezeName);freeze.lastElementChild.textContent=freezeName;
+      el("undo").disabled=!App.KidsStore.canUndo();
       root.querySelector(".ks-echo-controls").hidden=mode!=="echo";
       for(const [action,choices,k] of [["time",[2,5,8],"dtime"],["repeat",[.18,.4,.63],"dfb"]]){
         const button=el(action),n=choices.reduce((a,b)=>Math.abs(b-App.P.fx[k])<Math.abs(a-App.P.fx[k])?b:a);
-        button.dataset.level=choices.indexOf(n)+1;button.setAttribute("aria-label",(action==="time"?"Echo spacing":"Echo repeats")+", level "+button.dataset.level);
+        button.dataset.level=choices.indexOf(n)+1;button.setAttribute("aria-label",button.lastElementChild.textContent+", stupeň "+button.dataset.level+" ze 3");
       }
       controls.querySelector(".ks-monitors").dataset.frozen=String(frozen);
     }
@@ -232,14 +245,14 @@
   }
   function action(e){
     const b=e.target.closest("button[data-sound]");if(!b||b.disabled)return;
-    release();
+    const wasArmed=armed;release();
     switch(b.dataset.sound){
       case "back":ui.back();return;
       case "expand":ui.expand();return;
       case "part":App.Kids.dispatch("track",(ui.part()+1)%App.KidsMusic.tracks.length);break;
       case "mode":mode=b.dataset.mode;break;
       case "play":ui.play();break;
-      case "arm":armed=!armed;break;
+      case "arm":armed=!wasArmed;break;
       case "freeze":frozen=!frozen;break;
       case "undo":App.Kids.dispatch("undo");break;
       case "clear":case "reverse":{
@@ -261,20 +274,21 @@
     }
     oldBank=null;ui.paint();
   }
-  const modes='<div class="ks-modes">'+Object.keys(rooms).map(m=>key("mode",rooms[m].label,m,'data-mode="'+m+'"')).join("")+'</div>';
-  const record=key("arm","Record pad movement","arm");
+  const modes='<div class="ks-modes" role="group" aria-label="Vyber efekt">'+Object.keys(rooms).map(m=>key("mode",rooms[m].label,m,'data-mode="'+m+'"')).join("")+'</div>';
+  const record=key("arm","Nahrát pohyb","arm");
   const surface='<div class="ks-instrument"><div class="ks-pad" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-sound="pad">'+
-    '<div class="ks-scene"></div><div class="ks-trail"><svg viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">'+
+    '<div class="ks-scene"></div><div class="ks-cue">'+svg(marks.drag)+'<span></span></div><div class="ks-trail"><svg viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">'+
     '<polyline fill="none" stroke="#39475d" stroke-width="3.5" stroke-dasharray="4 6" vector-effect="non-scaling-stroke" stroke-linecap="round"/></svg>'+
-    '<i class="ks-puck" aria-hidden="true"></i></div></div></div>';
-  const inlineFace='<div class="ks-shell">'+modes+surface+'<div class="ks-inline-tools">'+record+
-    '<div class="ks-readout" aria-hidden="true"><span class="ks-family"></span><div class="ks-steps">'+"<i></i>".repeat(8)+'</div></div>'+
-    key("expand","Expand sound playground","expand",'data-k="sound"')+'</div></div>';
-  const fullFace='<div class="ks-shell"><header class="ks-head"><div class="ks-players">'+key("back","Back to band","back")+
-    '<button type="button" class="kv-button ks-performer" data-sound="part" aria-label="Switch sound group"><span class="ks-portrait"></span><span class="ks-cycle">'+svg('<path d="M8 24a12 12 0 1 1 20 5m0-9v9h-9"/>')+'</span></button></div>'+
-    modes+'<div class="ks-transport">'+key("play","Play","play")+record+'</div></header><div class="ks-body">'+surface+
-    '<aside class="ks-monitors"><div class="ks-screen"><canvas data-kid-screen="wave" role="img" aria-label="Live sound wave"></canvas></div><div class="ks-screen"><canvas data-kid-screen="bands" role="img" aria-label="Live pitch spectrum"></canvas></div>'+key("freeze","Freeze the displays","freeze")+'</aside></div>'+
-    '<footer class="ks-foot"><div class="ks-echo-controls">'+key("time","Echo spacing","time")+key("repeat","Echo repeats","repeat")+'</div><div class="ks-tools">'+key("reverse","Reverse the recorded movement","reverse")+key("clear","Erase the recorded movement","clear")+key("undo","Undo the last edit","undo")+'</div></footer></div>';
+    '<i class="ks-puck" aria-hidden="true"></i></div></div><div class="ks-axes"><span class="ks-axis-x"></span><span class="ks-axis-y"></span></div></div>';
+  const target='<span class="ks-target"><span>Efekty celé sady</span><strong class="ks-target-name"></strong></span>';
+  const erase=key("clear","Smazat pohyb","clear");
+  const inlineFace='<div class="ks-shell"><div class="ks-heading"><span class="ks-family"></span>'+target+'</div>'+modes+surface+
+    '<div class="ks-inline-tools">'+record+erase+key("expand","Zvětšit","expand",'data-k="sound"')+'</div></div>';
+  const fullFace='<div class="ks-shell"><header class="ks-head"><div class="ks-players">'+key("back","Zpět k rytmu","back")+
+    '<button type="button" class="kv-button ks-performer" data-sound="part" aria-label="Změnit sadu"><span class="ks-portrait"></span>'+target+'<span class="ks-cycle">'+svg('<path d="M8 24a12 12 0 1 1 20 5m0-9v9h-9"/>')+'</span></button></div>'+
+    modes+'<div class="ks-transport">'+key("play","Přehrát","play")+record+'</div></header><div class="ks-body">'+surface+
+    '<aside class="ks-monitors"><div class="ks-screen"><span>Zvuková vlna</span><canvas data-kid-screen="wave" role="img" aria-label="Živá zvuková vlna"></canvas></div><div class="ks-screen"><span>Hluboké a vysoké tóny</span><canvas data-kid-screen="bands" role="img" aria-label="Hluboké a vysoké tóny ve zvuku"></canvas></div>'+key("freeze","Zastavit obraz","freeze")+'</aside></div>'+
+    '<footer class="ks-foot"><div class="ks-echo-controls">'+key("time","Rozestup ozvěn","time")+key("repeat","Počet ozvěn","repeat")+'</div><div class="ks-tools">'+key("reverse","Obrátit pohyb","reverse")+erase+key("undo","Vrátit úpravu","undo")+'</div></footer></div>';
   function open(host,api,options={}){
     detach();root=host;ui=api;compact=!!options.compact;
     if(compact)root.classList.add("ks-inline");
@@ -282,7 +296,6 @@
     root.innerHTML=compact?inlineFace:fullFace;
     controls=root.firstElementChild;controls.addEventListener("click",action);
     performer=controls.querySelector("[data-sound=part]");
-    steps=Array.from(controls.querySelectorAll(".ks-steps i"));
     pad=root.querySelector(".ks-pad");puck=root.querySelector(".ks-puck");scene=root.querySelector(".ks-scene");
     trail=root.querySelector(".ks-trail");path=trail.querySelector("polyline");
     pad.onpointerdown=e=>{if(e.button!==0||held)return;e.preventDefault();pad.focus({preventScroll:true});pad.setPointerCapture(e.pointerId);begin(...at(e),e.pointerId);};
@@ -303,7 +316,7 @@
     if(!root)return;
     release();root.classList.remove("kids-surface","ks-room","ks-inline");root.replaceChildren();
     root=null;ui=null;controls=null;performer=null;pad=null;puck=null;path=null;scene=null;trail=null;
-    oldBank=null;playingStep=-1;steps=[];
+    oldBank=null;
   }
   function close(){
     detach();mode="echo";armed=false;frozen=false;

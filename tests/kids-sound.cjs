@@ -42,7 +42,16 @@ module.exports=async function kidsSound(reference) {
           const b=el.getBoundingClientRect(),hit=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);
           if(b.width<63.9 || b.height<63.9 || b.x<0 || b.y<0 || b.right>innerWidth+.5 || b.bottom>innerHeight+.5 ||
             (!el.disabled && !el.contains(hit)))out.push(el.getAttribute("aria-label"));
+          const caption=el.querySelector(".ks-key-name"),icon=el.querySelector(":scope > svg");
+          if(caption){
+            const range=document.createRange();range.selectNodeContents(caption);
+            const text=range.getBoundingClientRect();
+            if(text.left<b.left || text.right>b.right || text.bottom>b.bottom || (icon && text.top<icon.getBoundingClientRect().bottom-1))
+              out.push("Clipped button caption: "+caption.textContent);
+          }
         }
+        const x=root.querySelector(".ks-axis-x").getBoundingClientRect(),y=root.querySelector(".ks-axis-y").getBoundingClientRect();
+        if(x.right>y.left-1)out.push("Overlapping axis captions");
         return out;
       });
       assert.deepEqual(issues,[],width+"×"+height+" sound controls");
@@ -58,11 +67,15 @@ module.exports=async function kidsSound(reference) {
       assert.equal(await inline.locator(".ks-pad.held").count(),0);
     });
     await band("back").click();
-    assert.equal((await inline.innerText()).trim(),"");
+    assert.equal(await inline.locator(".ks-target-name").innerText(),"Farma");
+    assert.deepEqual(await inline.locator("[data-mode] .ks-key-name").allTextContents(),["Ozvěna","Ostrost","Chvění"]);
+    assert.equal(await inline.locator(".ks-cue").innerText(),"Táhni po obrázku");
+    assert.equal(await key("arm",inline).getAttribute("aria-label"),"Nahrát pohyb");
+    assert.equal(await key("clear",inline).isVisible(),false);
     await checkBounds(inline);
     await band("track",6).click();
     await page.locator('#kids-band [data-k="pad"][data-row="2"]').click();
-    const objectName=await page.evaluate(()=>App.KidsView.rowName(6,2));
+    const objectName=await page.evaluate(()=>App.KidsView.rowLabel(6,2));
     assert.ok((await key("pad",inline).getAttribute("aria-label")).includes(objectName));
     assert.equal(await inline.locator(".ks-sound-token svg").count(),1);
     // The effects preview plays exactly the picture the child just touched on
@@ -83,7 +96,11 @@ module.exports=async function kidsSound(reference) {
     for(const [r,c] of [[0,0],[2,2],[1,4],[3,6]]){
       await page.locator('#kids-band [data-k="note"][data-row="'+r+'"][data-col="'+c+'"]').click();
     }
-    await mode("colour",inline).click();await key("arm",inline).click();await band("sound").click();
+    await mode("colour",inline).click();await key("arm",inline).click();
+    assert.equal(await inline.locator(".ks-cue").innerText(),"Táhni pro nahrání");
+    await key("arm",inline).click();
+    assert.equal(await key("arm",inline).getAttribute("aria-pressed"),"false");
+    await key("arm",inline).click();await band("sound").click();
     assert.equal(await mode("colour").getAttribute("aria-pressed"),"true");
     assert.equal(await key("arm").getAttribute("aria-pressed"),"true");
     await key("back").click();
@@ -91,9 +108,15 @@ module.exports=async function kidsSound(reference) {
     await paintPath(inline);
     const first=await automation();
     for(const k of ["macro1","macro2"])assert.ok(first[k].points.length>=3 && extent(first[k])>.35,"inline colour movement "+k);
+    assert.equal(await key("arm",inline).getAttribute("aria-pressed"),"false","lifting the finger ends the take");
+    assert.equal(await inline.locator(".ks-cue").innerText(),"Pohyb se přehrává");
     await band("play").click();
+    await checkBounds(inline); // The recorded path adds a direct erase action at every size.
+    assert.equal(await inline.locator(".ks-cue").innerText(),"Pohyb je nahraný");
+    await key("clear",inline).click();assert.deepEqual(await automation(),{});
+    await band("undo").click();assert.deepEqual(await automation(),first);
     await mode("echo",inline).click();await band("sound").click();await key("pad").waitFor();
-    assert.equal((await room.innerText()).trim(),"");
+    assert.equal(await room.locator(".ks-target-name").innerText(),"Melodie");
     assert.equal(await room.locator("canvas[data-kid-screen]").count(),2);
     assert.deepEqual(await automation(),first);
     await checkBounds(room);
@@ -134,7 +157,7 @@ module.exports=async function kidsSound(reference) {
     }
     const complete=await automation();
     assert.ok(complete.dly && complete.rev && complete.macro3 && complete.macro4);
-    await mode("echo").click();await key("arm").click();await key("play").click();
+    await mode("echo").click();await key("play").click();
     const pad=await key("pad").boundingBox();
     await page.mouse.move(pad.x+pad.width*.99,pad.y+pad.height*.01);await page.mouse.down();
     let live;
@@ -168,8 +191,8 @@ module.exports=async function kidsSound(reference) {
     await key("undo").click();
     assert.deepEqual(await automation(),mirrored);
     await key("back").click();
-    await band("save").click();
     await band("shelf").click();
+    await band("save").click();
     const confirm=page.getByRole("dialog",{name:"Open band song?"});
     await holdUntil(band("slot",0),()=>confirm.waitFor());
     await confirm.getByRole("button",{name:"Open in console",exact:true}).click();

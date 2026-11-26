@@ -25,8 +25,8 @@
     });
     return {track:part(),pattern:pattern(),row:lastRows[part()],patternMotifs,partMotifs,partHasNotes:partMotifs.map(hits=>hits.some(Boolean)),grid,expression:grid.map(row=>row.map(v=>Math.max(0,v-1))),
       costumes:music.costumes(P),tempo:music.tempoIndex(P),playing:App.Seq.playing,song:!!P.song,chain:P.chain.slice(),
-      armed,recording:music.recording()!=="idle",hasVoice:!!P.tracks[6].smp.id,canUndo:store.canUndo(),shelf:shelves,
-      slot:store.slot,busy:music.recording()==="saving",feedback};
+      armed,micState:music.recording(),recording:music.recording()==="recording",hasVoice:!!P.tracks[6].smp.id,canUndo:store.canUndo(),shelf:shelves,
+      slot:store.slot,lastRemoval:store.lastRemoval,feedback};
   }
   function paint(){if(store.active && ready){App.KidsView.render(state());App.KidsSound.paint();}}
   function flash(value){
@@ -147,7 +147,7 @@
         if(!valid(i,4)||!valid(j,8))return;
         lastRows[who]=i;
         const intensity=music.edit(P,who,pi,i,j,action==="expression");
-        music.audition(who,i,intensity||1);
+        if(intensity)music.audition(who,i,intensity);
         break;
       }
       case "pad":if(valid(i,4)){lastRows[who]=i;livePad(i);paint();}return;
@@ -172,19 +172,29 @@
       case "mic":
         void music.record((mode,error)=>{
           if(!store.active)return;if(mode==="recording")recordSince=performance.now();
-          if(error)flash("error");else paint();
+          if(error)flash(error==="empty"?"quiet":error==="storage"?"error":"micError");else paint();
         },()=>{if(store.active){P.sel.t=6;App.commit();App.E?.syncTrack(6);music.audition(3,3);flash("recorded");}});return;
       case "undo":case "new":case "load":{
         if(action==="undo" && !store.canUndo() || action==="load" && !valid(i,8))return;
+        const restoringSong=action==="undo" && store.lastRemoval>=0;
         App.KidsSound.release();music.cancelRecording();stop();
         const ok=action==="undo"?store.undo():action==="load"?store.load(i):store.fresh(music.newProject);
-        if(ok){prepare(action!=="undo" || App.historyCrossedProject);updateShelves();paint();hydrate();}else flash("error");return;
+        if(ok){
+          prepare(action!=="undo" || App.historyCrossedProject);updateShelves();
+          if(restoringSong)flash("restored");else paint();
+          hydrate();
+        }else flash("error");
+        return ok;
       }
       case "save":case "saveTo":{
         const slot=action==="saveTo"?i:store.slot>=0?store.slot:shelves.findIndex(x=>!x);
-        if(!valid(slot,8) || !store.save(slot)){flash("error");return;}
-        updateShelves();flash("saved");return;
+        if(!valid(slot,8) || !store.save(slot,j)){updateShelves();flash("error");return;}
+        updateShelves();flash("saved");return true;
       }
+      case "removeSlot":
+        if(!valid(i,8) || !shelves[i])return;
+        if(!store.remove(i,j||shelves[i])){updateShelves();flash("error");return;}
+        updateShelves();paint();return true;
       default:return;
     }
     App.commit();paint();

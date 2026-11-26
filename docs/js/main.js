@@ -725,7 +725,7 @@
   window.addEventListener("keydown", (e) => {
     if(App.Kids?.entering)return;
     if (App.Kids?.active) {
-      if(e.code==="Space" && !e.defaultPrevented && !e.ctrlKey && !e.metaKey && !e.altKey){
+      if(e.code==="Space" && !e.defaultPrevented && !e.ctrlKey && !e.metaKey && !e.altKey && !e.target.closest?.("summary,select")){
         e.preventDefault();if(!e.repeat)App.Kids.play();
       }
       return;

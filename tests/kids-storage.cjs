@@ -39,6 +39,15 @@ module.exports = async function kidsStorage(reference) {
       const restored = S.undo() && S.read(0).name === "BAND" && App.P.name === "OTHER BAND" && S.slot === oldSlot;
       S.load(0); const loaded = App.P.tracks[6].smp.id === voice && S.slot === 0;
       const back = S.undo() && App.P.name === "OTHER BAND" && S.slot === oldSlot;
+      const removed = S.remove(0,S.slots()[0]) && !S.read(0) && S.slot===oldSlot && S.lastRemoval===0 &&
+        S.save(0) && S.undo() && !S.read(0) && S.undo() && S.read(0).tracks[6].smp.id===voice;
+      const keptDraft = S.remove(oldSlot) && S.slot===-1 && App.P.name==="OTHER BAND" && !S.read(oldSlot) &&
+        S.undo() && S.slot===oldSlot && S.read(oldSlot).name==="OTHER BAND";
+      const legacyKey="musiclab.kids.v1.slot.7";
+      localStorage.setItem(legacyKey,JSON.stringify(App.P));
+      const legacy = S.remove(7) && !S.read(7) && S.undo() && S.read(7).name==="OTHER BAND" && S.remove(7);
+      const stale=S.slots()[0];S.save(0);
+      const changedCopyProtected=!S.remove(0,stale) && S.read(0).name==="OTHER BAND" && S.undo() && S.read(0).name==="BAND";
       const newBlank = S.fresh(factory) && S.slot === -1;
       const newUndo = S.undo() && App.P.name === "OTHER BAND" && S.slot === oldSlot;
       S.fresh(factory);
@@ -68,9 +77,9 @@ module.exports = async function kidsStorage(reference) {
       S.enter(factory);
       const resume = S.canUndo() === oneEdit && App.P.name === "BAND" && S.slot === -1;
       S.leave();
-      return {voice,orphan,blank,saved,independent,restored,overwritten,loaded,back,newBlank,newUndo,separate,atomic,cleanPaper,consoleCopy,consoleUndo,resume};
+      return {voice,orphan,blank,saved,independent,restored,overwritten,loaded,back,removed,keptDraft,legacy,changedCopyProtected,newBlank,newUndo,separate,atomic,cleanPaper,consoleCopy,consoleUndo,resume};
     });
-    for(const flag of ["blank","saved","independent","restored","loaded","back","newBlank","newUndo","separate","atomic","cleanPaper","consoleCopy","consoleUndo","resume"])
+    for(const flag of ["blank","saved","independent","restored","loaded","back","removed","keptDraft","legacy","changedCopyProtected","newBlank","newUndo","separate","atomic","cleanPaper","consoleCopy","consoleUndo","resume"])
       assert.equal(result[flag],true,flag);
     assert.equal(result.overwritten,"OTHER BAND");
     await page.close();
@@ -95,6 +104,7 @@ module.exports = async function kidsStorage(reference) {
     assert.equal(durable.sample,result.voice);assert.equal(durable.entry,result.voice);
     assert.equal(durable.childCount,1);assert.equal(durable.adultCount,0);
     assert.ok(durable.refs>=3);assert.equal(durable.adult,"DESK TAKE");
+    assert.equal(await reload.evaluate(()=>localStorage.getItem("musiclab.kids.v1.slot.7")),null,"The exclusive startup sweep released the deleted shelf space");
 
     const firstVersion=await reload.evaluate(()=>{
       const S=App.KidsStore;S.enter(App.newProject);
@@ -139,6 +149,18 @@ module.exports = async function kidsStorage(reference) {
       return masks.length<=1 && S.slots().length===8 && S.slots().every(Boolean) && !S.save(8) && !S.read(-1) && S.read(0).name==="BAND";
     });
     assert.ok(capacity,"Eight identifiable songs coexist without reusing an occupied slot");
+    const covers=await sibling.evaluate(()=>{
+      const S=App.KidsStore,M=App.KidsMusic;
+      S.fresh(M.newProject);
+      M.edit(App.P,4,0,0,0);M.edit(App.P,4,0,0,2);M.edit(App.P,7,1,0,1);App.commit();S.save(6);
+      const duet=S.slots()[6].sounds;
+      const farm=App.P.tracks[M.tracks[4]].kit.pads;
+      farm[0].id=farm[1].id;App.commit();S.save(7);
+      const swapped=S.slots()[7].sounds;
+      S.fresh(M.newProject);M.edit(App.P,1,2,1,5);M.costume(App.P,1,2);App.commit();S.save(7);
+      return {duet,swapped,bass:S.slots()[7].sounds,costume:S.slots()[7].costumes[1]};
+    });
+    assert.deepEqual(covers,{duet:["cow","train"],swapped:["pig","train"],bass:[1],costume:2});
     const futureVoice=await sibling.evaluate(async()=>{
       // A newer build can keep this sample somewhere this version cannot read.
       localStorage.setItem("musiclab.v3.refs","999");
@@ -148,7 +170,38 @@ module.exports = async function kidsStorage(reference) {
     const older=await open();
     await older.waitForFunction(async()=> (await navigator.locks.query()).held.some(l=>l.name==="musiclab.tabs" && l.mode==="shared"));
     assert.ok(await older.evaluate(async id=>!!(await App.sampleBlob(id)),futureVoice),"An older build swept a newer build's recording");
+    await older.locator("#kids-entry").click();
+    const kids=older.locator("#kids-root"),songs=kids.locator('[data-k="shelf"]');
+    await songs.click();
+    const sheet=kids.getByRole("region",{name:"Moje písničky",exact:true});
+    assert.equal(await sheet.locator('[data-k="slot"]').count(),8);
+    assert.equal(await sheet.locator('[data-k="removeSlot"]').count(),8);
+    const badTargets=await sheet.locator("button").evaluateAll(buttons=>buttons.filter(button=>{
+      const r=button.getBoundingClientRect();
+      const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
+      return r.width<63.95 || r.height<63.95 || !button.contains(hit);
+    }).map(button=>button.getAttribute("aria-label")));
+    assert.deepEqual(badTargets,[],"All eight songs and their individual actions fit the smallest desktop");
+    assert.ok(await sheet.getByRole("button",{name:"Otevřít: Písnička 7 · Kráva a vlak",exact:true}).isVisible());
+    assert.equal(await sheet.locator('[data-k="slot"][data-index="6"] .kv-cover-pictures svg').count(),2);
+    assert.ok(await sheet.getByRole("button",{name:"Otevřít: Písnička 8 · Basa",exact:true}).isVisible());
+    await sheet.getByRole("button",{name:"Smazat: Písnička 1 · BAND",exact:true}).click();
+    await older.waitForFunction(()=>App.KidsStore.read(0)===null);
+    assert.equal(await sheet.locator(":focus").getAttribute("data-k"),"restoreSlot");
+    await older.keyboard.press("Enter");
+    assert.equal(await older.evaluate(()=>App.KidsStore.read(0).name),"BAND");
+    assert.equal(await sheet.locator('[role="status"]').textContent(),"Písnička je zpátky.");
+    assert.equal(await sheet.locator(":focus").getAttribute("data-index"),"0");
+    await sheet.getByRole("button",{name:"Nová písnička",exact:true}).click();
+    await songs.click();
+    await sheet.getByRole("button",{name:"Uložit písničku",exact:true}).click();
+    const replace=kids.getByRole("region",{name:"Vyber písničku k přepsání",exact:true});
+    await replace.locator('[data-k="slot"][data-index="0"]').click();
+    assert.equal(await older.evaluate(()=>App.KidsStore.read(0).name),"BAND");
+    await replace.getByRole("button",{name:"Přepsat písničku 1",exact:true}).click();
+    assert.equal(await older.evaluate(()=>App.KidsStore.read(0).name),"POCKET BAND");
+    assert.deepEqual(await older.evaluate(()=>App.KidsStore.slots()[0].sounds),[]);
     assert.deepEqual(errors,[]);
-    console.log("Kids songbook · independent console undo, eight-slot storage, atomic overwrite and undo, streamed file, multi-tab cleanup and voice recovery");
+    console.log("Kids songbook · named save/open/delete controls, eight visible songs, undoable removal and overwrite, legacy songs, streamed file, multi-tab cleanup and voice recovery");
   } finally { await context.close(); }
 };

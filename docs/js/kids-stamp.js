@@ -91,7 +91,7 @@
     unmount();surface=host;send=dispatch;events=new AbortController();
     for(const b of surface.querySelectorAll(pads)){
       b.classList.add("kv-stamp-source");
-      b.setAttribute("aria-description","Play this sound or drag it onto a beat. Arm the pads to record a live performance.");
+      b.setAttribute("aria-description","Ťuknutím si zvuk poslechneš. Přetažením do políčka ho přidáš do rytmu.");
     }
     const options={capture:true,signal:events.signal};
     surface.addEventListener("pointerdown",start,options);

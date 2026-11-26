@@ -7,6 +7,7 @@
   let adult = null, journal = null, remembered = null, slot = -1;
   let lastDraft = null, volatile = false;
   const previews = Array(size).fill(null);
+  let previewRevision = 0;
 
   function soundProject(text) {
     const data = JSON.parse(text);
@@ -64,6 +65,9 @@
     try {
       const state=slotState(edit.slot);
       if (state.value!==from || (!saving && !state.key)) return failure();
+      // Undoing a newer save can expose this tab's earlier deletion again.
+      // A different tab's replacement has its own key and cannot be restored over.
+      if (edit.version && tag(state.base)!==edit.version && writtenOverrides.get(edit.slot)!==state.key) return failure();
       const key=saving ? slotKey(edit.slot) : state.key;
       const value=saving ? to : to===state.base ? null : to??"null";
       const previousDraft=localStorage.getItem(draftKey), previousLocal=lastDraft, previousVolatile=volatile;
@@ -137,11 +141,12 @@
     return true;
   }
 
-  function save(index) {
+  function save(index, preview) {
     if (!adult || !validSlot(index)) return false;
     const after = JSON.stringify(App.P);
     let before;
     try { before = slotState(index).value; } catch { return failure(); }
+    if (preview && (previews[index]?.info !== preview || previews[index].raw !== before)) return failure();
     const edit = withoutTag(before) === after ? null : {slot:index,before,after:versioned(after)};
     if (edit ? !changeShelf(edit,true,after,index,true) : !writeDraft(after,index)) return false;
     slot = index;
@@ -155,6 +160,29 @@
       return raw == null ? null : soundProject(raw);
     } catch { failure(); return null; }
   }
+  function remove(index, preview) {
+    if (!adult || !validSlot(index)) return false;
+    let state;
+    try {
+      state = slotState(index);
+      if (!state.value) return false;
+      // Only remove the version the child saw. Another tab can fill this
+      // space with an entirely different song while the sheet is open.
+      if (preview && (previews[index]?.info !== preview || previews[index].raw !== state.value)) return failure();
+      if (!state.key) {
+        // Older songbooks stored a plain project. Give it the version marker
+        // needed for the same reversible deletion as current saves.
+        put(slotKey(index),versioned(state.value));
+        state = slotState(index);
+      }
+    } catch { return failure(); }
+    const edit = {slot:index, before:state.value, after:null, version:tag(state.base)};
+    const next = slot === index ? -1 : slot;
+    if (!changeShelf(edit,true,JSON.stringify(App.P),next)) return false;
+    slot = next;
+    App.commit(false,edit);
+    return true;
+  }
   function replace(project, index) {
     if (!adult || !project) return false;
     slot = index;
@@ -164,23 +192,39 @@
   }
 
   function slots() {
+    const library = new Map(App.KidsWorld.groups.flatMap(group=>group.sounds.map(sound=>[sound.sampleId,sound.id])));
     return Array.from({length:size}, (_,i) => {
       try {
         const raw = slotState(i).value;
         if (raw == null) { previews[i] = null; return null; }
         if (raw === previews[i]?.raw) return previews[i].info;
-        const P = soundProject(raw), motif = Array(8).fill(0), banks = new Set();
+        const P = soundProject(raw), motif = Array(8).fill(0), banks = new Set(), counts = new Map();
         let notes = 0;
-        for (const track of P.tracks) {
+        for (const [ti,track] of P.tracks.entries()) {
+          const part = App.KidsMusic.tracks.indexOf(ti);
           const hits = new Set();
           for (const [pat,clip] of track.clips.entries()) {
             if (clip.length) banks.add(pat);
-            for (const n of clip) hits.add(Math.floor(n.s / 2) % 8);
+            for (const n of clip) {
+              hits.add(Math.floor(n.s / 2) % 8);
+              if (!n.p || !n.v) continue;
+              let sound;
+              if (track.kind==="kit") {
+                const pad=track.kit.pads[n.n-36];
+                if (pad) sound=pad.src ? library.get(pad.id) : 0;
+              } else if (track.kind==="smp") {
+                if (track.smp.id) sound=library.get(track.smp.id) ?? (part===3 ? 3 : undefined);
+              } else if (part>=0 && part<4) sound=part;
+              if (sound!==undefined) counts.set(sound,(counts.get(sound)||0)+1);
+            }
             notes += clip.length;
           }
           for (const step of hits) motif[step]++;
         }
-        const info = {slot:i,name:P.name,notes,patternCount:banks.size,motif};
+        // Cover art follows the two most-used recorded sounds or band players.
+        // The cover is derived from the notes each time the stored song changes.
+        const sounds=[...counts].sort((a,b)=>b[1]-a[1]).slice(0,2).map(([sound])=>sound);
+        const info = {slot:i,name:P.name,notes,patternCount:banks.size,motif,sounds,costumes:App.KidsMusic.costumes(P),revision:++previewRevision};
         previews[i] = {raw,info};
         return info;
       } catch { return null; }
@@ -193,6 +237,12 @@
     const activeOverrides=new Set();
     for (let i=0;i<size;i++) {
       const {base,key,value}=slotState(i);
+      // After a reload the session Undo is gone. Reclaim a deleted record and
+      // its recording during the existing exclusive, cross-tab cleanup.
+      if (base!==null && value===null && !journal?.st.some(entry=>entry.shelfEdit?.slot===i)) {
+        put(slotKey(i),null);
+        continue;
+      }
       if (key) activeOverrides.add(key);
       if (base!==null) projects.push(soundProject(base));
       if (value!==null && value!==base) projects.push(soundProject(value));
@@ -218,7 +268,7 @@
     return projects;
   }});
   App.KidsStore = {
-    enter,leave,read,save,slots,
+    enter,leave,read,save,remove,slots,
     get active() { return !!adult; },
     get slot() { return slot; },
     get durable() { return !volatile; },
@@ -226,6 +276,10 @@
     fresh:makeBlank => adult ? replace(makeBlank(),-1) : false,
     undo:() => !!adult && App.undo(),
     canUndo:() => !!adult && App.canUndo(),
+    get lastRemoval() {
+      const edit = journal?.st[journal.i]?.shelfEdit;
+      return adult && edit?.version && edit.after===null ? edit.slot : -1;
+    },
     preferred() {
       try { return localStorage.getItem(modeKey) === "kids"; } catch { return false; }
     },

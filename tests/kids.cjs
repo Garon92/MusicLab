@@ -3,19 +3,20 @@
 const assert = require("node:assert/strict");
 const sizes = [[1100,620],[1280,720],[1366,768],[1600,900],[1920,1080],[2560,1080]];
 
-async function checkPanel(page, label) {
-  const issues = await page.evaluate(async () => {
+async function checkPanel(page, label, controlScope="") {
+  const issues = await page.evaluate(async (controlScope) => {
     await new Promise(requestAnimationFrame);
     const errors=[],root=document.getElementById("kids-root");
-    if (root.innerText.trim()) errors.push("Visible text: "+root.innerText.trim().slice(0,50));
     const band=root.querySelector(".kids-surface");
     for(const el of [document.documentElement,document.body,root,band]) {
       if(!el || el.hidden)continue;
       if(el.scrollWidth>el.clientWidth+1 || el.scrollHeight>el.clientHeight+1)
         errors.push((el.id||el.nodeName)+" overflows by "+(el.scrollWidth-el.clientWidth)+"/"+(el.scrollHeight-el.clientHeight));
     }
-    for(const el of root.querySelectorAll("button,input,select,[role=button]")) {
+    const scope=controlScope?root.querySelector(controlScope):root;
+    for(const el of scope.querySelectorAll("button,input,select,summary,[role=button]")) {
       if(el.closest("[hidden],[inert]") || !el.getClientRects().length)continue;
+      if(el.closest("details:not([open])") && !el.closest("summary"))continue;
       const r=el.getBoundingClientRect(),id=el.getAttribute("aria-label")||el.dataset.k||el.tagName;
       if(!el.getAttribute("aria-label") && !el.textContent.trim())errors.push("Unlabelled "+id);
       if(r.width<63.95 || r.height<63.95)errors.push(id+" measures "+r.width.toFixed(1)+"×"+r.height.toFixed(1));
@@ -24,7 +25,7 @@ async function checkPanel(page, label) {
       if(!el.disabled && (!hit || !el.contains(hit)))errors.push(id+" is covered at the centre");
     }
     return errors;
-  });
+  },controlScope);
   assert.deepEqual(issues,[],label+" "+page.viewportSize().width+"×"+page.viewportSize().height+" "+issues.join(", "));
 }
 
@@ -117,18 +118,22 @@ module.exports = async function kidsUI(reference) {
     assert.equal(await key("note").count(),32);
     assert.equal(await key("track").count(),8);assert.equal(await key("pad").count(),4);
     assert.equal(await key("pattern").count(),4);assert.equal(await page.locator("#kids-band canvas[data-kid-screen]").count(),2);
-    assert.equal(await key("pad",'[data-row="0"]').getAttribute("aria-label"),"Play Cow");
+    assert.equal(await key("pad",'[data-row="0"]').getAttribute("aria-label"),"Přehrát zvuk: Kráva");
+    for(const [k,title] of [["play","Přehrát"],["rhythmTools","Upravit rytmus"],["mic","Nahrát hlas"],["shelf","Moje písničky"]])
+      assert.equal((await key(k).innerText()).trim(),title);
     assert.equal(await page.locator("#kids-inline-sound [data-sound=pad]").isVisible(),true);
     assert.equal(await page.evaluate(()=>App.P.tracks.every(t=>t.clips.every(c=>!c.length))),true);
     await key("lock").tap();assert.ok(await page.evaluate(()=>App.Kids.active));
     for(const [width,height] of sizes){await page.setViewportSize({width,height});await checkPanel(page,"Band");}
     await page.setViewportSize({width:1100,height:620});
+    await key("song").selectOption("song");assert.ok(await page.evaluate(()=>App.P.song));
+    await key("song").selectOption("piece");assert.equal(await page.evaluate(()=>App.P.song),0);
     // The source, its four row pads, its steps and its effects stay on this desk.
     // Compose two different collections, then verify that switching keeps the
     // previous rhythm visible in its eight-beat miniature on the source card.
-    for(const [source,track,row,step,name] of [[4,3,0,1,"Cow"],[6,5,2,4,"Keys"]]){
+    for(const [source,track,row,step,name] of [[4,3,0,1,"Kráva"],[6,5,2,4,"Klíče"]]){
       await item("track",source).tap();const pad=key("pad",'[data-row="'+row+'"]');
-      assert.equal(await pad.getAttribute("aria-label"),"Play "+name);
+      assert.equal(await pad.getAttribute("aria-label"),"Přehrát zvuk: "+name);
       const bounds=await pad.boundingBox(),note=await cell(row,step).boundingBox();
       assert.ok(Math.abs(bounds.y+bounds.height/2-note.y-note.height/2)<1,"played picture sits on its own row");
       await pad.tap();await cell(row,step).tap();assert.match(await cell(row,step).getAttribute("aria-label"),new RegExp(name));
@@ -161,11 +166,13 @@ module.exports = async function kidsUI(reference) {
     await held(cell(3,6),()=>page.waitForFunction(()=>App.P.tracks[6].clips[0][0]?.v>.85));
     await held(item("track",3),()=>key("costume").first().waitFor());
     await checkPanel(page,"Sound wardrobe");await item("costume",2).tap();
+    await key("rhythmTools").tap();await checkPanel(page,"Rhythm actions",".kv-rhythm-tools[open]");
+    assert.match(await key("erase").getAttribute("aria-label"),/Hlas.*dílek A/);
     await key("erase").tap();assert.equal(await page.evaluate(()=>App.P.tracks[6].clips[0].length),0);
     await key("undo").tap();assert.equal(await page.evaluate(()=>App.P.tracks[6].clips[0].length),1);
-    await key("random").tap();assert.ok(await page.evaluate(()=>App.P.tracks[6].clips[0].length));
+    await key("rhythmTools").tap();await key("random").tap();assert.ok(await page.evaluate(()=>App.P.tracks[6].clips[0].length));
     await key("undo").tap();assert.equal(await page.evaluate(()=>App.P.tracks[6].clips[0].length),1);
-    await checkPanel(page,"Live pads on score");await key("arm").tap();
+    await checkPanel(page,"Live pads on score");await key("rhythmTools").tap();await key("arm").tap();
     await page.waitForFunction(()=>App.Seq.playing && App.Seq.frame()?.step>=1);
     await key("pad",'[data-row="0"]').tap();
     assert.equal(await page.evaluate(()=>App.P.tracks[6].clips[0].length),2);
@@ -194,9 +201,9 @@ module.exports = async function kidsUI(reference) {
       return {id:part.smp.id,seconds:App.samples.get(part.smp.id).buffer.duration,count:probe.requests,ended:probe.track.readyState};
     });
     assert.ok(voice.seconds>.12 && voice.seconds<=6);assert.equal(voice.count,2);assert.equal(voice.ended,"ended");
-    await key("save").tap();await page.waitForFunction(()=>App.KidsStore.slot===0);
+    await key("shelf").tap();await key("save").tap();await page.waitForFunction(()=>App.KidsStore.slot===0);
     const expected=await page.evaluate(()=>{const P=App.P;return {notes:P.tracks.map(t=>t.clips.slice(0,4)),chain:P.chain,costumes:P.kidsBand.costumes};});
-    await key("shelf").tap();await checkPanel(page,"Shelf");await key("new").tap();
+    await checkPanel(page,"Shelf");await key("new").tap();
     assert.ok(await page.evaluate(()=>App.P.tracks.every(t=>t.clips.every(c=>!c.length))));
     await key("shelf").tap();await item("slot",0).tap();await page.waitForFunction(id=>App.P.tracks[6].smp.id===id,voice.id);
     assert.equal(await page.evaluate(()=>kidMidi.sent),0,"The band sent notes or transport to the console's MIDI port");

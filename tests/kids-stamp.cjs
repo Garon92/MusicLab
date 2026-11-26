@@ -20,7 +20,7 @@ module.exports=async function kidsStamp(reference){
       await page.mouse.move(to.x,to.y,{steps:5});await ghost.waitFor();
       assert.equal(await note(row,col).evaluate(el=>el.classList.contains("kv-stamp-target")),true);
       if(row!==over)assert.equal(await note(over,col).evaluate(el=>el.classList.contains("kv-stamp-target")),false);
-      assert.equal(await ghost.locator("svg").evaluate(el=>el.outerHTML),await pad(row).locator("svg").evaluate(el=>el.outerHTML));
+      assert.equal(await ghost.locator("svg").evaluate(el=>el.outerHTML),await pad(row).locator(".kv-row-picture svg").evaluate(el=>el.outerHTML));
       if(finish)await finish();
     }finally{await page.mouse.up();}
     await ghost.waitFor({state:"detached"});
@@ -29,15 +29,32 @@ module.exports=async function kidsStamp(reference){
   try{
     const url=new URL(reference.url());url.search="?kids";await page.goto(url.href);
     await pad(0).waitFor();await page.waitForFunction(()=>App.Kids.active);
-    assert.equal(await pad(1).getAttribute("aria-label"),"Play Pig");
+    const suggestion=root.locator(".kv-suggested-beat");
+    assert.equal(await suggestion.count(),0);
+    await root.getByRole("button",{name:"Vybrat sadu: Zvířata"}).tap();
+    assert.equal(await root.locator(".kv-board-name").innerText(),"Zvířata · rytmus");
+    assert.deepEqual(await root.locator(".kv-pad-name").allTextContents(),["Pes","Kočka","Pták","Žába"]);
+    assert.deepEqual(await root.locator(".kv-beats i").allTextContents(),["1","2","3","4","5","6","7","8"]);
+    await root.getByRole("button",{name:"Vybrat sadu: Farma"}).tap();
+    assert.equal(await pad(1).getAttribute("aria-label"),"Přehrát zvuk: Prase");
+    assert.equal(await pad(1).locator(".kv-pad-name").innerText(),"Prase");
     await pad(2).tap();assert.deepEqual(await notes(),[],"a tap auditions without writing a beat");
+    const cue=await suggestion.evaluate(b=>({
+      row:b.dataset.row,col:b.dataset.col,pressed:b.getAttribute("aria-pressed"),
+      picture:b.querySelector(".kv-note-image svg").outerHTML,edge:getComputedStyle(b.querySelector(".kv-socket")).borderTopStyle
+    }));
+    assert.deepEqual(cue,{row:"2",col:"0",pressed:"false",picture:await pad(2).locator(".kv-row-picture svg").evaluate(s=>s.outerHTML),edge:"dashed"});
+    await control("pattern").nth(1).tap();assert.equal(await suggestion.count(),0);
+    await control("pattern").first().tap();await pad(0).tap();
+    await control("play").tap();assert.equal(await suggestion.count(),0);await control("play").tap();
     await drag(1,3,6);
     const stamped=await notes();
     assert.deepEqual(stamped.map(n=>[n.n,n.s]),[[37,12]],"drop a pig on beat 7, even across another row");
+    await pad(2).tap();assert.equal(await suggestion.count(),0,"occupied scores only show the child's own notes");
     await drag(1,3,6);assert.deepEqual(await notes(),stamped,"occupied notes keep their duration and expression");
     await control("undo").click();assert.deepEqual(await notes(),[],"one completed stamp makes one undo step");
     assert.equal(await control("undo").isDisabled(),true);
-    await drag(2,1,1,async()=>{const out=await center(control("save"));await page.mouse.move(out.x,out.y);});
+    await drag(2,1,1,async()=>{const out=await center(control("shelf"));await page.mouse.move(out.x,out.y);});
     assert.deepEqual(await notes(),[]);assert.equal(await page.evaluate(()=>App.KidsStore.slots().some(Boolean)),false);
     await drag(0,0,4,async()=>{await page.keyboard.press("Escape");});
     assert.deepEqual(await notes(),[],"an abandoned stamp leaves the clip empty");
@@ -65,7 +82,14 @@ module.exports=async function kidsStamp(reference){
       assert.deepEqual((await notes()).map(n=>[n.n,n.s]),[[39,10]]);
       await control("undo").tap();assert.deepEqual(await notes(),[]);await cdp.detach();
     }
-    await control("arm").click();
+    // A second tap on the same picture takes it out without sounding it again.
+    await page.evaluate(()=>{const original=App.KidsMusic.audition;window.testStampAuditions=0;
+      App.KidsMusic.audition=(...args)=>{window.testStampAuditions++;return original(...args);};
+    });
+    await note(1,2).tap();assert.equal(await note(1,2).getAttribute("aria-label"),"Prase, políčko 3, odebrat");
+    await note(1,2).tap();assert.equal(await note(1,2).getAttribute("aria-label"),"Prase, políčko 3, přidat");
+    assert.deepEqual(await notes(),[]);assert.equal(await page.evaluate(()=>window.testStampAuditions),1);
+    await control("rhythmTools").click();await control("arm").click();
     await page.waitForFunction(()=>{const c=App.Seq.now(App.P.sel.t);return c && c.step>=1 && c.step<4;});
     const from=await center(pad(0)),to=await center(note(2,7));
     await page.mouse.move(from.x,from.y);await page.mouse.down();
