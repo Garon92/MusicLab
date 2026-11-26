@@ -50,8 +50,11 @@ module.exports=async function kidsSound(reference) {
               out.push("Clipped button caption: "+caption.textContent);
           }
         }
-        const x=root.querySelector(".ks-axis-x").getBoundingClientRect(),y=root.querySelector(".ks-axis-y").getBoundingClientRect();
-        if(x.right>y.left-1)out.push("Overlapping axis captions");
+        const box=s=>root.querySelector(s).getBoundingClientRect();
+        const pad=box(".ks-pad"),left=box("[data-end='0']"),right=box("[data-end='1']"),down=box("[data-end='2']"),up=box("[data-end='3']");
+        if(left.top<pad.bottom || left.right>=right.left || down.right>pad.left || up.right>pad.left ||
+          up.bottom>pad.top+pad.height/2 || down.top<pad.top+pad.height/2)out.push("Axis ends must sit on the matching sides of the playing field");
+        if(box(".ks-puck").width<42 || box("button[data-mode] svg").width<32)out.push("Sound pictures too small");
         return out;
       });
       assert.deepEqual(issues,[],width+"×"+height+" sound controls");
@@ -69,7 +72,7 @@ module.exports=async function kidsSound(reference) {
     await band("back").click();
     assert.equal(await inline.locator(".ks-target-name").innerText(),"Farma");
     assert.deepEqual(await inline.locator("[data-mode] .ks-key-name").allTextContents(),["Ozvěna","Ostrost","Chvění"]);
-    assert.equal(await inline.locator(".ks-cue").innerText(),"Táhni po obrázku");
+    assert.equal(await inline.locator(".ks-cue").isVisible(),false);
     assert.equal(await key("arm",inline).getAttribute("aria-label"),"Nahrát pohyb");
     assert.equal(await key("clear",inline).isVisible(),false);
     await checkBounds(inline);
@@ -91,13 +94,33 @@ module.exports=async function kidsSound(reference) {
     });
     await holdUntil(key("pad",inline),()=>page.waitForFunction(()=>previewHit?.part===6 && previewHit.row===2 && previewHit.loaded && App.KidsMusic.levels()[6]>.001));
     await page.evaluate(()=>{App.KidsMusic.audition=window.priorKidAudition;});
+    // Lock x while travelling up and down, then lock y while moving across.
+    // The marker alongside each ruler must match the real puck and the audible parameter.
+    for(const [id,bottom,top,xKey,yKey] of [["echo","Bez dozvuku","Doznívá","dly","rev"],["colour","Čistý","Drsný","macro2","macro1"],["motion","Klid","Silně","macro4","macro3"]]){
+      await mode(id,inline).click();
+      assert.deepEqual(await inline.locator(".ks-axis-y .ks-end").allTextContents(),[top,bottom]);
+      const trial=async(x,y)=>{
+        const r=await inline.locator(".ks-trail").boundingBox();
+        await page.mouse.click(r.x+r.width*x,r.y+r.height*(1-y));
+        return inline.evaluate((el,keys)=>{
+          const i=App.KidsMusic.tracks[6];
+          const vals=keys.map(k=>k.startsWith("macro")?App.Rack.getMacro(i,Number(k.slice(-1))-1):App.P.tracks[i][k]);
+          const rect=s=>el.querySelector(s).getBoundingClientRect(),p=rect(".ks-puck"),h=rect(".ks-axis-x .ks-ruler>i"),v=rect(".ks-axis-y .ks-ruler>i");
+          return {vals,xError:Math.abs((h.left+h.width/2)-(p.left+p.width/2)),yError:Math.abs((v.top+v.height/2)-(p.top+p.height/2))};
+        },[xKey,yKey]);
+      };
+      const low=await trial(.2,0),high=await trial(.2,1),right=await trial(.8,1);
+      assert.ok(low.vals[1]<.02 && high.vals[1]>.98 && Math.abs(high.vals[0]-low.vals[0])<.01,id+" vertical endpoints");
+      assert.ok(Math.abs(high.vals[0]-right.vals[0])>.55 && Math.abs(high.vals[1]-right.vals[1])<.01,id+" horizontal endpoints");
+      for(const sample of [low,high,right])assert.ok(sample.xError<3 && sample.yError<3,id+" ruler marker follows puck: "+JSON.stringify(sample));
+    }
     await band("track",2).click();
     // Give the meters signal at several positions in the timbre sweep, including its bright half.
     for(const [r,c] of [[0,0],[2,2],[1,4],[3,6]]){
       await page.locator('#kids-band [data-k="note"][data-row="'+r+'"][data-col="'+c+'"]').click();
     }
     await mode("colour",inline).click();await key("arm",inline).click();
-    assert.equal(await inline.locator(".ks-cue").innerText(),"Táhni pro nahrání");
+    assert.equal(await inline.locator(".ks-cue").innerText(),"Táhni a pusť");
     await key("arm",inline).click();
     assert.equal(await key("arm",inline).getAttribute("aria-pressed"),"false");
     await key("arm",inline).click();await band("sound").click();
@@ -109,10 +132,10 @@ module.exports=async function kidsSound(reference) {
     const first=await automation();
     for(const k of ["macro1","macro2"])assert.ok(first[k].points.length>=3 && extent(first[k])>.35,"inline colour movement "+k);
     assert.equal(await key("arm",inline).getAttribute("aria-pressed"),"false","lifting the finger ends the take");
-    assert.equal(await inline.locator(".ks-cue").innerText(),"Pohyb se přehrává");
+    assert.ok((await inline.locator(".ks-trail polyline").getAttribute("points"))?.length);
     await band("play").click();
     await checkBounds(inline); // The recorded path adds a direct erase action at every size.
-    assert.equal(await inline.locator(".ks-cue").innerText(),"Pohyb je nahraný");
+    assert.equal(await inline.locator(".ks-cue").isVisible(),false);
     await key("clear",inline).click();assert.deepEqual(await automation(),{});
     await band("undo").click();assert.deepEqual(await automation(),first);
     await mode("echo",inline).click();await band("sound").click();await key("pad").waitFor();

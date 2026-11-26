@@ -32,7 +32,7 @@ module.exports=async function kidsStamp(reference){
     const suggestion=root.locator(".kv-suggested-beat");
     assert.equal(await suggestion.count(),0);
     await root.getByRole("button",{name:"Vybrat sadu: Zvířata"}).tap();
-    assert.equal(await root.locator(".kv-board-name").innerText(),"Zvířata · rytmus");
+    assert.equal(await root.locator(".kv-board-name").innerText(),"Zvířata");
     assert.deepEqual(await root.locator(".kv-pad-name").allTextContents(),["Pes","Kočka","Pták","Žába"]);
     assert.deepEqual(await root.locator(".kv-beats i").allTextContents(),["1","2","3","4","5","6","7","8"]);
     await root.getByRole("button",{name:"Vybrat sadu: Farma"}).tap();
@@ -99,7 +99,106 @@ module.exports=async function kidsStamp(reference){
     }finally{await page.mouse.up();}
     await control("play").click();
     const recorded=await notes();assert.equal(recorded.length,1);assert.equal(recorded[0].n,36);assert.notEqual(recorded[0].s,14);
+    await songDrags(page,root,control,center);
     assert.deepEqual(errors,[]);
-    console.log("Picture score · drag a sound across rows, occupied beat, single Undo, cancelled drag, live pad recording"+(browser.browserType().name()==="chromium"?", native touch drag":""));
+    console.log("Picture score · sound stamps, cancellation and live pads; song inserts, reordering across pages, one Undo and all 32 pieces in six sizes"+(browser.browserType().name()==="chromium"?", native touch and pen drags":""));
   }finally{await context.close();}
 };
+
+async function songDrags(page,root,key,center){
+  const chain=()=>page.evaluate(()=>App.P.chain.slice()),icon=i=>key("pattern").nth(i);
+  const mini=root.locator(".kv-chain-print i"),sheet=root.locator(".kv-sheet-arrange:not([hidden])");
+  const setChain=value=>page.evaluate(c=>App.Kids.dispatch("chain",c),value);
+  const ghost=root.locator(".kv-piece-ghost");
+  async function pickup(source){
+    const p=await center(source);await page.mouse.move(p.x,p.y);await page.mouse.down();
+    await page.mouse.move(p.x+12,p.y,{steps:2});await ghost.waitFor();
+  }
+  async function over(el,side=.5){
+    const box=await el.boundingBox();assert.ok(box);
+    await page.mouse.move(box.x+box.width*side,box.y+box.height/2,{steps:5});
+  }
+  async function place(source,to,side=.5){
+    await pickup(source);await over(to,side);await page.mouse.up();
+    await ghost.waitFor({state:"detached"});
+  }
+  await setChain([0]);await icon(1).tap();assert.deepEqual(await chain(),[0],"a tap still selects the pattern");
+  assert.ok((await mini.first().boundingBox()).width>=38,"large artwork in a short chain");
+  const landing=()=>root.locator(".kv-chain-print").evaluate(el=>getComputedStyle(el,"::after").borderStyle);
+  assert.equal(await landing(),"dashed");
+  await place(icon(2),key("arrange"),.9);assert.deepEqual(await chain(),[0,2]);
+  assert.equal(await icon(1).getAttribute("aria-pressed"),"true","dragging a different piece leaves the edited pattern selected");
+  assert.equal(await sheet.count(),0,"the chain stays on the score after a drop");
+  await key("undo").click();assert.deepEqual(await chain(),[0],"one drop has one undo");
+  await place(icon(2),key("appendPiece"));assert.deepEqual(await chain(),[0,2],"the plus accepts the held piece");
+  await key("undo").click();
+  await place(icon(3),mini.first(),.2);assert.deepEqual(await chain(),[3,0],"drop at a visible boundary");
+  await pickup(icon(2));await over(key("arrange"),.9);await page.keyboard.press("Escape");await page.mouse.up();
+  assert.deepEqual(await chain(),[3,0]);assert.equal(await icon(1).getAttribute("aria-pressed"),"true");
+  await place(icon(2),key("shelf"));assert.deepEqual(await chain(),[3,0],"invalid drop never opens the sheet or changes the chain");
+  await place(mini.first(),mini.last(),.8);
+  assert.deepEqual(await chain(),[0,3]);assert.equal(await sheet.count(),0,"reorder the main strip without opening the editor");
+  await key("undo").click();assert.deepEqual(await chain(),[3,0],"the main strip move has a single undo");
+  await place(mini.first(),key("arrange"),.9);assert.deepEqual(await chain(),[0,3],"empty strip tail moves to the end");
+  await key("undo").click();assert.deepEqual(await chain(),[3,0]);
+  await mini.first().tap();await sheet.waitFor();assert.deepEqual(await chain(),[3,0],"a short tap on a picture opens the editor");
+  await place(key("addPiece").nth(1),key("piece").nth(1),.2);
+  assert.deepEqual(await chain(),[3,1,0],"place the new piece at the marked edge");
+  await place(key("piece").first(),key("piece").last(),.8);
+  assert.deepEqual(await chain(),[1,0,3],"reorder the placed piece");
+  assert.equal(await key("piece").nth(2).getAttribute("aria-pressed"),"true");
+  await setChain([0,1,2,3,0,1,2,3,1,2]);await pickup(key("piece").first());await over(key("nextPage"));
+  await root.locator('[data-k="piece"][data-index="8"]').waitFor();
+  await over(root.locator('[data-k="piece"][data-index="9"]'),.8);await page.mouse.up();
+  assert.deepEqual(await chain(),[1,2,3,0,1,2,3,1,2,0],"carry one piece across the page arrow");
+  await key("back").click();await key("undo").click();
+  assert.deepEqual(await chain(),[0,1,2,3,0,1,2,3,1,2],"a page turn adds no undo checkpoint");
+  const full=Array.from({length:32},(_,i)=>i%4);
+  await setChain(full);await place(icon(1),key("arrange"),.9);
+  assert.deepEqual(await chain(),full,"full chain preserves all 32 slots");
+  assert.equal(await landing(),"none");
+  const first=await mini.nth(16).boundingBox(),second=await mini.nth(17).boundingBox();
+  await pickup(mini.first());await page.mouse.move((first.x+first.width+second.x)/2,first.y+first.height/2,{steps:5});
+  await page.mouse.up();await ghost.waitFor({state:"detached"});
+  const reordered=full.slice();reordered.splice(16,0,reordered.shift());
+  assert.deepEqual(await chain(),reordered,"in the second row the gap picks the nearest boundary even when all 32 slots are used");
+  assert.equal(await sheet.count(),0);await key("undo").click();assert.deepEqual(await chain(),full);
+  for(const [width,height] of [[1100,620],[1280,720],[1366,768],[1600,900],[1920,1080],[2560,1080]]){
+    await page.setViewportSize({width,height});
+    const clipped=await key("arrange").evaluate(el=>{
+      const bounds=el.getBoundingClientRect();
+      return el.scrollHeight>el.clientHeight+1 || el.scrollWidth>el.clientWidth+1 ||
+        Array.from(el.querySelectorAll(".kv-chain-print i")).some(tile=>{
+          const r=tile.getBoundingClientRect();
+          return r.width<20 || r.left<bounds.left || r.right>bounds.right || r.top<bounds.top || r.bottom>bounds.bottom;
+        });
+    });
+    assert.equal(clipped,false,"all 32 pieces fit at "+width+"×"+height);
+  }
+  await page.setViewportSize({width:1100,height:620});
+  if(page.context().browser().browserType().name()==="chromium"){
+    await setChain([0,1]);const cdp=await page.context().newCDPSession(page);
+    const touch=(type,point)=>cdp.send("Input.dispatchTouchEvent",{type,touchPoints:point?[{...point,id:1,radiusX:4,radiusY:4}]:[]});
+    try{
+      await touch("touchStart",await center(icon(3)));await touch("touchMove",await center(key("arrange")));await ghost.waitFor();await touch("touchCancel");
+      assert.deepEqual(await chain(),[0,1]);
+      await touch("touchStart",await center(icon(3)));await touch("touchMove",await center(key("arrange")));await ghost.waitFor();await touch("touchEnd");
+      assert.deepEqual(await chain(),[0,1,3]);
+      const firstMini=await mini.first().boundingBox();
+      await touch("touchStart",await center(mini.last()));
+      await touch("touchMove",{x:firstMini.x+firstMini.width*.2,y:firstMini.y+firstMini.height/2});await ghost.waitFor();await touch("touchEnd");
+      assert.deepEqual(await chain(),[3,0,1],"a touch moves an existing main-strip picture");
+      assert.equal(await sheet.count(),0);await key("undo").tap();assert.deepEqual(await chain(),[0,1,3]);
+      await key("arrange").tap();const last=await key("piece").last().boundingBox();
+      await touch("touchStart",await center(key("piece").first()));
+      await touch("touchMove",{x:last.x+last.width*.8,y:last.y+last.height/2});await ghost.waitFor();await touch("touchEnd");
+      assert.deepEqual(await chain(),[1,3,0],"a touch reorders the chain without clicking a tile");
+      await key("back").tap();const from=await center(icon(2)),to=await center(key("arrange"));
+      await cdp.send("Input.dispatchMouseEvent",{type:"mousePressed",...from,button:"left",buttons:1,clickCount:1,pointerType:"pen"});
+      await cdp.send("Input.dispatchMouseEvent",{type:"mouseMoved",...to,button:"left",buttons:1,pointerType:"pen"});
+      await ghost.waitFor();
+      await cdp.send("Input.dispatchMouseEvent",{type:"mouseReleased",...to,button:"left",buttons:0,clickCount:1,pointerType:"pen"});
+      assert.deepEqual(await chain(),[1,3,0,2],"a pen drag appends one piece");
+    }finally{await cdp.detach();}
+  }
+}

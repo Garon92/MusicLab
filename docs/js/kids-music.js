@@ -172,6 +172,17 @@
     clip.length = 0;
     return true;
   }
+  function moveNote(P,part,pattern,fromRow,fromCol,toRow,toCol){
+    const validCol=c=>Number.isInteger(c)&&c>=0&&c<8;
+    if(!validPart(part)||!inFour(pattern)||!inFour(fromRow)||!inFour(toRow)||!validCol(fromCol)||!validCol(toCol))return 0;
+    const clip=P.tracks[tracks[part]].clips[pattern],srcPitch=pitch(part,fromRow),destPitch=pitch(part,toRow);
+    if(clip.some(n=>n.s===2*toCol&&n.n===destPitch))return 0;
+    const note=clip.find(n=>n.s===2*fromCol&&n.n===srcPitch);
+    if(!note)return 0;
+    note.s=2*toCol;note.n=destPitch;
+    clip.sort((a,b)=>a.s-b.s || a.n-b.n);
+    return intensity(note);
+  }
   function audition(part,row,strength=1) {
     if (!validPart(part) || !inFour(row)) return;
     const engine = App.audio(); if (!engine) return;
@@ -329,5 +340,5 @@
     if (App.P?.kidsBand) App.E?.panic(true);
   }
   App.KidsMusic = {tracks,tempos,tempo,tempoIndex,newProject,prepare,costumes,costume,sync,pitch,
-    grid,edit,clear,audition,variation,levels,record,recording,micLevel,cancelRecording,dispose};
+    grid,edit,clear,moveNote,audition,variation,levels,record,recording,micLevel,cancelRecording,dispose};
 })();

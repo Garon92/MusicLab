@@ -29,6 +29,70 @@ async function checkPanel(page, label, controlScope="") {
   assert.deepEqual(issues,[],label+" "+page.viewportSize().width+"×"+page.viewportSize().height+" "+issues.join(", "));
 }
 
+async function checkDeskDrags(page) {
+  const row=page.locator('.kv-row-pad[data-row="1"]');
+  const note=(r,c)=>page.locator('.kv-cell[data-row="'+r+'"][data-col="'+c+'"]');
+  const undo=page.locator('#kids-band [data-k="undo"]');
+  const track=()=>page.evaluate(()=>{
+    const t=App.P.tracks[App.P.sel.t];return {dly:t.dly,rev:t.rev,notes:t.clips[0]};
+  });
+  async function move(from,to,x=.5,y=.5,hover){
+    const a=await from.boundingBox(),b=await to.boundingBox();
+    await page.mouse.move(a.x+a.width/2,a.y+a.height/2);await page.mouse.down();
+    try{
+      await page.mouse.move(b.x+b.width*x,b.y+b.height*y,{steps:6});
+      if(hover)await hover();
+    }finally{await page.mouse.up();}
+  }
+  const initial=await track(),field=page.locator('#kids-inline-sound .ks-trail');
+  await page.evaluate(()=>{
+    window.previousAudition=App.KidsMusic.audition;window.droppedPreviews=[];
+    App.KidsMusic.audition=(part,row,...args)=>{
+      window.droppedPreviews.push({row,amount:App.P.tracks[App.KidsMusic.tracks[part]].dly});
+      window.previousAudition(part,row,...args);
+    };
+  });
+  try{
+    await move(row,field,.65,.25,async()=>{
+      assert.deepEqual(await track(),initial,"hovering previews the destination without editing sound");
+      assert.equal(await page.locator('#kids-inline-sound .ks-pad.kv-stamp-target').count(),1);
+      await page.keyboard.press("Escape");
+    });
+    assert.deepEqual(await track(),initial);
+    await move(row,field,.65,.25);
+    const placed=await track(),preview=await page.evaluate(()=>window.droppedPreviews.at(-1));
+    assert.ok(Math.abs(placed.dly-.65)<.015 && Math.abs(placed.rev-.75)<.015,"drop sets both axes at the release point");
+    assert.equal(preview.row,1);assert.equal(preview.amount,placed.dly);assert.deepEqual(placed.notes,[]);
+    await undo.click();assert.deepEqual(await track(),initial);
+  }finally{await page.evaluate(()=>{App.KidsMusic.audition=window.previousAudition;});}
+  const src=note(0,1),dest=note(2,4),other=note(1,5);
+  await src.tap();await other.tap();
+  const plain=await track(),a=await src.boundingBox(),b=await dest.boundingBox();
+  await page.mouse.move(a.x+a.width/2,a.y+a.height/2);await page.mouse.down();
+  try{
+    await page.waitForFunction(()=>App.P.tracks[App.P.sel.t].clips[0][0].v>.84);
+    await page.mouse.move(b.x+b.width/2,b.y+b.height/2,{steps:6});
+    assert.equal(await page.locator(".kv-stamp-ghost").count(),0,"holding for an accent finishes that gesture");
+  }finally{await page.mouse.up();}
+  const accented=await track();
+  assert.equal(accented.notes[0].s,plain.notes[0].s);assert.equal(accented.notes[0].n,plain.notes[0].n);
+  await undo.click();assert.deepEqual(await track(),plain);
+  await page.evaluate(()=>{
+    const t=App.P.tracks[App.P.sel.t];Object.assign(t.clips[0][0],{p:.72,v:.9,l:2,r:2});App.commit();App.refresh();
+  });
+  const two=await track();
+  await move(src,other);assert.deepEqual(await track(),two,"dropping on an occupied beat preserves both notes");
+  await move(src,dest,.5,.5,async()=>{
+    const expected=await page.locator('.kv-row-pad[data-row="2"] .kv-row-picture svg').evaluate(svg=>svg.outerHTML);
+    assert.equal(await page.locator(".kv-stamp-ghost svg").evaluate(svg=>svg.outerHTML),expected);
+    assert.deepEqual(await track(),two,"the picture at the pointer previews the new sound before release");
+  });
+  const moved=await track();
+  assert.deepEqual(moved.notes,[{...two.notes[0],n:38,s:8},two.notes[1]],"changing row and beat preserves the note's articulation");
+  await undo.click();assert.deepEqual(await track(),two);
+  await src.tap();await other.tap();assert.deepEqual(await track(),initial);
+}
+
 module.exports = async function kidsUI(reference) {
   const context=await reference.context().browser().newContext({hasTouch:true,viewport:{width:1100,height:620}});
   const page=await context.newPage(),errors=[];
@@ -119,7 +183,7 @@ module.exports = async function kidsUI(reference) {
     assert.equal(await key("track").count(),8);assert.equal(await key("pad").count(),4);
     assert.equal(await key("pattern").count(),4);assert.equal(await page.locator("#kids-band canvas[data-kid-screen]").count(),2);
     assert.equal(await key("pad",'[data-row="0"]').getAttribute("aria-label"),"Přehrát zvuk: Kráva");
-    for(const [k,title] of [["play","Přehrát"],["rhythmTools","Upravit rytmus"],["mic","Nahrát hlas"],["shelf","Moje písničky"]])
+    for(const [k,title] of [["play","Přehrát"],["rhythmTools","Rytmus"],["mic","Nahrát hlas"],["shelf","Písničky"]])
       assert.equal((await key(k).innerText()).trim(),title);
     assert.equal(await page.locator("#kids-inline-sound [data-sound=pad]").isVisible(),true);
     assert.equal(await page.evaluate(()=>App.P.tracks.every(t=>t.clips.every(c=>!c.length))),true);
@@ -128,6 +192,7 @@ module.exports = async function kidsUI(reference) {
     await page.setViewportSize({width:1100,height:620});
     await key("song").selectOption("song");assert.ok(await page.evaluate(()=>App.P.song));
     await key("song").selectOption("piece");assert.equal(await page.evaluate(()=>App.P.song),0);
+    await checkDeskDrags(page);
     // The source, its four row pads, its steps and its effects stay on this desk.
     // Compose two different collections, then verify that switching keeps the
     // previous rhythm visible in its eight-beat miniature on the source card.

@@ -3,10 +3,10 @@
 (() => {
   "use strict";
   const rooms={
-    echo:{label:"Ozvěna",keys:["dly","rev"],axes:["Ozvěna","Dozvuk"],across:"Více ozvěny",up:"Větší prostor",colour:"#83d9cb"},
-    colour:{label:"Ostrost",keys:["macro2","macro1"],axes:["Jas","Zkreslení"],across:"Jasnější",up:"Drsnější",colour:"#ffb36f",
+    echo:{label:"Ozvěna",keys:["dly","rev"],axes:["Ozvěna","Dozvuk"],ends:["Jednou","Ozvěny","Bez dozvuku","Doznívá"],colour:"#83d9cb"},
+    colour:{label:"Ostrost",keys:["macro2","macro1"],axes:["Jas","Zkreslení"],ends:["Temný","Jasný","Čistý","Drsný"],colour:"#ffb36f",
       routes:[["macro2","tone",-1,"Shade"],["macro1","drive",.85,"Saturation"]]},
-    motion:{label:"Chvění",keys:["macro4","macro3"],axes:["Rychlost","Síla chvění"],across:"Rychlejší",up:"Silnější",colour:"#bda8ec",
+    motion:{label:"Chvění",keys:["macro4","macro3"],axes:["Rychlost","Síla chvění"],ends:["Pomalu","Rychle","Klid","Silně"],colour:"#bda8ec",
       routes:[["macro4","vibratoRate",1,"Vibrato speed"],["macro3","vibratoDepth",1,"Vibrato depth"]]}
   };
   const eighth='<path d="M13 23V5l12 4v6l-9-4v12c0 7-14 10-14 4 0-4 6-7 11-6Z" fill="currentColor" stroke="none"/>';
@@ -36,31 +36,31 @@
     colour:'<path d="m0 14 58 21 28-33 36 12 19-14H0zm375-14 17 23 43-10 36 32 29 10V0z" fill="#e4a485"/><path d="m0 225 41-24 49 18 65-12 64 39 76-21 55 21 150-54v88H0z" fill="#e59e7c"/><path d="m44 217 10-35 14-12 9 40 10-22 8 23-20 9z" fill="#bf8ec0"/><g stroke="#c58173" fill="none" stroke-width="2"><path d="m188 178 52-98 55 99z" fill="#f8e0aa"/><path d="m240 80 13 75 42 24m-107-1 65-23L240 80"/></g><g fill="none" stroke-width="5"><path d="m0 139 215 5" stroke="#fff2ca"/><path d="m274 140 226-60" stroke="#e68a90"/><path d="m276 146 224-18" stroke="#f6ce72"/><path d="m280 151 220 28" stroke="#83c4b1"/></g>',
     motion:'<circle cx="78" cy="46" r="23" fill="#f9da9d"/><path d="M0 192q60-48 122-3t130 1 112-24 136 15v99H0z" fill="#ad9ed5"/><g stroke="#8577a8" fill="none" stroke-width="3"><path d="M64 160q16-70 32-18t32 0 28 0 28 0"/><path d="M288 209q20-14 40 0t40 0 40 0"/></g><g fill="#f6d892"><path d="m369 38 3 8 9 3-9 3-3 9-3-9-9-3 9-3z"/><circle cx="404" cy="76" r="4"/><circle cx="339" cy="85" r="3"/></g>'
   };
-  // Each pair is printed on one ruler: time/colour/speed across the bottom,
-  // room/saturation/depth up the side. All four endpoints remain playable.
+  // Each pair of pictures sits at the two ends of its own axis.
   const guideMarks={
     echo:[
-      '<circle cx="9" cy="14" r="4.5" fill="currentColor" stroke="none"/>',
-      '<g fill="currentColor" stroke="none"><circle cx="7" cy="14" r="5"/><circle cx="20" cy="14" r="3.6"/><circle cx="30" cy="14" r="2.5"/><circle cx="38" cy="14" r="1.6"/></g>',
-      '<path d="m7 23 1-10 9-5 11 4 6 11z"/><path d="M14 23v-5q4-6 8 0v5" fill="currentColor"/>',
-      '<path d="m2 23 3-15 11-6 14 3 8 11 2 7z"/><path d="M8 23l3-12 9-4 9 5 5 11m-18 0 1-7 5-2 5 9"/>'
+      '<g transform="translate(11 1) scale(.72)">'+eighth+'</g>',
+      '<g transform="translate(1 1) scale(.68)">'+eighth+'</g><g transform="translate(19 7) scale(.48)" opacity=".75">'+eighth+'</g><g transform="translate(31 12) scale(.33)" opacity=".6">'+eighth+'</g>',
+      '<g transform="translate(13 3) scale(.68)">'+eighth+'</g>',
+      '<path d="M2 25V13Q21-8 40 13v12M7 25V15q14-15 28 0v10" fill="#e5be82"/><g transform="translate(14 10) scale(.45)">'+eighth+'</g>'
     ],
     colour:[
       '<path d="M24 4a10 10 0 1 0 6 16c-12 2-16-9-6-16Z" fill="currentColor"/>',
       '<circle cx="21" cy="14" r="5" fill="currentColor"/><path d="M21 2v3m0 18v3M9 14h3m18 0h3M12 5l3 3m12 12 3 3m0-18-3 3M15 20l-3 3"/>',
-      '<path d="M3 16q6-11 14-3t21-1"/>',
-      '<path d="m2 8 6-4 9 5 9-6 12 3m-36 8 6-4 9 5 9-6 12 3m-36 8 6-4 9 5 9-6 12 3"/>'
+      '<path d="M2 15q6-13 13-2t14 0q6-9 11-1"/>',
+      '<path d="m2 18 5-14 3 17 6-12 5 15 3-21 6 16 3-12 7 7"/>'
     ],
     motion:[
       '<path d="M2 15q9-16 18 0t18 0"/>',
       '<path d="M2 15q3-13 6 0t6 0 6 0 6 0 6 0 6 0"/>',
-      '<path d="M2 14q5-4 9 0t9 0 9 0 9 0"/>',
+      '<path d="M2 14h38"/>',
       '<path d="M2 14q5-21 9 0t9 0 9 0 9 0"/>'
     ]
   };
-  function guides(room){
-    return '<div class="ks-guides" aria-hidden="true"><i class="ks-ruler ks-ruler-x"></i><i class="ks-ruler ks-ruler-y"></i>'+
-      ["x-low","x-high","y-low","y-high"].map((end,i)=>'<i class="ks-guide ks-'+end+'">'+svg(guideMarks[room][i],"0 0 42 28")+'</i>').join("")+'</div>';
+  function axis(room,from,to){
+    const end=i=>'<span class="ks-end" data-end="'+i+'">'+svg(guideMarks[room][i],"0 0 42 28")+
+      '<span>'+rooms[room].ends[i]+'</span></span>';
+    return end(from)+'<i class="ks-ruler"><i></i></i>'+end(to);
   }
   let root=null,ui=null,mode="echo",held=null,armed=false,frozen=false,compact=false;
   let controls,performer,pad,puck,path,scene,trail,oldBank=null;
@@ -112,8 +112,12 @@
   }
   function place(x,y){
     puck.style.left=(x*100)+"%";puck.style.top=((1-y)*100)+"%";
-    pad.setAttribute("aria-valuenow",String(Math.round(x*100)));
-    pad.setAttribute("aria-valuetext",config().axes[0]+" "+Math.round(x*100)+"%, "+config().axes[1]+" "+Math.round(y*100)+"%");
+    const left=Math.round(x*100),top=Math.round((1-y)*100);
+    const text=config().axes[0]+" "+left+"%, "+config().axes[1]+" "+(100-top)+"%";
+    if(pad.getAttribute("aria-valuetext")!==text){
+      pad.parentElement.style.setProperty("--ks-x",left+"%");pad.parentElement.style.setProperty("--ks-y",top+"%");
+      pad.setAttribute("aria-valuenow",String(left));pad.setAttribute("aria-valuetext",text);
+    }
   }
   function at(e){
     const b=trail.getBoundingClientRect();return [round((e.clientX-b.left)/b.width),round(1-(e.clientY-b.top)/b.height)];
@@ -126,7 +130,10 @@
     const part=ui.part(),row=ui.row();
     held={i,x,y,id,part,row,record:armed,preview:!(App.Seq.playing&&hasClip),repeatAt:null,note:null};
     route(i);apply(held);capture();place(x,y);pad.classList.add("held");
-    if(held.preview){
+    // A dropped picture gets one complete preview, including pitched instruments
+    // which would otherwise get a note-off in the same instant as the note-on.
+    if(id==="drop")App.KidsMusic.audition(part,row);
+    else if(held.preview){
       if(App.P.tracks[i].kind==="kit")auditionHit(held);
       else {held.note=App.KidsMusic.pitch(part,row);E.noteOn(i,held.note,.66,true);}
     }
@@ -169,9 +176,9 @@
     if(compact)clear.hidden=!active;
     else {clear.disabled=!active;controls.querySelector('[data-sound="reverse"]').disabled=!active;}
     const cue=controls.querySelector(".ks-cue");
-    let message="Táhni po obrázku";
-    if(active)message=App.P.tracks[i].clips[p].length?(App.Seq.playing?"Pohyb se přehrává":"Pohyb je nahraný"):"Pohyb uložen · přidej zvuk do rytmu";
-    if(armed)message="Táhni pro nahrání";
+    let message="";
+    if(active&&!App.P.tracks[i].clips[p].length)message="Přidej zvuk do rytmu";
+    if(armed)message="Táhni a pusť";
     if(held)message=held.record?"Nahrávám pohyb":"";
     if(cue.dataset.message!==message){
       cue.dataset.message=message;cue.lastElementChild.textContent=message;
@@ -209,10 +216,9 @@
       family.dataset.source=part+"."+costume;
     }
     controls.querySelector(".ks-target-name").textContent=App.KidsView.partLabel(part);
-    const sound=part>=4?part+"."+row:"band";
+    const sound=part+"."+row;
     if(puck.dataset.soundId!==sound){
-      puck.dataset.soundId=sound;puck.classList.toggle("ks-sound-token",part>=4);
-      puck.innerHTML=part>=4?App.KidsView.rowArt(part,row):"<i></i>";
+      puck.dataset.soundId=sound;puck.innerHTML=App.KidsView.rowArt(part,row);
     }
     for(const b of controls.querySelectorAll("[data-mode]"))b.setAttribute("aria-pressed",String(b.dataset.mode===mode));
     const play=el("play"),playing=App.Seq.playing;
@@ -226,8 +232,11 @@
     const cfg=config();root.style.setProperty("--room",cfg.colour);pad.dataset.room=mode;
     pad.setAttribute("aria-label",cfg.label+" pro celou sadu "+App.KidsView.partLabel(part)+", poslech: "+App.KidsView.rowLabel(part,row));
     if(scene.dataset.room!==mode){
-      scene.innerHTML='<svg viewBox="0 0 500 280" preserveAspectRatio="none" aria-hidden="true">'+scenery[mode]+'</svg>'+guides(mode);
-      controls.querySelector(".ks-axis-x").textContent="→ "+cfg.across;controls.querySelector(".ks-axis-y").textContent="↑ "+cfg.up;
+      scene.innerHTML='<svg viewBox="0 0 500 280" preserveAspectRatio="none" aria-hidden="true">'+scenery[mode]+'</svg>';
+      controls.querySelector(".ks-axis-x").innerHTML=axis(mode,0,1);
+      controls.querySelector(".ks-axis-y").innerHTML=axis(mode,3,2);
+      const [left,right,down,up]=cfg.ends;
+      pad.setAttribute("aria-description","Táhni obrázkem nebo použij šipky. Vlevo: "+left+". Vpravo: "+right+". Dole: "+down+". Nahoře: "+up+".");
       scene.dataset.room=mode;
     }
     if(!compact){
@@ -279,8 +288,8 @@
   const surface='<div class="ks-instrument"><div class="ks-pad" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-sound="pad">'+
     '<div class="ks-scene"></div><div class="ks-cue">'+svg(marks.drag)+'<span></span></div><div class="ks-trail"><svg viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">'+
     '<polyline fill="none" stroke="#39475d" stroke-width="3.5" stroke-dasharray="4 6" vector-effect="non-scaling-stroke" stroke-linecap="round"/></svg>'+
-    '<i class="ks-puck" aria-hidden="true"></i></div></div><div class="ks-axes"><span class="ks-axis-x"></span><span class="ks-axis-y"></span></div></div>';
-  const target='<span class="ks-target"><span>Efekty celé sady</span><strong class="ks-target-name"></strong></span>';
+    '<i class="ks-puck ks-sound-token" aria-hidden="true"></i></div></div><div class="ks-axis ks-axis-y" aria-hidden="true"></div><div class="ks-axis ks-axis-x" aria-hidden="true"></div></div>';
+  const target='<span class="ks-target"><span>Efekty sady</span><strong class="ks-target-name"></strong></span>';
   const erase=key("clear","Smazat pohyb","clear");
   const inlineFace='<div class="ks-shell"><div class="ks-heading"><span class="ks-family"></span>'+target+'</div>'+modes+surface+
     '<div class="ks-inline-tools">'+record+erase+key("expand","Zvětšit","expand",'data-k="sound"')+'</div></div>';
@@ -318,9 +327,15 @@
     root=null;ui=null;controls=null;performer=null;pad=null;puck=null;path=null;scene=null;trail=null;
     oldBank=null;
   }
+  function dropPicture(row,clientX,clientY){
+    if(!compact || !pad || held || pad.closest("[inert],[hidden]") || !Number.isInteger(row) || row<0 || row>3)return;
+    ui.selectRow(row);
+    begin(...at({clientX,clientY}),"drop");
+    release();
+  }
   function close(){
     detach();mode="echo";armed=false;frozen=false;
   }
   window.addEventListener("blur",release);
-  App.KidsSound={open,close,paint,frame,release,lanes};
+  App.KidsSound={open,close,paint,frame,release,lanes,dropPicture};
 })();

@@ -55,7 +55,8 @@
     paint();
   }
   function soundPage(expanded,restoreFocus=false){
-    const api={part,pattern,row:()=>lastRows[part()],play,paint,expand:()=>soundPage(true),back:()=>soundPage(false,true)};
+    const api={part,pattern,row:()=>lastRows[part()],selectRow:row=>{lastRows[part()]=row;},
+      play,paint,expand:()=>soundPage(true),back:()=>soundPage(false,true)};
     App.KidsSound.release();
     sound.hidden=!expanded;
     surface.hidden=expanded;
@@ -142,6 +143,12 @@
         lastRows[who]=i;
         if(music.grid(P,who,pi)[i][j]){paint();return;}
         music.edit(P,who,pi,i,j);break;
+      }
+      case "moveNote":{
+        const strength=music.moveNote(P,who,pi,...args);
+        if(!strength)return;
+        const toRow=args[2];lastRows[who]=toRow;
+        music.audition(who,toRow,strength);break;
       }
       case "note":case "expression":{
         if(!valid(i,4)||!valid(j,8))return;
