@@ -15,7 +15,10 @@
     makeGroup("toys","Toys","Hračky",[["squeak","Squeaker","Kačenka"],["spring","Spring","Pružina"],["rattle","Rattle","Chrastítko"],["whistle","Whistle","Píšťalka"],["top","Spinning top","Káča"],["musicbox","Music box","Hrací skříňka"]]),
     makeGroup("space","Space","Vesmír",[["laser","Laser","Laser"],["ufo","Flying saucer","UFO"],["robot","Robot","Robot"],["rocket","Rocket","Raketa"],["star","Star","Hvězda"],["radar","Radar","Radar"]])
   ];
-  const assets=new Map(groups.flatMap(g=>g.sounds.map(s=>[s.sampleId,{name:s.name,url:"./audio/kids/"+s.id+".wav"}])));
+  // Raise SOUNDS whenever the audio of these files changes: a browser that kept the older copy fetches the new one
+  // once, and without a connection it keeps playing what it has.
+  const SOUNDS=2;
+  const assets=new Map(groups.flatMap(g=>g.sounds.map(s=>[s.sampleId,{name:s.name,url:"./audio/kids/"+s.id+".wav?v="+SOUNDS,version:SOUNDS}])));
   App.extendProject({bundledSample:id=>assets.get(id)});
   const padIndex=(group,row)=>group>=4?10+row:row<4?row:4+row;
   function install(track,index,extendOnly=false){

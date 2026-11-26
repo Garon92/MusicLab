@@ -636,6 +636,35 @@ module.exports = async function regressions(page) {
     assert.ok(scopes.length && scopes.every(t => t === "Jen dílek A"), JSON.stringify(scopes));
   } finally { await kidsPage.close(); }
 
+  // Reported from use: some kids' sounds were off. They were replaced, but a browser that had played the old ones kept
+  // them for ever. A kept copy of a bundled sound now stands only until the sound's version changes; offline it stays.
+  const sounds = await page.context().browser().newContext({ viewport: { width: 1100, height: 620 } });
+  try {
+    const soundPage = await sounds.newPage();
+    await soundPage.goto(page.url());
+    await soundPage.waitForFunction(() => window.App?.KidsWorld && App.P);
+    const id = "mlband01cow", stale = await soundPage.evaluate(async (id) => {
+      // An old copy, as an earlier build left it: a different sound, no version.
+      const old = new AudioBuffer({ length: 2400, sampleRate: 24000 }); old.getChannelData(0).fill(0.25, 0, 1200);
+      const blob = App.wav(old, 0);
+      await new Promise((ok, no) => { const r = indexedDB.open("musiclab3", 1); r.onupgradeneeded = () => r.result.createObjectStore("smp", { keyPath: "id" });
+        r.onsuccess = () => { const t = r.result.transaction("smp", "readwrite"); t.objectStore("smp").put({ id, name: "Cow", blob }); t.oncomplete = ok; t.onerror = no; }; r.onerror = no; });
+      return blob.size;
+    }, id);
+    await soundPage.reload(); await soundPage.waitForFunction(() => window.App?.KidsWorld && App.P);
+    const fresh = await soundPage.evaluate(async (id) => { await App.restoreSample(id); return App.samples.get(id).buffer.duration; }, id);
+    assert.ok(stale > 0 && fresh > 0.5, "the replaced cow is fetched over the old copy: " + fresh);
+    // Without a connection, an older kept copy still plays rather than nothing.
+    await soundPage.evaluate(async (id) => {
+      const old = new AudioBuffer({ length: 2400, sampleRate: 24000 }); old.getChannelData(0).fill(0.25, 0, 1200);
+      await new Promise((ok, no) => { const r = indexedDB.open("musiclab3", 1);
+        r.onsuccess = () => { const t = r.result.transaction("smp", "readwrite"); t.objectStore("smp").put({ id, name: "Cow", blob: App.wav(old, 0) }); t.oncomplete = ok; t.onerror = no; }; r.onerror = no; });
+      App.samples.delete(id);
+    }, id);
+    await soundPage.route("**/audio/kids/cow.wav*", r => r.abort("internetdisconnected")); // the file cannot be fetched
+    assert.equal(await soundPage.evaluate(async (id) => { await App.restoreSample(id); return +App.samples.get(id)?.buffer.duration.toFixed(2); }, id), 0.1, "offline, the kept copy plays");
+  } finally { await sounds.close(); }
+
   await reset();
-  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, note values, launcher hands the transport back, lists in popups, wheel grid, console number fields, long audio in a sampler, first recording on its frame, transport after a dialog, editor keys from anywhere, reasons on unavailable buttons, typed time unit, idle and lit controls, undo while playing, draft guard, duplicate on the beat, folded rows, song start slot, module wiring, loop export, page turn on drag, pad row menu, no console under a reload into the kids' face, kids' slow tap, unsaved song kept, piece name");
+  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, note values, launcher hands the transport back, lists in popups, wheel grid, console number fields, long audio in a sampler, first recording on its frame, transport after a dialog, editor keys from anywhere, reasons on unavailable buttons, typed time unit, idle and lit controls, undo while playing, draft guard, duplicate on the beat, folded rows, song start slot, module wiring, loop export, page turn on drag, pad row menu, no console under a reload into the kids' face, kids' slow tap, unsaved song kept, piece name, replaced kids' sounds reach a browser that kept the old ones");
 };

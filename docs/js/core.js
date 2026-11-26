@@ -661,10 +661,12 @@
     const asset = bundledRecord(id);
     let saved;
     try { saved = await idb.get(id); } catch (error) { if (!asset) throw error; }
-    if (saved || !asset) return saved;
-    const response = await fetch(asset.url);
-    if (!response.ok) throw Error("CANNOT LOAD " + asset.name.toUpperCase());
-    return {id,name:asset.name,blob:await response.blob(),bundled:true};
+    // A kept copy of a bundled sound stands until the sound itself is replaced (its version changes).
+    if (!asset || (saved && (!asset.version || saved.version === asset.version))) return saved;
+    let response;
+    try { response = await fetch(asset.url); } catch (error) { if (saved) return saved; throw error; }
+    if (!response.ok) { if (saved) return saved; throw Error("CANNOT LOAD " + asset.name.toUpperCase()); }
+    return {id,name:asset.name,blob:await response.blob(),bundled:true,version:asset.version};
   }
   const restoring = new Map();
   App.restoreSample = id => {
@@ -675,7 +677,7 @@
       const buf = await decode(await record.blob.arrayBuffer());
       if (record.bundled) {
         // Cache only decodable audio. A broken response can be retried on the next hit.
-        try { await idb.put({id,name:record.name,blob:record.blob}); } catch { /* The installed asset remains available. */ }
+        try { await idb.put({id,name:record.name,blob:record.blob,version:record.version}); } catch { /* The installed asset remains available. */ }
       }
       register(id,record.name,buf,record.blob);
       return true;
