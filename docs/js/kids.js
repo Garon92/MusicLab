@@ -121,7 +121,6 @@
     if(music.grid(P,who,p)[row][col]===0){music.edit(P,who,p,row,col);App.commit();paint();}
   }
   function changeSong(on){
-    if(on && !App.P.chain.length)App.P.chain=[pattern()];
     App.P.song=on?1:0;App.P.arrangement.slots=App.P.chain.map(()=>null);
   }
   function dispatch(action,...args){
@@ -150,6 +149,9 @@
         const toRow=args[2];lastRows[who]=toRow;
         music.audition(who,toRow,strength);break;
       }
+      case "removeNote":
+        if(!valid(i,4)||!valid(j,8)||!music.grid(P,who,pi)[i][j])return;
+        music.edit(P,who,pi,i,j);break;
       case "note":case "expression":{
         if(!valid(i,4)||!valid(j,8))return;
         lastRows[who]=i;
@@ -167,6 +169,7 @@
       case "tempo":if(!valid(i,4))return;music.tempo(P,i);App.E?.syncFx();break;
       case "play":play();return;
       case "song":{
+        if(i && !P.chain.length)return;
         const running=App.Seq.playing;stop();changeSong(!!i);if(running)App.Seq.play();break;
       }
       case "chain":{

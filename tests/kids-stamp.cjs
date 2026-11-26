@@ -89,6 +89,15 @@ module.exports=async function kidsStamp(reference){
     await note(1,2).tap();assert.equal(await note(1,2).getAttribute("aria-label"),"Prase, políčko 3, odebrat");
     await note(1,2).tap();assert.equal(await note(1,2).getAttribute("aria-label"),"Prase, políčko 3, přidat");
     assert.deepEqual(await notes(),[]);assert.equal(await page.evaluate(()=>window.testStampAuditions),1);
+    await note(1,2).click({button:"right"});assert.deepEqual(await notes(),[],"a secondary click never adds a note");
+    await note(1,2).click({modifiers:["Control"]});assert.deepEqual(await notes(),[],"Control-click never adds a note either");
+    await note(1,2).tap();const keep=await notes();
+    await note(1,2).click({button:"right"});assert.deepEqual(await notes(),[]);
+    await control("undo").tap();assert.deepEqual(await notes(),keep,"one Undo restores the exact removed note");
+    const start=await center(note(1,2)),home=await center(pad(1));
+    await page.mouse.move(start.x,start.y);await page.mouse.down();await page.mouse.move(home.x,home.y,{steps:5});
+    await root.locator(".kv-stamp-ghost.kv-pull-out").waitFor();await page.mouse.up();
+    assert.deepEqual(await notes(),[],"return a placed note to its sound pad");
     await control("rhythmTools").click();await control("arm").click();
     await page.waitForFunction(()=>{const c=App.Seq.now(App.P.sel.t);return c && c.step>=1 && c.step<4;});
     const from=await center(pad(0)),to=await center(note(2,7));
@@ -101,7 +110,7 @@ module.exports=async function kidsStamp(reference){
     const recorded=await notes();assert.equal(recorded.length,1);assert.equal(recorded[0].n,36);assert.notEqual(recorded[0].s,14);
     await songDrags(page,root,control,center);
     assert.deepEqual(errors,[]);
-    console.log("Picture score · sound stamps, cancellation and live pads; song inserts, reordering across pages, one Undo and all 32 pieces in six sizes"+(browser.browserType().name()==="chromium"?", native touch and pen drags":""));
+    console.log("Picture score · sound stamps, cancellation and live pads; song inserts, reordering across pages, right-click and pull-out removals, one Undo and all 32 pieces in six sizes"+(browser.browserType().name()==="chromium"?", native touch and pen drags":""));
   }finally{await context.close();}
 };
 
@@ -124,13 +133,12 @@ async function songDrags(page,root,key,center){
   }
   await setChain([0]);await icon(1).tap();assert.deepEqual(await chain(),[0],"a tap still selects the pattern");
   assert.ok((await mini.first().boundingBox()).width>=38,"large artwork in a short chain");
-  const landing=()=>root.locator(".kv-chain-print").evaluate(el=>getComputedStyle(el,"::after").borderStyle);
-  assert.equal(await landing(),"dashed");
+  const plus=key("appendSlot");assert.ok(await plus.isVisible());
   await place(icon(2),key("arrange"),.9);assert.deepEqual(await chain(),[0,2]);
   assert.equal(await icon(1).getAttribute("aria-pressed"),"true","dragging a different piece leaves the edited pattern selected");
   assert.equal(await sheet.count(),0,"the chain stays on the score after a drop");
   await key("undo").click();assert.deepEqual(await chain(),[0],"one drop has one undo");
-  await place(icon(2),key("appendPiece"));assert.deepEqual(await chain(),[0,2],"the plus accepts the held piece");
+  await place(icon(2),plus);assert.deepEqual(await chain(),[0,2],"the inline addition slot accepts the held piece");
   await key("undo").click();
   await place(icon(3),mini.first(),.2);assert.deepEqual(await chain(),[3,0],"drop at a visible boundary");
   await pickup(icon(2));await over(key("arrange"),.9);await page.keyboard.press("Escape");await page.mouse.up();
@@ -141,7 +149,24 @@ async function songDrags(page,root,key,center){
   await key("undo").click();assert.deepEqual(await chain(),[3,0],"the main strip move has a single undo");
   await place(mini.first(),key("arrange"),.9);assert.deepEqual(await chain(),[0,3],"empty strip tail moves to the end");
   await key("undo").click();assert.deepEqual(await chain(),[3,0]);
+  await mini.first().click({button:"right"});assert.deepEqual(await chain(),[0]);assert.equal(await sheet.count(),0);
+  await key("undo").click();assert.deepEqual(await chain(),[3,0]);
+  await mini.first().click({modifiers:["Control"]});assert.deepEqual(await chain(),[0],"Control-click also removes the occurrence once");
+  await key("undo").click();assert.deepEqual(await chain(),[3,0]);
+  const boardCell=root.locator('.kv-cell[data-row="2"][data-col="3"]');
+  await pickup(mini.first());await over(boardCell);
+  await root.locator(".kv-piece-ghost.kv-pull-out").waitFor();assert.deepEqual(await chain(),[3,0],"the minus badge previews removal");
+  await page.keyboard.press("Escape");await page.mouse.up();assert.deepEqual(await chain(),[3,0]);
+  await pickup(mini.first());await page.mouse.move(-2,-2);await page.mouse.up();
+  assert.deepEqual(await chain(),[3,0],"releasing outside the application cancels the drop");
+  await place(mini.first(),key("shelf"));assert.deepEqual(await chain(),[3,0],"another command is not a deletion target");
+  await place(mini.first(),boardCell);assert.deepEqual(await chain(),[0]);assert.equal(await sheet.count(),0);
+  await key("undo").click();assert.deepEqual(await chain(),[3,0],"pulling out one occurrence makes one undo checkpoint");
   await mini.first().tap();await sheet.waitFor();assert.deepEqual(await chain(),[3,0],"a short tap on a picture opens the editor");
+  await key("piece").first().click({button:"right"});assert.deepEqual(await chain(),[0]);
+  await key("back").tap();await key("undo").tap();await mini.first().tap();await sheet.waitFor();
+  await place(key("piece").first(),key("addPiece").first());assert.deepEqual(await chain(),[0],"return a large piece to its bank");
+  await key("back").tap();await key("undo").tap();await mini.first().tap();await sheet.waitFor();
   await place(key("addPiece").nth(1),key("piece").nth(1),.2);
   assert.deepEqual(await chain(),[3,1,0],"place the new piece at the marked edge");
   await place(key("piece").first(),key("piece").last(),.8);
@@ -156,7 +181,7 @@ async function songDrags(page,root,key,center){
   const full=Array.from({length:32},(_,i)=>i%4);
   await setChain(full);await place(icon(1),key("arrange"),.9);
   assert.deepEqual(await chain(),full,"full chain preserves all 32 slots");
-  assert.equal(await landing(),"none");
+  assert.equal(await plus.isVisible(),false);
   const first=await mini.nth(16).boundingBox(),second=await mini.nth(17).boundingBox();
   await pickup(mini.first());await page.mouse.move((first.x+first.width+second.x)/2,first.y+first.height/2,{steps:5});
   await page.mouse.up();await ghost.waitFor({state:"detached"});
@@ -176,6 +201,15 @@ async function songDrags(page,root,key,center){
     assert.equal(clipped,false,"all 32 pieces fit at "+width+"×"+height);
   }
   await page.setViewportSize({width:1100,height:620});
+  await setChain([1,1,2]);await mini.nth(1).click({button:"right"});assert.deepEqual(await chain(),[1,2],"only the picked occurrence is removed");
+  await setChain([1]);await page.evaluate(()=>App.Kids.dispatch("song",true));await key("play").tap();
+  const sourceNotes=()=>page.evaluate(()=>App.P.tracks.map(t=>t.clips));
+  const beforeLast=await sourceNotes();await mini.first().click({button:"right"});
+  assert.deepEqual(await chain(),[]);assert.deepEqual(await sourceNotes(),beforeLast);
+  assert.equal(await page.evaluate(()=>!!App.P.song || App.Seq.playing),false,"removing the last playing slot leaves an empty song and stops it");
+  await key("song").tap();assert.equal(await key("songAll").isDisabled(),true);await key("song").tap();
+  await page.evaluate(()=>App.Kids.dispatch("song",true));assert.deepEqual(await chain(),[],"choosing a playback mode cannot silently reinsert the last deleted piece");
+  await key("undo").click();assert.deepEqual(await chain(),[1]);assert.ok(await page.evaluate(()=>App.P.song));
   if(page.context().browser().browserType().name()==="chromium"){
     await setChain([0,1]);const cdp=await page.context().newCDPSession(page);
     const touch=(type,point)=>cdp.send("Input.dispatchTouchEvent",{type,touchPoints:point?[{...point,id:1,radiusX:4,radiusY:4}]:[]});
@@ -184,12 +218,16 @@ async function songDrags(page,root,key,center){
       assert.deepEqual(await chain(),[0,1]);
       await touch("touchStart",await center(icon(3)));await touch("touchMove",await center(key("arrange")));await ghost.waitFor();await touch("touchEnd");
       assert.deepEqual(await chain(),[0,1,3]);
+      await touch("touchStart",await center(mini.last()));await touch("touchMove",await center(boardCell));
+      await root.locator(".kv-piece-ghost.kv-pull-out").waitFor();await touch("touchCancel");assert.deepEqual(await chain(),[0,1,3]);
+      await touch("touchStart",await center(mini.last()));await touch("touchMove",await center(boardCell));await ghost.waitFor();await touch("touchEnd");
+      assert.deepEqual(await chain(),[0,1]);await key("undo").tap();assert.deepEqual(await chain(),[0,1,3]);
       const firstMini=await mini.first().boundingBox();
       await touch("touchStart",await center(mini.last()));
       await touch("touchMove",{x:firstMini.x+firstMini.width*.2,y:firstMini.y+firstMini.height/2});await ghost.waitFor();await touch("touchEnd");
       assert.deepEqual(await chain(),[3,0,1],"a touch moves an existing main-strip picture");
       assert.equal(await sheet.count(),0);await key("undo").tap();assert.deepEqual(await chain(),[0,1,3]);
-      await key("arrange").tap();const last=await key("piece").last().boundingBox();
+      await key("openArrange").tap();const last=await key("piece").last().boundingBox();
       await touch("touchStart",await center(key("piece").first()));
       await touch("touchMove",{x:last.x+last.width*.8,y:last.y+last.height/2});await ghost.waitFor();await touch("touchEnd");
       assert.deepEqual(await chain(),[1,3,0],"a touch reorders the chain without clicking a tile");

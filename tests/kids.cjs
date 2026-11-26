@@ -23,6 +23,14 @@ async function checkPanel(page, label, controlScope="") {
       if(r.x<-.5 || r.y<-.5 || r.right>innerWidth+.5 || r.bottom>innerHeight+.5)errors.push(id+" outside viewport");
       const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
       if(!el.disabled && (!hit || !el.contains(hit)))errors.push(id+" is covered at the centre");
+      if(el.closest(".kv-menu-tray")){
+        const caption=el.querySelector(".kv-caption"),picture=el.querySelector("svg").getBoundingClientRect();
+        const range=document.createRange();range.selectNodeContents(caption);
+        for(const text of range.getClientRects()){
+          if(text.left<picture.right || text.right>r.right-3 || text.top<r.top+2 || text.bottom>r.bottom-2)
+            errors.push(id+" caption overlaps its picture or leaves its button");
+        }
+      }
     }
     return errors;
   },controlScope);
@@ -188,10 +196,23 @@ module.exports = async function kidsUI(reference) {
     assert.equal(await page.locator("#kids-inline-sound [data-sound=pad]").isVisible(),true);
     assert.equal(await page.evaluate(()=>App.P.tracks.every(t=>t.clips.every(c=>!c.length))),true);
     await key("lock").tap();assert.ok(await page.evaluate(()=>App.Kids.active));
-    for(const [width,height] of sizes){await page.setViewportSize({width,height});await checkPanel(page,"Band");}
+    for(const [width,height] of sizes){
+      await page.setViewportSize({width,height});await checkPanel(page,"Band");
+      await key("song").tap();await checkPanel(page,"Playback choices",".kv-play-menu[open]");
+      await key("rhythmTools").tap();await checkPanel(page,"Rhythm choices",".kv-rhythm-tools[open]");
+      assert.equal(await key("songAll").count(),0);await key("rhythmTools").tap();
+    }
     await page.setViewportSize({width:1100,height:620});
-    await key("song").selectOption("song");assert.ok(await page.evaluate(()=>App.P.song));
-    await key("song").selectOption("piece");assert.equal(await page.evaluate(()=>App.P.song),0);
+    await key("song").tap();assert.equal(await key("songPiece").getAttribute("aria-pressed"),"true");
+    await key("songAll").tap();assert.ok(await page.evaluate(()=>App.P.song));
+    await key("song").press("ArrowDown");assert.equal(await key("songAll").evaluate(el=>el===document.activeElement),true);
+    await key("songAll").press("ArrowUp");await key("songPiece").press("Space");
+    assert.equal(await page.evaluate(()=>App.P.song),0);assert.equal(await page.evaluate(()=>App.Seq.playing),false);
+    await key("play").tap();await key("rhythmTools").press("ArrowDown");await key("arm").press("Escape");
+    assert.equal(await page.locator(".kv-empty-hint").count(),0,"playing an empty grid never draws a floating pointer");
+    assert.equal(await key("arm").count(),0);assert.equal(await key("rhythmTools").evaluate(el=>el===document.activeElement),true);
+    await key("song").tap();await page.locator(".kv-monitor-wave canvas").click();assert.equal(await key("songAll").count(),0);
+    assert.ok(await page.evaluate(()=>App.Seq.playing));await key("play").tap();
     await checkDeskDrags(page);
     // The source, its four row pads, its steps and its effects stay on this desk.
     // Compose two different collections, then verify that switching keeps the
@@ -245,10 +266,13 @@ module.exports = async function kidsUI(reference) {
     const tempo=key("tempo"), bounds=await tempo.boundingBox();
     await tempo.tap({position:{x:Math.floor(bounds.width-6),y:Math.floor(bounds.height/2)}});
     assert.equal(await page.evaluate(()=>App.P.bpm),148);
+    assert.equal(await tempo.getAttribute("aria-valuetext"),"Raketa, 148 úderů za minutu");
+    assert.equal(await tempo.evaluate(el=>getComputedStyle(el.parentElement).outlineStyle),"none","adjusting tempo by touch leaves its pill clear");
     await item("pattern",1).tap();await cell(2,1).tap();
-    await key("appendPiece").tap();
+    assert.equal(await key("appendPiece").count(),0,"there is one add action at the end of the strip");
+    await key("appendSlot").tap();
     assert.deepEqual(await page.evaluate(()=>App.P.chain),[0,1],"append the selected piece without leaving the score");
-    await key("arrange").tap();
+    await key("openArrange").tap();
     await checkPanel(page,"Song arrangement");
     assert.deepEqual(await page.evaluate(()=>App.P.chain),[0,1]);
     await item("piece",1).tap();await key("moveLeft").tap();

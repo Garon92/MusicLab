@@ -26,20 +26,22 @@
   }
   function start(e){
     if(drag && drag.id!==e.pointerId)reset(true);
-    if(e.button!==0 || !e.isPrimary)return;
+    const secondary=e.pointerType==="mouse" && (e.button===2 || (e.button===0 && e.ctrlKey));
+    if((e.button!==0 && !secondary) || !e.isPrimary)return;
     blockedClick=null;
-    const source=e.target.closest?.(sources);
+    const source=e.target.closest?.(secondary?cells+','+miniature+',[data-k="piece"]':sources);
     if(drag || !source || source.disabled || source.closest("[inert]"))return;
     const mini=source.matches(miniature),kind=mini?"piece":source.dataset.k;
     // Armed pads belong to live recording as soon as they are pressed.
     if(kind==="pad" && surface.querySelector('[data-k="arm"]')?.getAttribute("aria-pressed")==="true")return;
     const music=kind==="pad" || kind==="note";
-    drag={id:e.pointerId,source,capture:source,kind,music,project:App.P,track:App.P.sel.t,pattern:App.P.sel.p,
+    drag={id:e.pointerId,source,capture:source,kind,music,secondary,project:App.P,track:App.P.sel.t,pattern:App.P.sel.p,
       chain:music?null:App.P.chain.slice(),row:Number(source.dataset.row),col:Number(source.dataset.col),
       sourceIndex:mini?Array.from(source.parentElement.children).indexOf(source):Number(source.dataset.index),
       x:e.clientX,y:e.clientY,panel:source.closest(".kv-sheet-arrange"),board:source.closest(".kv-board"),
       lane:source.closest(".kv-lane"),ghost:null,target:null};
     try{source.setPointerCapture(e.pointerId);}catch{} // Window listeners still receive an uncaptured mouse.
+    if(secondary){e.preventDefault();e.stopPropagation();}
   }
   function validSource(){
     if(drag.project!==App.P || surface.hidden)return false;
@@ -129,10 +131,9 @@
       const arrow=pointed?.closest(".kv-page-key");
       turnWhenHeld(arrow && !arrow.disabled?arrow:null);
     }
-    if(!drag.panel && pointed?.closest('[data-k="appendPiece"]:not(:disabled)')){target(list,drag.chain.length,"append");return;}
     if(!pointed || !list.contains(pointed)){target();return;}
     const strip=drag.panel?list:list.querySelector(".kv-chain-print");
-    const items=Array.from(strip.children);
+    const items=Array.from(drag.panel?strip.children:strip.querySelectorAll(":scope > i"));
     let tile=drag.panel?pointed.closest(".kv-piece,.kv-vacant"):pointed.closest(miniature);
     if(!tile){
       if(drag.panel)tile=items.find(item=>x<=item.getBoundingClientRect().right) || items.at(-1);
@@ -148,14 +149,28 @@
     }else if(items.length===32)target(items.at(-1),items.length,"after");
     else target(list,drag.chain.length,"append");
   }
+  function canPullOut(pointed,x,y){
+    if(!pointed || !surface.contains(pointed) || pointed.closest("[inert]") || drag.panel && !drag.panel.contains(pointed))return false;
+    // Returning a note to a pictured source is the reverse of stamping it.
+    if(drag.kind==="note")return !!pointed.closest(pads+',[data-k="track"]');
+    if(drag.kind!=="piece" || drag.zone.contains(pointed))return false;
+    // The score and banks accept a piece pulled off its strip. Crossing a
+    // transport, effect control or page arrow while carrying it cancels the drop.
+    const control=pointed.closest('button,summary,input,select,[role="slider"]');
+    if(control && !control.matches([cells,pads,'[data-k="track"]','[data-k="pattern"]','[data-k="addPiece"]','[data-k="removePiece"]'].join(",")))return false;
+    const r=drag.zone.getBoundingClientRect(),margin=14;
+    return x<r.left-margin || x>r.right+margin || y<r.top-margin || y>r.bottom+margin;
+  }
   function aim(x,y){
     const pointed=document.elementFromPoint(x,y);
     drag.pointerX=x;drag.pointerY=y;
     if(drag.music)aimSound(pointed);else aimPieces(pointed,x,y);
+    drag.remove=!drag.target && canPullOut(pointed,x,y);
+    drag.ghost.classList.toggle("kv-pull-out",drag.remove);
     drag.ghost.style.left=x+"px";drag.ghost.style.top=y+"px";
   }
   function move(e){
-    if(!drag || drag.id!==e.pointerId)return;
+    if(!drag || drag.id!==e.pointerId || drag.secondary)return;
     if(!validSource()){reset(true);return;}
     if(!drag.ghost){
       const distance=e.pointerType==="touch"?10:7;
@@ -163,12 +178,24 @@
     }
     e.preventDefault();aim(e.clientX,e.clientY);
   }
+  function remove(kind,row,col,index){
+    if(kind==="note")send("removeNote",row,col);
+    else App.KidsView.removePiece(index);
+  }
   function end(e){
     if(!drag || drag.id!==e.pointerId)return;
     if(!validSource()){reset(true);return;}
+    if(drag.secondary){
+      const {source,kind,row,col,sourceIndex}=drag;
+      const releasedOnSource=source.contains(document.elementFromPoint(e.clientX,e.clientY));
+      reset(true);e.preventDefault();e.stopPropagation();
+      if(releasedOnSource)remove(kind,row,col,sourceIndex);
+      return;
+    }
     if(!drag.ghost){reset();return;}
     aim(e.clientX,e.clientY);
-    const {kind,sourceIndex,row,col,target:to,index}=drag;reset(true);
+    const {kind,sourceIndex,row,col,target:to,index,remove:pullOut}=drag;reset(true);
+    if(pullOut){remove(kind,row,col,sourceIndex);return;}
     if(!to)return;
     if(kind==="pad"){
       if(to.matches(effect))App.KidsSound.dropPicture(row,e.clientX,e.clientY);
@@ -195,9 +222,12 @@
     }
     for(const b of surface.querySelectorAll('[data-k="pattern"]'))
       b.setAttribute("aria-description","Ťuknutím vybereš dílek. Přetažením do pořadí ho vložíš do písničky.");
-    surface.querySelector(preview)?.setAttribute("aria-description","Přetáhni obrázek na nové místo nebo ťukni pro otevření pořadí dílků.");
+    surface.querySelector(preview)?.setAttribute("aria-description","Dílek přesuneš tažením. Vytažením z pořadí nebo pravým kliknutím ho odebereš.");
     const options={capture:true,signal:events.signal};
     surface.addEventListener("pointerdown",start,options);
+    surface.addEventListener("contextmenu",e=>{
+      if(e.target.closest(cells+','+miniature+',[data-k="piece"]'))e.preventDefault();
+    },options);
     surface.addEventListener("click",click,options);
     window.addEventListener("pointermove",move,{...options,passive:false});
     window.addEventListener("pointerup",end,options);

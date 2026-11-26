@@ -53,13 +53,15 @@
     note("Studio","Clear or vary the rhythm of one sound group","RYTMUS","kids erase random smazat rytmus vymyslet");
     note("Studio","Drag a row picture to a beat or onto the effect pad","DRAG","kids animal instrument drag place hear pozice efekt ozvěna");
     note("Studio","Move a placed sound to an empty beat or another row","DRAG","kids note picture sticker sound move change time");
+    note("Studio","Remove a note or song piece and restore it with Zpět","RIGHT CLICK","kids control click odebrat notu dílek undo");
+    note("Studio","Drag notes back to the sounds or pieces out of the song strip","DRAG OUT","kids remove trash smazat odebrat");
     note("Studio","Accents and long notes","HOLD","kids note expression roll");
     note("Studio","Shape the selected sound group beside its score","DRAG","kids echo colour vibrato sound playground modulation XY ozvěna ostrost chvění");
     note("Studio","Record or erase a movement","NAHRÁT POHYB","kids gesture automation reverse smazat pohyb");
     note("Studio","Freeze the signal displays","SNOWFLAKE","kids waveform spectrum");
     note("Studio","Drag A–D onto the song strip or slide its pictures to reorder","PLUS / DRAG","kids arrange chain pořadí dílků");
     note("Studio","Drag a piece over a page arrow to turn the song page","DRAG + HOLD","kids arrangement page pieces");
-    note("Studio","Play one piece or the whole song","BESIDE PLAY","kids loop mode dílek píseň");
+    note("Studio","Choose one piece or the whole song beside Play","CLICK / ARROWS","kids loop playback menu keyboard dílek píseň Enter Escape");
     note("Studio","Save, open, delete or restore a song","PÍSNIČKY","kids shelf saved songs trash undo moje písničky smazat vrátit uložení");
     note("Studio","Open a shelf song in console","HOLD","kids import parent");
     note("Studio","Return through the lock","HOLD 2 SEC","kids exit parent");

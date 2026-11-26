@@ -14,9 +14,6 @@
     back:'<path d="M20 9 9 20l11 11M10 20h22"/>',
     expand:'<path d="M7 16V7h9m8 0h9v9m0 8v9h-9m-8 0H7v-9m3-14 6 6m14-6-6 6m6 14-6-6m-14 6 6-6"/>',
     play:'<path d="m13 7 18 13-18 13z" fill="currentColor"/>',stop:'<rect x="10" y="10" width="20" height="20" rx="4" fill="currentColor"/>',
-    echo:'<g transform="translate(0 0) scale(.80)">'+eighth+'</g><g transform="translate(16 10) scale(.56)" opacity=".72">'+eighth+'</g><g transform="translate(29 19) scale(.37)" opacity=".52">'+eighth+'</g>',
-    colour:'<g transform="translate(3 5) scale(.94)">'+eighth+'</g><path d="m25 4 2-3m3 9 5-3m-4 10 6-1m-7 8 5 2"/>',
-    motion:'<g transform="translate(9 3) rotate(7 12 20)">'+eighth+'</g><path d="M6 7q-5 4-3 10m4-6q-2 2-1 4m27 6q1 2-1 5m4-7q3 6-2 11"/>',
     arm:'<circle cx="20" cy="20" r="12" fill="#ec796d"/>',
     drag:'<path d="M6 16V7h9M6 7l8 8m7 6-3-11q-1-4 2-4t4 3l3 9 4-1 5 6-1 8-6 5-7-2-9-9q-2-3 0-5t5 0l4 4"/>',
     reverse:'<path d="m18 9-9 8 9 8m-8-8h14a8 8 0 0 1 0 16h-6"/>',
@@ -27,14 +24,14 @@
     repeat:'<path d="M4 18q3-8 6 1t7 0 7 0 5 0 6 0"/><path d="M4 27h6m3 0h4m4 0h2"/>'
   };
   const svg=(body,box="0 0 40 40")=>'<svg viewBox="'+box+'" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+body+'</svg>';
-  const face=(mark,label)=>svg(marks[mark])+'<span class="ks-key-name">'+label+'</span>';
+  const face=(mark,label)=>(rooms[mark]?App.KidsPictures.effect(mark):svg(marks[mark]))+'<span class="ks-key-name">'+label+'</span>';
   const key=(action,label,mark,extra="")=>'<button type="button" class="kv-button ks-key" data-sound="'+action+'" aria-label="'+label+'" '+extra+'>'+face(mark,label)+'</button>';
-  // Each landscape has motion cues at its edges. The flying puck and its path
-  // are drawn above this printed face, so they can move without repainting the illustration.
-  const scenery={
-    echo:'<g fill="#d0efe0"><circle cx="428" cy="48" r="25"/><path d="M0 147 69 92l32 26 59-58 70 73 76-34 96 47 57-45 41 24v55H0z"/></g><path d="M0 169q73-30 151 0t157 0 192-8v119H0z" fill="#65c7c2"/><g fill="none" stroke="#398d9c" stroke-width="3"><ellipse cx="98" cy="202" rx="42" ry="8"/><ellipse cx="98" cy="202" rx="24" ry="4"/><path d="M320 224q28 10 62 0m-240 25q31-9 66 0"/></g><path d="m75 199 7-10 16-6 18 16z" fill="#689294" stroke="#45666c" stroke-width="2"/>',
-    colour:'<path d="m0 14 58 21 28-33 36 12 19-14H0zm375-14 17 23 43-10 36 32 29 10V0z" fill="#e4a485"/><path d="m0 225 41-24 49 18 65-12 64 39 76-21 55 21 150-54v88H0z" fill="#e59e7c"/><path d="m44 217 10-35 14-12 9 40 10-22 8 23-20 9z" fill="#bf8ec0"/><g stroke="#c58173" fill="none" stroke-width="2"><path d="m188 178 52-98 55 99z" fill="#f8e0aa"/><path d="m240 80 13 75 42 24m-107-1 65-23L240 80"/></g><g fill="none" stroke-width="5"><path d="m0 139 215 5" stroke="#fff2ca"/><path d="m274 140 226-60" stroke="#e68a90"/><path d="m276 146 224-18" stroke="#f6ce72"/><path d="m280 151 220 28" stroke="#83c4b1"/></g>',
-    motion:'<circle cx="78" cy="46" r="23" fill="#f9da9d"/><path d="M0 192q60-48 122-3t130 1 112-24 136 15v99H0z" fill="#ad9ed5"/><g stroke="#8577a8" fill="none" stroke-width="3"><path d="M64 160q16-70 32-18t32 0 28 0 28 0"/><path d="M288 209q20-14 40 0t40 0 40 0"/></g><g fill="#f6d892"><path d="m369 38 3 8 9 3-9 3-3 9-3-9-9-3 9-3z"/><circle cx="404" cy="76" r="4"/><circle cx="339" cy="85" r="3"/></g>'
+  // Only the paper horizon stretches. The little scene sits on its lower edge
+  // and keeps its proportions on both the tall desk pad and the wider stage.
+  const backdrops={
+    echo:'<path d="M0 82 13 69l9 8 14-17 15 18 15-12 11 8 8-14 15 11v29H0Z" fill="#b4cfc0"/><path d="M0 89q16-5 35 0t35 0 30-1v12H0Z" fill="#90b6aa"/>',
+    colour:'<path d="M0 83q10-9 21-3t22-2l12 3 10-8 11 7 8-9 16 8v21H0Z" fill="#ecc4a1"/><path d="M0 91q18-6 34-1t31-1l11-4 10 3 14-4v16H0Z" fill="#dcab8a"/>',
+    motion:'<path d="M0 79q12-11 26 0t28-1 24 0 22-2v24H0Z" fill="#c9bbd9"/><path d="M0 88q11-4 22 0t23 0 24 0 18-1 13 0v13H0Z" fill="#afa4c5"/>'
   };
   // Each pair of pictures sits at the two ends of its own axis.
   const guideMarks={
@@ -42,11 +39,11 @@
       '<g transform="translate(11 1) scale(.72)">'+eighth+'</g>',
       '<g transform="translate(1 1) scale(.68)">'+eighth+'</g><g transform="translate(19 7) scale(.48)" opacity=".75">'+eighth+'</g><g transform="translate(31 12) scale(.33)" opacity=".6">'+eighth+'</g>',
       '<g transform="translate(13 3) scale(.68)">'+eighth+'</g>',
-      '<path d="M2 25V13Q21-8 40 13v12M7 25V15q14-15 28 0v10" fill="#e5be82"/><g transform="translate(14 10) scale(.45)">'+eighth+'</g>'
+      '<path d="m3 24 2-8 8-10 13-3 9 6 5 15Z" fill="#d9ac78"/><path d="M12 24q2-13 10-13 6 1 8 13Z" fill="#476775"/><g color="#fff4d5" transform="translate(16 13) scale(.34)">'+eighth+'</g>'
     ],
     colour:[
-      '<path d="M24 4a10 10 0 1 0 6 16c-12 2-16-9-6-16Z" fill="currentColor"/>',
-      '<circle cx="21" cy="14" r="5" fill="currentColor"/><path d="M21 2v3m0 18v3M9 14h3m18 0h3M12 5l3 3m12 12 3 3m0-18-3 3M15 20l-3 3"/>',
+      '<path d="M24 4a10 10 0 1 0 6 16c-12 2-16-9-6-16Z" fill="#a6a8dc"/>',
+      '<circle cx="21" cy="14" r="5.5" fill="#f4c65c"/><path d="M21 2v3m0 18v3M9 14h3m18 0h3M12 5l3 3m12 12 3 3m0-18-3 3M15 20l-3 3"/>',
       '<path d="M2 15q6-13 13-2t14 0q6-9 11-1"/>',
       '<path d="m2 18 5-14 3 17 6-12 5 15 3-21 6 16 3-12 7 7"/>'
     ],
@@ -232,7 +229,7 @@
     const cfg=config();root.style.setProperty("--room",cfg.colour);pad.dataset.room=mode;
     pad.setAttribute("aria-label",cfg.label+" pro celou sadu "+App.KidsView.partLabel(part)+", poslech: "+App.KidsView.rowLabel(part,row));
     if(scene.dataset.room!==mode){
-      scene.innerHTML='<svg viewBox="0 0 500 280" preserveAspectRatio="none" aria-hidden="true">'+scenery[mode]+'</svg>';
+      scene.innerHTML='<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">'+backdrops[mode]+'</svg>'+App.KidsPictures.effect(mode,true);
       controls.querySelector(".ks-axis-x").innerHTML=axis(mode,0,1);
       controls.querySelector(".ks-axis-y").innerHTML=axis(mode,3,2);
       const [left,right,down,up]=cfg.ends;

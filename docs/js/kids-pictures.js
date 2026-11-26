@@ -86,5 +86,52 @@
     path("M6 33h40l6 7H6Z",blue)+path("M9 32V17h31q5 0 11 13l-2 3Z",coral)+path("M13 20h8v8h-8Zm12 0h9v8h-9Zm13 0 6 1 4 7H38Z","#cce7e1")+
     ellipse(16,40,4,4,ink)+ellipse(42,40,4,4,ink)+path("m4 48 54-2")
   ];
-  App.KidsPictures={sound:id=>group(pictures[id]||""),cover:index=>group(covers[index]||"")};
+  // A wide view keeps the side profiles readable inside the tempo thumb.
+  const speeds=[
+    path("M3 30q8 0 14-9l14 2 5-8q2-4 6-1 5 2 4 7-1 7-10 10H6Z","#b8ca86")+
+    path("m38 16-1-7m7 7 2-7")+dot(37,8)+dot(46,8)+
+    ellipse(21,21,11,10,"#f1ae76")+path("M15 23q-2-7 5-8 7-1 7 5 0 5-5 5-4 0-4-4 0-2 3-2"),
+    path("m4 23 6 1 4-5 17 1 4-5q2-6 8-5 6 1 6 6 0 6-10 7l-7 6-3 3h-4l1-5-9-1-4 6H9l2-7Z","#98c981")+
+    path("M6 23C7 14 12 7 20 7c9 0 14 7 15 15l-2 2H8Z","#64a579")+
+    path("m11 13 7 2 7-3 5 2m-12 1-2 7m9-10 2 10","none",'stroke-width="1.6"')+
+    path("M7 23q12 3 27-1",ivory)+dot(44,14,1.4),
+    ellipse(8,23,4.2,4.4,ivory)+
+    path("M12 25q-2-8 4-13 7-5 14 0l3-2q-5-9-2-10 4-1 9 10l1-7q1-3 3-2 2 2 0 10 5 2 5 7-1 5-10 5l-5 6 6 2q2 2-1 3l-12-2-5 1-15-2 3-3Z",ivory)+
+    path("m32 4 5 7","none",'stroke="#da997e" stroke-width="2"')+path("M16 22q6-7 10 0 2 5-6 6")+dot(43,15,1.4),
+    path("m11 24-5 8 9-3 4-6Z",yellow)+path("m17 19-8 3-2-3 8-8 9-1m1 16-1 6-3 2-2-8",coral)+
+    path("M13 21Q24 4 46 3q-1 17-21 24l-9-2Z",ivory)+path("M35 5q2 6 7 7 4-5 4-9Z",coral)+
+    ellipse(30,15,4.1,4.1,blue)+path("m7 15-5 3m11 13-4 3","none",'stroke="#a37b40"')
+  ];
+  function tempo(index){
+    return '<svg viewBox="0 0 52 36" fill="none" stroke="'+ink+'" stroke-width="2.05" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">'+speeds[index]+'</svg>';
+  }
+  const effects={
+    echo:path("M3 35 8 19l8-10 13-4 10 5 6 13 2 12Z","#d9ac78")+
+      path("m8 20 8-2 4-8 9-4m10 6-6 3","none",'stroke="#97724f" stroke-width="1.8"')+
+      path("M13 35q1-14 9-18 5-4 10 0 6 6 7 18Z","#476775")+
+      path("M23 22q6 3 3 9","none",'stroke="'+ivory+'" stroke-width="2.7"')+
+      path("M34 19q8 5 4 14m6-17q10 7 5 20","none",'stroke="#395557" stroke-width="4.7"')+
+      path("M34 19q8 5 4 14m6-17q10 7 5 20","none",'stroke="#cde6db" stroke-width="1.8"'),
+    colour:path("M9 29 5 24l4-2-4-9 8 1 1-10 8 6 4-9 5 10 8-6-1 9 6-1-3 13-8 7-17 1Z","#cc825b")+
+      path("m13 15 3 4 3-7m3 11 4-8 3 4","none",'stroke="#84583f" stroke-width="2"')+
+      path("M30 17q5-4 10 0l8 6 7 2q-1 8-16 10-14 3-24-2l-4-4q13 0 19-12Z","#f5c99a")+
+      path("m19 34-1 3h6m10-3v3h5")+ellipse(54,25,2.6,2.3,ink,false)+dot(40,21,1.7),
+    motion:path("M12 33q14-4 27 0l-2 4H14Z","#89b7aa")+
+      path("M24 31q15-3 8-6l-14-2q-5-2 10-5l8-2","none",'stroke-width="3.2"')+
+      path("m21 17 5-5 10 4-3 5Z",yellow)+
+      ellipse(31,10,8.3,7.7,coral)+path("M27 8q1-3 4-3","none",'stroke="'+ivory+'" stroke-width="2"')+
+      path("M19 7q-3 2-4 7m0-11q-6 4-7 10m36-1q2 3 1 6m3-10q5 6 3 12","none",'stroke-width="2.2"')
+  };
+  const ground={
+    echo:ellipse(72,36,20,7,"#9bc8c1")+ellipse(72,36,12,3.5,"none")+path("m66 35 3-5 6-1 5 6Z","#abc3ac"),
+    colour:path("M64 37q2-6 8-6 7 0 10 7l-4 2H65Z","#cea383")+ellipse(86,40,4,2,"#d5ad8d")+
+      path("M9 38q-3-6-7-7 6 0 8 3 2-8 5-9 0 8-2 13Z","#aabd8b"),
+    motion:path("m8 37 45-3 10 4-50 3Z","#cfb38c")+path("m15 41 1 3 39-3v-2","#bc996e")+
+      path("m70 37-3-5m4 5 2-9 3 8 4-5m5 10h5","none",'stroke="#79877b"')
+  };
+  function effect(name,landscape=false){
+    const body=landscape?'<g stroke-width="1.4">'+ground[name]+'</g><g transform="translate(4 0)">'+effects[name]+'</g>':effects[name];
+    return '<svg class="kv-effect-picture" viewBox="'+(landscape?"0 0 96 48":"0 0 58 40")+'" fill="none" stroke="'+ink+'" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">'+body+'</svg>';
+  }
+  App.KidsPictures={sound:id=>group(pictures[id]||""),cover:index=>group(covers[index]||""),tempo,effect};
 })();

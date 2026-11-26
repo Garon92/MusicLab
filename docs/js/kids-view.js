@@ -26,7 +26,7 @@
     trash:'<path d="M7 11h26M16 10V6h8v4M10 13l2 21h16l2-21M16 17l1 12m7-12-1 12"/>',
     chain:'<rect x="2" y="8" width="11" height="11" rx="3"/><rect x="27" y="8" width="11" height="11" rx="3"/><rect x="15" y="25" width="11" height="11" rx="3"/><path d="M13 13h7c4 0 5 5 2 8l-2 4"/>',
     loop:'<path d="M9 13a12 12 0 0 1 22 5M31 27a12 12 0 0 1-22-5M31 9v9h-9M9 31v-9h8"/>',
-    song:'<path d="M6 27V12h27v15M14 12v15m10-15v15"/><g fill="currentColor"><circle cx="6" cy="28" r="3"/><circle cx="14" cy="28" r="3"/><circle cx="24" cy="28" r="3"/><circle cx="33" cy="28" r="3"/></g>',
+    song:'<g stroke-width="2.2"><path d="M2 9q9-3 18 1 9-4 18-1v23q-9-3-18 1-9-4-18-1Z" fill="#81bda7"/><path d="M4 6q8-2 16 3 8-5 16-3v22q-8-2-16 2-8-4-16-2Z" fill="#fff2c8"/><path d="M20 9v21M12 20v-7l4 1m11 6v-7l5-1v7"/><g fill="currentColor" stroke="none"><ellipse cx="10" cy="20" rx="2.6" ry="2.2"/><ellipse cx="25" cy="20" rx="2.6" ry="2.2"/><ellipse cx="30" cy="19" rx="2.6" ry="2.2"/></g></g>',
     lock:'<rect x="9" y="17" width="22" height="17" rx="2"/><path d="M14 17v-5a6 6 0 0 1 12 0v5M20 24v4"/>',
     back:'<path d="m23 8-12 12 12 12M12 20h22"/>',
     next:'<path d="m15 9 11 11-11 11"/>',
@@ -35,9 +35,6 @@
     minus:'<path d="M8 20h24"/>',
     newSong:'<path d="M8 31V8h16l6 6v5M23 8v7h7M27 22v12m-6-6h12"/><circle cx="13" cy="28" r="4" fill="currentColor"/><path d="M17 27V17"/>',
     wave:'<path d="M4 20h4l3-8 5 17 5-23 5 26 4-14 2 2h4"/>',
-    paw:'<path d="M6 28h7l5-7m8 6 4 4h6M13 26q-6-2-6-6c0-4 6-8 13-8s10 5 10 10l-6 5Z" fill="currentColor"/><circle cx="31" cy="18" r="5" fill="currentColor"/>',
-    hare:'<path d="m7 27 8-2m8 2 8 4h5M9 25c-4-3-1-10 6-12s9 1 12 4l4-3q6 0 6 6l-7 1-5 6Z" fill="currentColor"/><path d="m28 16-4-9 1-3 7 10m0-1 2-8"/>',
-    hand:'<path d="M12 23v-8q0-3 3-3t3 3v-5q0-3 3-3t3 3v5q1-4 4-3l1 6q4-2 5 2l-1 7-5 8H18L8 25q-2-5 2-5Z" fill="currentColor"/>',
     record:'<circle cx="20" cy="20" r="10" fill="currentColor"/>',
     sound:'<path d="M5 11q7-10 16-6m-13 9q4-6 11-5m-7 9q2-3 6-3m4 16-7-8q-2-3 0-4 2-1 4 1l2 2-4-10q-1-3 2-4 2 0 3 3l4 9 4-2 4 4 1 6-5 6Z" fill="none"/>',
     spark:'<path d="M20 3q1 14 15 17-14 2-15 17Q18 23 5 20 18 16 20 3Z" fill="currentColor"/>',
@@ -281,12 +278,12 @@
         const b=caption(button(track,"Místo "+(i+1)+", dílek "+letter(p),"piece",patternIcon(p),()=>{chainIndex=i;renderPanel();},"kv-piece"),letter(p));
         b.dataset.index=i;b.style.setProperty("--piece",colour[p]);pressed(b,chainIndex===i);
         chainSlots.push([i,b]);
-        b.setAttribute("aria-description","Přetažením dílek přesuneš. Můžeš ho také vybrat a posunout šipkami.");
+        b.setAttribute("aria-description","Dílek přesuneš tažením nebo šipkami. Vytažením z pořadí nebo pravým kliknutím ho odebereš.");
       }
       const next=button(tray,"Další dílky","nextPage",icon("next"),()=>{chainPage++;renderPanel();},"kv-page-key");next.disabled=(chainPage+1)*8>=chain.length;
       const edit=element("div","kv-chain-actions",inner);
       const left=button(edit,"Move piece earlier","moveLeft",icon("prev"),()=>movePiece(chainIndex,chainIndex-1));left.disabled=chainIndex<=0;
-      const del=button(edit,"Remove piece","removePiece",icon("minus"),()=>{const l=chain.slice();l.splice(chainIndex,1);chainIndex=Math.min(chainIndex,l.length-1);call("chain",l);});del.disabled=chainIndex<0;
+      const del=button(edit,"Remove piece","removePiece",icon("minus"),()=>removePiece(chainIndex));del.disabled=chainIndex<0;
       const right=button(edit,"Move piece later","moveRight",icon("next"),()=>movePiece(chainIndex,chainIndex+1));right.disabled=chainIndex<0||chainIndex>=chain.length-1;
       for(const [b,name] of [[left,"Posunout vlevo"],[del,"Odebrat dílek"],[right,"Posunout vpravo"]]){label(b,name);caption(b,name);}
       const library=element("div","kv-piece-bank",inner);
@@ -310,6 +307,14 @@
   function movePiece(from,to){
     const c=(model.chain||[]).slice();if(c[from]===undefined||to<0||to>=c.length||to===from)return;
     const [p]=c.splice(from,1);c.splice(to,0,p);chainIndex=to;chainPage=Math.floor(to/8);call("chain",c);
+  }
+  function removePiece(index){
+    const chain=model.chain.slice();
+    if(!Number.isInteger(index) || index<0 || index>=chain.length)return;
+    chain.splice(index,1);
+    if(chainIndex>index)chainIndex--;
+    else if(chainIndex===index)chainIndex=Math.min(index,chain.length-1);
+    call("chain",chain);
   }
   function insertPiece(pattern,at){
     const chain=model.chain.slice();
@@ -347,23 +352,50 @@
     return monitor;
   }
   function dismissTools(e){
-    const tools=mainButtons.tools;
-    if(!tools?.open || (e && tools.contains(e.target)))return;
-    tools.open=false;
+    const open=deck?.querySelector(".kv-header-menu[open]");
+    if(open&&!open.contains(e.target))open.open=false;
+  }
+  function headerMenu(parent,key,name,cls){
+    const details=element("details","kv-header-menu "+cls,parent);details.name="kids-header";
+    const trigger=element("summary","kv-button",details);trigger.dataset.k=key;label(trigger,name);
+    const tray=element("div","kv-menu-tray",details);tray.setAttribute("role","group");label(tray,name);
+    function close(){
+      details.open=false;trigger.focus({preventScroll:true});
+    }
+    details.addEventListener("focusout",e=>{if(e.relatedTarget&&!details.contains(e.relatedTarget))details.open=false;});
+    details.addEventListener("keydown",e=>{
+      if(e.key==="Escape"&&details.open){e.preventDefault();e.stopPropagation();close();return;}
+      if(e.code==="Space"){e.stopPropagation();return;}
+      if(e.key!=="ArrowDown"&&e.key!=="ArrowUp")return;
+      e.preventDefault();e.stopPropagation();details.open=true;
+      const choices=Array.from(tray.querySelectorAll("button:not(:disabled)")),i=choices.indexOf(e.target);
+      if(!choices.length)return;
+      const first=choices.find(b=>b.getAttribute("aria-pressed")==="true")||choices[e.key==="ArrowDown"?0:choices.length-1];
+      (i<0?first:choices[(i+(e.key==="ArrowDown"?1:-1)+choices.length)%choices.length]).focus({preventScroll:true});
+    });
+    return {trigger,tray,close};
+  }
+  function playbackMenu(parent){
+    const {trigger,tray,close}=headerMenu(parent,"song","Co přehrát","kv-play-menu");
+    mainButtons.song=trigger;trigger.classList.add("kv-play-scope");
+    mainButtons.scopeDisplay=element("span","kv-scope-choice",trigger);mainButtons.scopeDisplay.setAttribute("aria-hidden","true");
+    for(const [key,whole] of [["songPiece",false],["songAll",true]]){
+      const text=whole?"Celá písnička":"Dílek A";
+      const b=button(tray,text,key,whole?icon("song"):patternIcon(0),()=>{
+        close();if(!!model.song!==whole)call("song",whole);
+      },"kv-menu-choice");
+      caption(b,text);mainButtons[key]=b;
+    }
   }
   function rhythmTools(header){
-    const tools=element("details","kv-rhythm-tools",header);
-    mainButtons.tools=tools;
-    const trigger=element("summary","kv-button kv-rhythm-trigger",tools);
-    trigger.dataset.k="rhythmTools";trigger.innerHTML=icon("pads");caption(trigger,"Rytmus");label(trigger,"Upravit rytmus");
-    const tray=element("div","kv-rhythm-menu",tools);
+    const {trigger,tray,close}=headerMenu(header,"rhythmTools","Upravit rytmus","kv-rhythm-tools");
+    mainButtons.rhythm=trigger;trigger.classList.add("kv-rhythm-trigger");
+    trigger.innerHTML=icon("pads");caption(trigger,"Rytmus");
     mainButtons.editScope=element("strong","kv-edit-scope",tray);
-    const actions=element("div","kv-rhythm-actions",tray);
-    function act(k){tools.open=false;trigger.focus({preventScroll:true});call(k);}
-    armButton=caption(button(actions,"Zapsat ťukání do rytmu","arm",icon("record"),()=>act("arm"),"kv-arm"),"Zapsat ťukání");
-    caption(button(actions,"Vymyslet rytmus","random",icon("dice"),()=>act("random"),"kv-random"),"Vymyslet rytmus");
-    mainButtons.erase=caption(button(actions,"Smazat rytmus","erase",icon("erase"),()=>act("erase"),"kv-erase"),"Smazat rytmus");
-    tools.addEventListener("focusout",e=>{if(e.relatedTarget&&!tools.contains(e.relatedTarget))tools.open=false;});
+    function act(k){close();call(k);}
+    armButton=caption(button(tray,"Nahrát ťukání","arm",icon("record"),()=>act("arm"),"kv-arm"),"Nahrát ťukání");
+    caption(button(tray,"Vylosovat rytmus","random",icon("dice"),()=>act("random"),"kv-random"),"Vylosovat rytmus");
+    mainButtons.erase=caption(button(tray,"Smazat rytmus","erase",icon("erase"),()=>act("erase"),"kv-erase"),"Smazat rytmus");
   }
   function mount(container,dispatch){
     if(host)unmount();
@@ -373,11 +405,7 @@
     const transport=element("div","kv-transport",header);
     play=caption(button(transport,"Přehrát","play",icon("play"),()=>call("play"),"kv-play"),"Přehrát");
     mainButtons={};
-    const playScope=element("label","kv-button kv-play-scope",transport);
-    mainButtons.song=element("select","",playScope);mainButtons.song.dataset.k="song";label(mainButtons.song,"Co přehrát");
-    mainButtons.song.add(new Option("Dílek A","piece"));mainButtons.song.add(new Option("Celou píseň","song"));
-    mainButtons.song.onchange=()=>call("song",mainButtons.song.value==="song");
-    mainButtons.scopeDisplay=element("span","kv-scope-choice",playScope);mainButtons.scopeDisplay.setAttribute("aria-hidden","true");
+    playbackMenu(transport);
     const tempoBox=element("div","kv-tempo",transport);
     tempoBox.innerHTML='<div class="kv-tempo-track"><i></i><i></i><i></i><i></i></div><div class="kv-tempo-thumb"></div>';
     thumb=tempoBox.querySelector(".kv-tempo-thumb");
@@ -436,7 +464,6 @@
         b.liftNote=hold(b,530,()=>call("note",row,c),()=>call("expression",row,c));cells[row].push(b);
       }
     }
-    const hint=element("div","kv-empty-hint",board);hint.setAttribute("aria-hidden","true");hint.innerHTML=icon("hand");
     const effects=element("aside","kv-effects",main);effects.id="kids-inline-sound";label(effects,"Sound effects");
     const foot=element("footer","kv-bottom",deck);
     const bank=element("div","kv-patterns",foot);bank.setAttribute("role","group");label(bank,"Dílky písničky");element("strong","kv-foot-label",bank).textContent="Dílky písničky";patternButtons=[];
@@ -445,8 +472,13 @@
       b.dataset.index=i;b.style.setProperty("--piece",colour[i]);patternButtons.push(b);
     }
     const song=element("div","kv-song-strip",foot);
-    mainButtons.append=button(song,"Add selected pattern to the song","appendPiece",icon("plus"),()=>insertPiece(model.pattern,model.chain.length),"kv-append");
-    chainPreview=button(song,"Pořadí dílků","arrange",'<span class="kv-chain-name">Pořadí dílků</span><span class="kv-chain-print"></span>',e=>show("arrange",e.currentTarget),"kv-arrange");
+    chainPreview=element("div","kv-arrange",song);chainPreview.dataset.k="arrange";chainPreview.setAttribute("role","group");
+    const openArrange=()=>show("arrange",mainButtons.openArrange);
+    mainButtons.openArrange=button(chainPreview,"Otevřít pořadí dílků","openArrange",'<span class="kv-chain-name">Pořadí dílků</span>',openArrange,"kv-arrange-open");
+    const sequence=element("div","kv-sequence",chainPreview);
+    element("span","kv-chain-print",sequence).setAttribute("aria-hidden","true");
+    mainButtons.append=button(sequence,"Přidat dílek","appendSlot",icon("plus"),()=>insertPiece(model.pattern,model.chain.length),"kv-chain-add");
+    chainPreview.addEventListener("click",e=>{if(!e.target.closest("button"))openArrange();});
     modal=element("section","kv-sheet",host);modal.hidden=true;modal.setAttribute("role","region");
     toast=element("div","kv-flash",host);toast.setAttribute("role","status");
     host.addEventListener("keydown",keys);host.addEventListener("pointerdown",dismissTools,true);window.addEventListener("blur",stops);
@@ -454,7 +486,6 @@
   }
   function keys(e){
     if(!host?.contains(e.target))return;
-    if(e.key==="Escape"&&mainButtons.tools?.open){e.preventDefault();e.stopPropagation();dismissTools();mainButtons.tools.querySelector("summary").focus();return;}
     if(e.key==="Escape"&&pageKind){e.preventDefault();e.stopPropagation();closePanel();}
   }
   function render(state){
@@ -471,7 +502,11 @@
     const playText=state.playing?"Zastavit":"Přehrát";
     play.dataset.active=!!state.playing;setIcon(play,state.playing?"stop":"play");label(play,playText);caption(play,playText);pressed(play,state.playing);
     tempo.value=state.tempo??1;tempo.parentElement.style.setProperty("--tempo",tempo.value);
-    thumb.innerHTML=icon(+tempo.value>1?"hare":"paw");tempo.setAttribute("aria-valuetext",["Pomalu","Chůze","Rychle","Běh"][+tempo.value]);
+    if(thumb.dataset.speed!==tempo.value){
+      thumb.dataset.speed=tempo.value;thumb.innerHTML=App.KidsPictures.tempo(+tempo.value);
+      const name=["Šnek","Želva","Zajíc","Raketa"][+tempo.value],bpm=App.KidsMusic.tempos[+tempo.value];
+      tempo.setAttribute("aria-valuetext",name+", "+bpm+" úderů za minutu");
+    }
     const micText={pending:"Zrušit žádost",recording:"Ukončit nahrávání",saving:"Ukládám hlas"}[state.micState]||"Nahrát hlas";
     pressed(recordButton,state.micState==="recording");recordButton.classList.toggle("recording",state.micState==="recording");label(recordButton,micText);
     caption(recordButton,{pending:"Zrušit",recording:"Zastavit",saving:"Ukládám"}[state.micState]||"Nahrát hlas");recordButton.classList.toggle("has-voice",!!state.hasVoice);
@@ -479,17 +514,23 @@
     mainButtons.mic.disabled=state.micState==="saving";
     const scopeName=App.KidsView.partLabel(frameTrack)+" · dílek "+letter(state.pattern);
     if(mainButtons.editScope.textContent!==scopeName)mainButtons.editScope.textContent=scopeName;
-    const pieceName="Dílek "+letter(state.pattern),scopeKey=state.song?"song":"piece";
-    if(mainButtons.song.options[0].text!==pieceName)mainButtons.song.options[0].text=pieceName;
-    mainButtons.song.value=scopeKey;
+    const pieceName="Dílek "+letter(state.pattern),piece=mainButtons.songPiece;
+    if(piece.dataset.pattern!==String(state.pattern)){
+      piece.dataset.pattern=state.pattern;piece.style.setProperty("--piece",colour[state.pattern]);
+      piece.innerHTML=patternIcon(state.pattern);caption(piece,pieceName);label(piece,pieceName);
+    }
+    pressed(piece,!state.song);pressed(mainButtons.songAll,state.song);
+    mainButtons.songAll.disabled=!state.chain.length;
+    mainButtons.songAll.title=state.chain.length?"":"Nejdřív přidej dílek do písničky.";
     const display=mainButtons.scopeDisplay,mark=state.song?"song":String(state.pattern);
     if(display.dataset.mark!==mark){
       display.dataset.mark=mark;display.innerHTML=state.song?icon("song"):patternIcon(state.pattern);
-      element("span","",display).textContent=state.song?"Celou píseň":pieceName;
+      const current=state.song?"Písnička":pieceName;
+      element("span","",display).textContent=current;label(mainButtons.song,"Co přehrát · "+current);
     }
-    const armedText=state.armed?"Ukončit zápis":"Zapsat ťukání";
-    caption(armButton,armedText);label(armButton,armedText);const trigger=mainButtons.tools.querySelector("summary");
-    caption(trigger,state.armed?"Zapisuji":"Rytmus");label(trigger,state.armed?"Zapisuji ťukání":"Upravit rytmus");trigger.classList.toggle("armed",!!state.armed);
+    const armedText=state.armed?"Ukončit nahrávání":"Nahrát ťukání";
+    caption(armButton,armedText);label(armButton,armedText);const trigger=mainButtons.rhythm;
+    caption(trigger,state.armed?"Nahrávám":"Rytmus");label(trigger,state.armed?"Nahrávám ťukání":"Upravit rytmus");trigger.classList.toggle("armed",!!state.armed);
     mainButtons.erase.disabled=!state.partHasNotes?.[frameTrack];label(mainButtons.erase,"Smazat rytmus: "+scopeName);
     const elapsedSignal=state.feedback;if(elapsedSignal && elapsedSignal!==lastFeedback)flash(typeof elapsedSignal==="string"?elapsedSignal:elapsedSignal.type);
     lastFeedback=elapsedSignal;
@@ -511,19 +552,15 @@
     const chain=state.chain||[],chainKey=chain.join(",");
     if(chainPreview.dataset.chain!==chainKey){
       chainPreview.dataset.chain=chainKey;delete chainPreview.dataset.slot;
-      const previews=Math.min(32,chain.length+1); // Reserve one empty landing tile until the song is full.
+      const previews=Math.max(1,chain.length);
       chainPreview.style.setProperty("--piece-columns",previews>12?Math.ceil(previews/2):previews);
-      chainPreview.classList.toggle("long-chain",previews>12);chainPreview.classList.toggle("full-chain",chain.length===32);
+      chainPreview.classList.toggle("long-chain",previews>12);
       chainPreview.querySelector(".kv-chain-print").innerHTML=chain.map(i=>'<i style="--piece:'+colour[i]+'">'+patternIcon(i)+'</i>').join("");
       label(chainPreview,"Pořadí dílků: "+(chain.length?chain.map(letter).join(", "):"prázdné"));
     }
-    mainButtons.append.disabled=chain.length>=32;mainButtons.append.style.setProperty("--piece",colour[state.pattern]);
-    if(mainButtons.append.dataset.pattern!==String(state.pattern)){
-      mainButtons.append.dataset.pattern=state.pattern;
-      mainButtons.append.innerHTML=patternIcon(state.pattern)+'<i>'+icon("plus")+'</i>';
-      caption(mainButtons.append,"Přidat "+letter(state.pattern));label(mainButtons.append,"Přidat dílek "+letter(state.pattern)+" na konec písničky");
-    }
-    let empty=true;
+    if(chain.length===32 && document.activeElement===mainButtons.append)mainButtons.openArrange.focus({preventScroll:true});
+    mainButtons.append.hidden=chain.length===32;
+    label(mainButtons.append,"Přidat dílek "+letter(state.pattern)+" na konec písničky");
     for(let r=0;r<4;r++){
       const pad=pads[r],name=rowLabel(frameTrack,r),art=rowArt(frameTrack,r),rowInk=["#9bc5cf","#ecc37d","#c0aece","#b4cc98"][r];
       if(pad.dataset.part!==String(frameTrack)){
@@ -531,18 +568,20 @@
         label(pad,"Přehrát zvuk: "+name);
         for(const cell of cells[r])cell.querySelector(".kv-note-image").innerHTML=art;
       }
-      pad.classList.toggle("selected",r===(state.row??0));pad.parentElement.style.setProperty("--row-ink",rowInk);
+      const selected=r===(state.row??0);
+      pad.setAttribute("aria-current",String(selected));pad.parentElement.classList.toggle("kv-selected-row",selected);
+      pad.parentElement.style.setProperty("--row-ink",rowInk);
       for(let c=0;c<8;c++){
         const b=cells[r][c],v=state.grid?.[r]?.[c],expression=state.expression?.[r]?.[c]??(v?Number(v)-1:0);
         const stamp=frameTrack+":"+v;
         if(b.dataset.mark!==stamp){
           b.dataset.mark=stamp;pressed(b,!!v);b.dataset.expression=String(expression);
           label(b,name+", políčko "+(c+1)+(expression===1?", důraz":expression===2?", prodloužený zvuk":"")+(v?", odebrat":", přidat"));
+          if(v)b.setAttribute("aria-description","Tažením tón přesuneš. Přetažením k obrázkům zvuků nebo pravým kliknutím ho odebereš.");
+          else b.removeAttribute("aria-description");
         }
-        if(v)empty=false;
       }
     }
-    board.classList.toggle("waiting",!!state.playing&&empty);
     renderPanel();frame(lastFrame);
   }
   function frame(f={}){
@@ -580,5 +619,5 @@
     host=null;send=null;model=null;pageKind="";lastFocus=null;lastStep=-1;lastPlayPattern=-1;lastFeedback=null;lastFrame={};
     cells=[];partButtons=[];patternButtons=[];lights=[];chainSlots=[];pads=[];mainButtons={};
   }
-  App.KidsView={mount,render,frame,flash,unmount,movePiece,insertPiece,character,rowArt,rowName,partName:i=>parts[i],partColour:i=>colour[i],partLabel,rowLabel};
+  App.KidsView={mount,render,frame,flash,unmount,movePiece,insertPiece,removePiece,character,rowArt,rowName,partName:i=>parts[i],partColour:i=>colour[i],partLabel,rowLabel};
 })();
