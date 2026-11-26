@@ -241,15 +241,17 @@ async function run(browserName, url) {
     await confirmIfAsked(page, name);
     assert.deepEqual(await project(page), original);
     assert.deepEqual(errors, []);
-    for (const suite of ["workstation", "operations", "phrases", "automation", "performance", "audio-studio", "mix-rack", "material-midi", "capture-rules-finder", "conductor", "sampler-lab", "scenes-eq", "composition-lab", "rack-laboratory", "signal-workshop", "instrument-lab", "console-rules"]) {
+    for (const suite of ["workstation", "operations", "phrases", "automation", "performance", "audio-studio", "mix-rack", "material-midi", "capture-rules-finder", "conductor", "sampler-lab", "scenes-eq", "composition-lab", "rack-laboratory", "signal-workshop", "instrument-lab", "console-rules", "console-kit", "regressions"]) {
       await require("./" + suite + ".cjs")(page);
     }
     assert.deepEqual(errors, []);
-    console.log(browserName + " " + browser.version() + " — passed 6 viewports, input/undo, transport, tape, WAV/MIDI, JSON, recovery, batch operations, phrases, automation, patches, arrangement, live performance, audio studio, stems, library, MIDI devices, capture, conductor, granular and multisampling, transcription, scenes, EQ, command search, cycle capture, song curves, modular and wavetable synthesis, Scala, spectral editing, resampling, convolution, branched racks and signal measurement, console rules in every dialog");
+    console.log(browserName + " " + browser.version() + " — passed 6 viewports, input/undo, transport, tape, WAV/MIDI, JSON, recovery, batch operations, phrases, automation, patches, arrangement, live performance, audio studio, stems, library, MIDI devices, capture, conductor, granular and multisampling, transcription, scenes, EQ, command search, cycle capture, song curves, modular and wavetable synthesis, Scala, spectral editing, resampling, convolution, branched racks and signal measurement, console rules in every dialog, one control language for the console and its dialogs, regressions from review");
   } finally { await browser.close(); }
 }
 
 (async () => {
+  const old = require("./stamp.cjs").stale();
+  assert.deepEqual(old, [], "index.html serves stale versions of " + old.join(", ") + " · run npm run stamp");
   const requested = (process.env.MUSICLAB_BROWSERS || "chromium").split(",").map(s => s.trim());
   if (requested.some(s => !Object.hasOwn(browsers, s))) throw Error("Use chromium, firefox or webkit in MUSICLAB_BROWSERS");
   const server = await serve();

@@ -38,7 +38,7 @@ module.exports=async function scenesEq(reference) {
 
     await page.evaluate(()=>{App.P.sel.t=1;App.P.tracks[1].pan=.75;App.P.rack.strips[1].macros[0]=.8;App.commit();App.refresh();});
     await page.getByRole("button",{name:"ROUTING…"}).click();
-    await page.getByRole("button",{name:"Scenes…"}).click();d=page.getByRole("dialog",{name:"Setting scenes"});
+    await page.locator("dialog[open]").getByRole("button",{name:"Scenes…"}).click();d=page.getByRole("dialog",{name:"Setting scenes"});
     await d.getByLabel("Scene name").fill("Chorus");await d.getByRole("button",{name:"Save scene",exact:true}).click();
     await d.getByLabel("Morph length").selectOption("1");await d.getByLabel("Cue bar").fill("2");
     await d.getByRole("button",{name:"Add song cue"}).click();

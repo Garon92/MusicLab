@@ -18,8 +18,7 @@
       const toggle = panel.querySelector(".view-toggle");
       if (toggle) {
         toggle.setAttribute("aria-label", key === id ? "Return to full console" : "Expand " + views[key]);
-        toggle.title = toggle.getAttribute("aria-label");
-        toggle.textContent = key === id ? "FULL CONSOLE" : "⛶";
+        toggle.textContent = key === id ? "FULL CONSOLE" : "";
       }
     });
     requestAnimationFrame(() => { App.Mx.draw(); App.Ed.draw(); App.Dv.paint(); App.Sg.resize(); });
@@ -29,9 +28,8 @@
     const header = document.querySelector("#" + id + " > .hd");
     if (!header || header.querySelector(".view-toggle")) return;
     const active = id === focused, label = active ? "Return to full console" : "Expand " + views[id];
-    const button = btn(active ? "FULL CONSOLE" : "⛶", label + " · ESC = FULL CONSOLE", () => focus(focused === id ? "" : id), "view-toggle");
+    const button = btn(active ? "FULL CONSOLE" : "", label + " · ESC = FULL CONSOLE", () => focus(focused === id ? "" : id), "view-toggle");
     button.setAttribute("aria-label", label);
-    button.title = label;
     header.append(button);
   }
 
@@ -89,7 +87,18 @@
   // Keep a dialog's pages and its status strip in step with whatever its editor renders into it.
   function attend(node) {
     let queued = false;
-    const run = () => { queued = false; if (!node.isConnected) return; paginate(node); node.querySelectorAll("select[size]").forEach(reveal); App.UI.tip(); };
+    const run = () => {
+      queued = false;
+      if (!node.isConnected) return;
+      // The header belongs to the frame: an editor that replaces everything in its dialog gets it back, named by its heading.
+      if (node.head) {
+        if (node.head.parentNode !== node) node.prepend(node.head);
+        const name = node.querySelector("h2")?.textContent.trim();
+        if (name && node.head.firstChild.textContent !== name) node.head.firstChild.textContent = name;
+      }
+      for (const main of node.querySelectorAll(".confirm-action[data-tip]")) if (!/ENTER$/.test(main.dataset.tip)) main.dataset.tip += " · CTRL/CMD ENTER";
+      paginate(node); node.querySelectorAll("select[size]").forEach(reveal); App.UI.fields(node); App.UI.tip();
+    };
     const queue = () => { if (!queued) { queued = true; Promise.resolve().then(run); } };
     new MutationObserver(queue).observe(node, { childList: true, subtree: true });
     node._attend = run;
@@ -114,20 +123,52 @@
     reveal(list);
   }, { passive: false });
 
+  // Every dialog is framed the same way: its name on the left, the way out on the right.
+  function frame(node, title) {
+    const close = btn("×", "CLOSE · ESC", () => node.close(), "dlg-x");
+    close.setAttribute("aria-label", "Close");
+    close.tabIndex = -1; // Esc is the keyboard's way out; opening a dialog must not put the focus on its exit
+    node.head = h("header.dlg-hd", null, h("span.tg", { text: title }), h("span.sp"), close);
+    node.append(node.head);
+    // The action a dialog exists for has the thick frame. Enter runs it unless the focus is in a field or on another
+    // button, which have their own use for the key; with Ctrl or Cmd it runs from anywhere.
+    node.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.defaultPrevented || e.isComposing) return;
+      const main = node.querySelector(".confirm-action:not(:disabled)"), t = e.target;
+      if (!main || t.closest?.(".mn")) return;
+      if (!(e.ctrlKey || e.metaKey) && t.matches?.("input:not([type=checkbox]), textarea, select, button")) return;
+      e.preventDefault();
+      if (t !== main) t.blur?.(); // a field being typed in commits before the action reads it
+      main.click();
+    });
+    // Opening hands the focus to the first control of the editor, never to the exit.
+    const show = node.showModal.bind(node);
+    node.tabIndex = -1;
+    node.showModal = () => {
+      show();
+      if (document.activeElement !== close) return;
+      (node.querySelector(".dlg-body :is(button, select, input, textarea, canvas[tabindex]):not([disabled], [tabindex='-1'], [type=hidden])") || node).focus({ preventScroll: true });
+    };
+    return node;
+  }
+
   function begin(title) {
     if (dialog) dialog.close();
     App.UI.closeMenu();
     App.Ed.cancel();
     App.releaseAll();
     const last = document.activeElement;
-    const node = h("dialog.console-dialog", { "aria-label": title });
+    const node = frame(h("dialog.console-dialog", { "aria-label": title }), title);
     node.addEventListener("close", () => {
       node.remove();
       if (dialog === node) dialog = null;
       App.UI.tip();
       if (last?.isConnected && last !== document.body && !dialog) last.focus({ preventScroll: true });
     }, { once: true });
-    node.addEventListener("click", e => { if (e.target === node) node.close(); });
+    // Only a click that begins and ends on the backdrop closes: a drag out of a field must not throw the draft away.
+    let pressed = null;
+    node.addEventListener("pointerdown", e => { pressed = e.target; });
+    node.addEventListener("click", e => { if (e.target === node && pressed === node) node.close(); pressed = null; });
     document.body.append(node);
     dialog = node;
     attend(node);
@@ -160,5 +201,5 @@
       new MutationObserver(() => addToggle(id)).observe(document.getElementById(id), {childList:true});
     }
   }
-  App.Workspace = { init, focus, focused: () => focused, begin, decide, attend };
+  App.Workspace = { init, focus, focused: () => focused, begin, decide, attend, frame };
 })();

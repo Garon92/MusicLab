@@ -21,7 +21,7 @@
       el.innerHTML = "";
       for (const [k, t, tip] of [["out", "OUT", "ANALYSE THE MASTER OUTPUT"], ["trk", "TRACK", "ANALYSE THE SELECTED TRACK ALONE"], ["in", "INPUT", "ANALYSE MIC / LINE INPUT · ASKS FOR PERMISSION"]])
         srcB[k] = btn(t, tip, () => setMode(k));
-      monB = btn("MON", "MONITOR · HEAR THE INPUT THROUGH THE MASTER · USE HEADPHONES", () => { mon = !mon; App.E && App.E.monitor(mon && mode === "in"); sync(); });
+      monB = btn("MON", "MONITOR · HEAR THE INPUT THROUGH THE MASTER · USE HEADPHONES", () => { mon = !mon; App.E && App.E.monitor(mon && mode === "in"); sync(); }, "tog");
       holdB = btn("HOLD", "FREEZE ALL DISPLAYS", () => {
         hold = !hold;
         frozen = hold ? [cvS, cvF, cvG, cvP, cvM].map(canvas => {
@@ -31,7 +31,7 @@
           return copy;
         }) : null;
         sync();
-      });
+      }, "tog");
       const pane = (cls, tip) => { const c = h("canvas"), w = h("div.sp-p" + (cls ? "." + cls : ""), { tip }, c); return [w, c, c.getContext("2d")]; };
       let wS, wF, wG, wP, wM;
       [wS, cvS, xS] = pane("", "SCOPE · WAVEFORM OVER TIME · TRIGGERED SO A STEADY TONE STANDS STILL");

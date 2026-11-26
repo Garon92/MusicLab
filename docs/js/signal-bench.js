@@ -138,16 +138,16 @@
       if(s.reference)legend.append(h("span.ref",{text:"A · "+format(s.reference)+(compatible(s.result,s.reference)?"":" · match stimulus to overlay")}));
       plot(canvas,s.result,s.reference);
     }
-    dialog.append(h("div.dlg-body",null,h("div.rack-head",null,h("h2",{text:"Signal bench"}),btn("Close","Return to the console",()=>dialog.close())),form,
+    dialog.append(h("div.dlg-body",null,form,
       h("div.rack-row.bench-actions",null,run,reference,clear),canvas,legend,readout,
-      h("p.dlg-tip",{text:"OFFLINE · INSERT INPUT → OUTPUT ON L · EXTERNAL SIDECHAIN KEYS ARE SILENT"})));
+      h("p.dlg-tip",{text:"OFFLINE · INSERT INPUT › OUTPUT ON L · EXTERNAL SIDECHAIN KEYS ARE SILENT"})));
     dialog.showModal();refresh();
     canvas.onpointermove=e=>{
       if(!s.result)return;
       const rect=canvas.getBoundingClientRect(), fraction=App.clamp((e.clientX-rect.left-40)/(rect.width-56),0,1);
       const points=s.result.points, hz=19*(21000/19)**fraction;
       const p=s.result.mode==="tone"?points[Math.min(points.length-1,Math.floor(fraction*points.length))]:points.reduce((a,b)=>Math.abs(Math.log(a.hz/hz))<Math.abs(Math.log(b.hz/hz))?a:b);
-      canvas.title=p.hz.toFixed(1)+" Hz · "+p.db.toFixed(2)+" dB";
+      canvas.dataset.tip=p.hz.toFixed(1)+" Hz · "+p.db.toFixed(2)+" dB";App.UI.tip();
     };
     const observer=new ResizeObserver(()=>plot(canvas,s.result,s.reference));observer.observe(canvas);
     dialog.addEventListener("close",()=>observer.disconnect(),{once:true});

@@ -80,7 +80,7 @@
     const q = range();
     if (selected < q.start || selected > q.end) selected = -1;
     const mixed = curve?.points.some(p => p.shape && p.shape !== curve.mode);
-    target.textContent = nameOf(key) + " ▾"; modeButton.textContent = (mixed ? "Mixed" : curve?.mode || defaultMode) + " ▾";
+    target.textContent = nameOf(key); modeButton.textContent = mixed ? "Mixed" : curve?.mode || defaultMode;
     deleteButton.disabled = selected < 0;
     readout.textContent = selected >= 0 ? stepText(selected) + "  " + valueText(pt.v)
       : curve ? curve.points.length + (curve.points.length === 1 ? " POINT" : " POINTS") : "STATIC  " + valueText(curveBase(track(),key));
@@ -227,11 +227,11 @@
   function mount(el) {
     host = el;
     target = btn("", "CHOOSE THE TRACK PARAMETER TO AUTOMATE", () => {
-      UI.menu(target,App.automationKeys.filter(k=>k!=="cutoff" || track().kind!=="kit" || bank().cutoff).map(k => ({value:k,label:nameOf(k),on:k===key,key:bank()[k] ? "●" : ""})), k => {
+      UI.menu(target,App.automationKeys.filter(k=>k!=="cutoff" || track().kind!=="kit" || bank().cutoff).map(k => ({value:k,label:nameOf(k),on:k===key,key:bank()[k] ? "CURVE" : ""})), k => {
         key = k; selected = -1; sync();
       });
     });
-    target.setAttribute("aria-label","Automation target"); target.setAttribute("aria-haspopup","menu");
+    target.setAttribute("aria-label","Automation target"); target.setAttribute("aria-haspopup","menu"); target.classList.add("mnu");
     modeButton = btn("", "INTERPOLATION FOR THIS LANE · LINEAR GLIDES OR STEP HOLDS", () => {
       UI.menu(modeButton,["linear","step"].map(m => ({label:m,value:m,on:m === (lane()?.mode || defaultMode)})), m => {
         defaultMode = m;
@@ -242,8 +242,8 @@
         } else sync();
       });
     });
-    modeButton.setAttribute("aria-label","Curve interpolation");
-    const generate = btn("Shape ▾","GENERATE A CURVE ACROSS THE CLIP", () => generator(generate));
+    modeButton.setAttribute("aria-label","Curve interpolation"); modeButton.classList.add("mnu");
+    const generate = btn("Shape","GENERATE A CURVE ACROSS THE CLIP", () => generator(generate), "mnu");
     deleteButton = btn("Delete point","DELETE THE SELECTED POINT · BATCH EDIT › CLEAN UP CLEARS WHOLE CURVES", () => {
       if (selected >= 0) removePoint(selected);
     });
@@ -262,6 +262,7 @@
   function open() {
     if (active) return;
     active = true; host.classList.add("automation-mode"); host.append(panel); sync();
+    App.Ed.sync(); // the editor lights the tab of the tool that is open, whoever opened it
     graph.focus({preventScroll:true});
   }
   function close() {

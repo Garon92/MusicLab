@@ -533,7 +533,7 @@
     const count = (n, singular) => n + " " + singular + (n === 1 ? "" : "s");
     const mapping = [false, true].flatMap(kit => {
       const ch = [...new Set(file.parts.filter(p => (p.ch === 9) === kit).map(p => p.ch + 1))].sort((a, b) => a - b);
-      return ch.length ? ["Ch " + ch.join(", ") + " → " + (kit ? "kit" : "synth")] : [];
+      return ch.length ? ["Ch " + ch.join(", ") + " › " + (kit ? "kit" : "synth")] : [];
     });
     const summary = [count(parts.length, "track") + " · " + count(plan.covered, "bar") + " · " + count(seen.size, "pattern"),
       ...(mapping.length ? [mapping.join(" · ")] : []), ...warnings].join("\n");

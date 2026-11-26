@@ -58,7 +58,7 @@ module.exports = async function materialAndMidi(main) {
     await page.keyboard.press("Escape");await dialog.getByText("Controller learn cancelled.").waitFor();
     await dialog.getByRole("button",{name:"Learn selected target"}).click();
     await page.evaluate(()=>window.pulse([0xb2,19,60]));
-    await dialog.getByText(/CC 19 → BASS \/ Macro 2/).waitFor();
+    await dialog.getByText(/CC 19 › BASS \/ Macro 2/).waitFor();
     await dialog.getByRole("button",{name:"Pick control on console"}).click();
     await page.locator('#mx [data-midi-track="1"][data-midi-target="pan"]').click();
     await page.evaluate(()=>window.pulse([0xb2,20,64]));

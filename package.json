@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "test": "node tests/selftest.cjs"
+    "test": "node tests/selftest.cjs",
+    "stamp": "node tests/stamp.cjs"
   },
   "devDependencies": {
     "playwright": "1.62.1"

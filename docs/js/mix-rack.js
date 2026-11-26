@@ -92,9 +92,8 @@
   const section = (title,...content) => h("section.rack-section",null,h("h3",{text:title}),...content);
   function editor(title,build) {
     const dialog = App.Workspace.begin(title); dialog.classList.add("rack-dialog");
-    const body = h("div.dlg-body"), center = h("div.rack-content"), top = h("div.rack-head",null,
-      h("h2",{text:title}),btn("Close","Close this editor",() => dialog.close()));
-    body.append(top,center); dialog.append(body);
+    const body = h("div.dlg-body"), center = h("div.rack-content");
+    body.append(center); dialog.append(body);
     const draw = () => center.replaceChildren(...build(draw,dialog));
     draw(); dialog.showModal();
   }

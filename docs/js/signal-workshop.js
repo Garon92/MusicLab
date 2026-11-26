@@ -32,7 +32,6 @@
   function dialog(title){
     const dlg=App.Workspace.begin(title);dlg.classList.add("ast-dialog","sw-dialog");
     const body=h("div.dlg-body.ast-body"), status=h("output.ast-status",{role:"status"});
-    body.append(h("div.ast-head",null,h("h2",{text:title}),h("span.sp"),btn("Close","RETURN TO CONSOLE",()=>dlg.close())));
     dlg.append(body);dlg.showModal();return {dlg,body,status};
   }
   function field(label,node){
@@ -128,7 +127,7 @@
       if(!sampler && (P.audio.regions.length>=2048 || a>8192)){status.textContent="TIMELINE LIMIT REACHED";return;}
       const id=source.value,index=id==="master"?0:+id.slice(1), name=(source.selectedOptions[0].text+" PRINT").slice(0,40);
       busy=true;const controls=body.querySelectorAll("input,select,button:not(:first-child)");
-      for(const n of controls)if(n.textContent!=="Close")n.disabled=true;
+      for(const n of controls)n.disabled=true;
       status.textContent="RENDERING RANGE…";
       try{
         const buffer=await resample(P,{type:id==="master"?"master":id[0]==="g"?"group":"track",index,point:point.value,from:a,to:b,tail:z,returns:wet.checked});
@@ -211,7 +210,7 @@
       stop();busy=true;
       const request=++previewRequest,revision=change,check=()=>valid() && revision===change;
       const controls=body.querySelectorAll("select,input,button");
-      for(const n of controls)if(n.textContent!=="Close" && n.textContent!=="Stop")n.disabled=true;
+      for(const n of controls)if(n.textContent!=="Stop")n.disabled=true;
       status.textContent="PROCESSING SPECTRUM…";
       try{
         if(action!=="original" && !cache)cache=await App.AudioDSP.spectralEdit(source,take.offset,seconds,box,mode.value,db.valueAsNumber,check);

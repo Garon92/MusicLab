@@ -92,11 +92,19 @@
         inputs=[mid,side]; merger=own(ctx.createChannelMerger(2)); merger.connect(output);
       } else inputs = [source,source];
       const solo = inputs.some((_,i) => cfg.paths[i].solo);
+      // Branches are summed, so they must arrive together: each waits for the look-ahead of the compressors in the slowest one.
+      const lag = App.compLagFrames(ctx.sampleRate) / ctx.sampleRate;
+      const late = i => solo && !cfg.paths[i].solo ? 0 : cfg.paths[i].chain.filter(fx => fx.on && fx.type === "compress").length;
+      const worst = lag ? Math.max(0,...inputs.map((_,i) => late(i))) : 0;
       inputs.forEach((input,i) => {
         const path=cfg.paths[i];
         if (solo && !path.solo) return;
         let last=input;
         for (const fx of path.chain) if (fx.on) last=last.connect(own(makeEffect(fx)));
+        if (worst > late(i)) {
+          const wait=own(ctx.createDelay(1)); wait.delayTime.value=(worst-late(i))*lag;
+          last=last.connect(wait);
+        }
         const branch=level(10 ** (path.db/20) * (cfg.mode === "parallel" ? .5 : 1));
         last.connect(branch);
         if (merger) {

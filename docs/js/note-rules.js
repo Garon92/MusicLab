@@ -17,7 +17,7 @@
     if(!Number.isInteger(pi) || pi<0 || pi>=8 || !free(ti,pi))throw Error("Choose an empty clip on this track.");
     if(!notes.length || notes.length>4000)throw Error("A clip holds 1–4000 notes. Choose a shorter passage.");
     const P=App.P,T=P.tracks[ti],n=App.clamp(Math.ceil(steps),1,App.MAX_STEPS);
-    const blank=P.tracks.every((_,i)=>free(i,pi)) && !P.chain.includes(pi);
+    const blank=P.tracks.every((_,i)=>free(i,pi)) && !App.songPatterns(P).includes(pi);
     if(blank)P.pats[pi].bars=App.clamp(Math.ceil(n/App.spb(P)),1,App.maxBars(P));
     T.clips[pi]=notes.sort((a,b)=>a.s-b.s || a.n-b.n); T.automation[pi]=structuredClone(automation);
     P.performance.loops[ti][pi]=n===App.patSteps(P,pi)?0:n;
@@ -66,7 +66,7 @@
   function paint(){if(fillEl){fillEl.setAttribute("aria-pressed",String(pressed||keyHeld));fillEl.classList.toggle("on",pressed||keyHeld);}}
   function reset(){pressed=false;keyHeld=false;journal=new Map();paint();}
   function fillButton(){
-    const el=fillEl=btn("FILL","HOLD FOR CONDITIONAL NOTES · BACKSLASH",()=>{});
+    const el=fillEl=btn("FILL","HOLD = NOTES WITH THE FILL CONDITION PLAY · BACKSLASH KEY",()=>{},"tog");
     el.setAttribute("aria-pressed","false");el.dataset.conditionFill="1";
     el.onpointerdown=e=>{if(e.button!==0)return;pressed=true;el.setPointerCapture(e.pointerId);paint();};
     el.onlostpointercapture=el.onpointercancel=el.onpointerup=()=>{pressed=false;paint();};
@@ -151,7 +151,7 @@
     }
     body.append(h("h2",{text:"Note rules · "+P.tracks[t].name+" / "+App.PATS[p]}),h("div.tool-fields",null,field("Target",scope),field("Every N passes",every),field("Play on pass",phase),field("Fill",condition),apply),
       h("p.dlg-tip",{text:"HOLD FILL OR \\ WHILE PLAYING TO TRIGGER FILL NOTES"}),h("h3",{text:"Repeatable chance"}),h("div.tool-fields",null,field("Project seed",seed),btn("New seed","Choose another sequence of chance and arpeggio decisions",()=>setSeed(crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff))),
-      h("h3",{text:"Print a heard pass"}),h("div.tool-fields",null,field("Performance",passes),field("Empty clip",dest),print),status,h("div.dlg-buttons",null,btn("Close","Return to the console",()=>node.close())));
+      h("h3",{text:"Print a heard pass"}),h("div.tool-fields",null,field("Performance",passes),field("Empty clip",dest),print),status);
     node.append(body);update();node.showModal();const timer=setInterval(update,250);node.addEventListener("close",()=>clearInterval(timer),{once:true});
   }
   App.Rules={fields,random,pass,allow,step,hit,filling:()=>pressed||keyHeld,fillButton,open,reset,stop};

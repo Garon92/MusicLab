@@ -20,20 +20,20 @@ module.exports=async function performanceTools(main){
     await page.keyboard.down("a");await page.waitForTimeout(120);await page.keyboard.up("a");
     await page.waitForTimeout(60);await page.keyboard.down("d");await page.waitForTimeout(160);await page.keyboard.up("d");
     assert.deepEqual(await page.evaluate(()=>[!!App.recArm,App.Seq.playing,App.P.tracks[1].clips.flat().length]),[false,false,0]);
-    await button("CAPTURE").click();await dialog.getByText(/2 notes ·/).waitFor();await dialog.getByLabel("Capture destination").selectOption("4");
+    await button("CAPTURE…").click();await dialog.getByText(/2 notes ·/).waitFor();await dialog.getByLabel("Capture destination").selectOption("4");
     await dialog.getByRole("button",{name:"Audition"}).click();
     await dialog.getByRole("button",{name:"Create clip"}).click();
     const recovered=await page.evaluate(()=>structuredClone(App.P.tracks[1].clips[4]));
     assert.equal(recovered.length,2);assert.ok(recovered[1].n>recovered[0].n && recovered[1].s>=1);
     await button("UNDO").click();
-    await button("CAPTURE").click();await dialog.getByText(/2 notes ·/).waitFor();await page.keyboard.press("Escape");
+    await button("CAPTURE…").click();await dialog.getByText(/2 notes ·/).waitFor();await page.keyboard.press("Escape");
     await page.evaluate(()=>{
       App.select(1,0);const P=App.P;P.bpm=210;P.swing=20;P.performance.loops[1][0]=4;
       const notes=P.tracks[1].clips[0]=[60,61,62,63].map((n,s)=>({n,s,l:1,v:.7,p:1}));
       notes[3].p=.5;notes[3].r=3;
       App.commit();App.refresh();
     });
-    await button("RULES").click();await dialog.getByLabel("Repeat period").selectOption("2");
+    await button("RULES…").click();await dialog.getByLabel("Repeat period").selectOption("2");
     await dialog.getByLabel("Play on pass").selectOption("2");
     await dialog.getByRole("button",{name:"Apply rule"}).click();
     await dialog.getByLabel("Random seed").fill("734");await dialog.getByLabel("Random seed").press("Tab");
@@ -50,7 +50,7 @@ module.exports=async function performanceTools(main){
     });
     assert.deepEqual(decisions,[1,1,2,2,true,true]);
     await page.keyboard.down("Backslash");await page.evaluate(()=>App.Seq.play());await page.waitForTimeout(1250);await page.evaluate(()=>App.Seq.stop());await page.keyboard.up("Backslash");
-    await button("RULES").click();
+    await button("RULES…").click();
     const heard=dialog.getByLabel("Heard pass");
     await page.waitForFunction(()=>[...document.querySelectorAll('[aria-label="Heard pass"] option')].some(o=>o.textContent.startsWith("Pass 2 ")));
     const passValue=await heard.locator("option").filter({hasText:/^Pass 2 /}).getAttribute("value");
@@ -79,7 +79,7 @@ module.exports=async function performanceTools(main){
     await page.evaluate(()=>App.Seq.stop());await page.waitForTimeout(275);
     await page.evaluate(()=>App.Seq.play());await page.waitForFunction(()=>App.Seq.frame()?.step===1);
     const second=await playNote(67);
-    await page.evaluate(()=>App.Seq.stop());await button("CAPTURE").click();
+    await page.evaluate(()=>App.Seq.stop());await button("CAPTURE…").click();
     await dialog.getByLabel("Clip alignment").selectOption("first");await dialog.getByRole("button",{name:"Create clip"}).click();
     const capturedAt=await page.evaluate(()=>{const n=App.P.tracks[1].clips[App.P.sel.p][1];return n.s+(n.off||0);});
     assert.ok(Math.abs(capturedAt-(second-first)/.125)<.35,"Retrospective capture preserves elapsed time across a transport restart");
@@ -87,7 +87,7 @@ module.exports=async function performanceTools(main){
     for(const [step,pitch] of [[1,60],[7,62],[12,64]]){
       await page.waitForFunction(s=>App.Seq.frame()?.step===s,step);await playNote(pitch);
     }
-    await page.evaluate(()=>App.Seq.stop());await button("CAPTURE").click();
+    await page.evaluate(()=>App.Seq.stop());await button("CAPTURE…").click();
     await dialog.getByText(/3 notes ·/).waitFor();await dialog.getByLabel("Capture range").selectOption("1");
     await dialog.getByText(/3 notes ·/).waitFor();await dialog.getByRole("button",{name:"Create clip"}).click();
     assert.deepEqual(await page.evaluate(()=>App.P.tracks[1].clips[App.P.sel.p].map(n=>n.n)),[60,62,64]);

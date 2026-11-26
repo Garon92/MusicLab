@@ -94,7 +94,7 @@
     parts.push({from:b,to:offset,len:Infinity});return splice(points,parts);
   }
   const field=(label,ctl)=>h("label.arr-field",null,label,ctl);
-  const num=(name,value,min,max,step=1)=>h("input",{type:"number","aria-label":name,value,min,max,step});
+  const num=(name,value,min,max,step=1)=>h("input",{type:"number","aria-label":name,value,min,max,step,required:true});
   function editor(host,D,changed){
     host.classList.add("song-envelope-controls");
     let ti=D.sel.t,key="vol",picked=null,span=Math.min(maxTime,Math.max(App.spb(D)*4,App.Conductor.layout(D,D.chain).at(-1)?.end||0,end(D)));
@@ -140,7 +140,13 @@
       drag={id:e.pointerId,x:e.clientX,y:e.clientY};
     };
     canvas.oncontextmenu=e=>e.preventDefault();
-    canvas.onpointermove=e=>{if(!drag || e.pointerId!==drag.id || Math.abs(e.clientX-drag.x)+Math.abs(e.clientY-drag.y)<2)return;const p=points().find(p=>p.s===picked);if(p)put({...p,...coord(e)});};
+    canvas.onpointermove=e=>{
+      if(!drag || e.pointerId!==drag.id || Math.abs(e.clientX-drag.x)+Math.abs(e.clientY-drag.y)<2)return;
+      const ps=points(),i=ps.findIndex(p=>p.s===picked);if(i<0)return;
+      // A dragged point stops beside its neighbours instead of replacing them.
+      const at=coord(e);at.s=clamp(at.s,(ps[i-1]?.s ?? -1)+1,(ps[i+1]?.s ?? maxTime+1)-1);
+      put({...ps[i],...at});
+    };
     canvas.onlostpointercapture=()=>{drag=null;};
     canvas.onkeydown=e=>{
       if(e.key==="Delete" || e.key==="Backspace"){e.preventDefault();del();}

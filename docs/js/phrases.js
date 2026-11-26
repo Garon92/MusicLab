@@ -217,7 +217,7 @@
       target.textContent = active.scope === "clip" ? App.pad2(t+1)+" "+P.tracks[t].name+" / "+App.PATS[p] : "PATTERN "+App.PATS[p]+" / ALL TRACKS";
       try {
         const plan = makePlan(P,active), s = plan.stats;
-        const lines = [plan.currentBars+" → "+plan.bars+" bars   ·   "+s.before+" → "+s.after+" notes   ·   "+s.beforeCurves+" → "+s.curves+" automation lanes"];
+        const lines = [plan.currentBars+" › "+plan.bars+" bars   ·   "+s.before+" › "+s.after+" notes   ·   "+s.beforeCurves+" › "+s.curves+" automation lanes"];
         if (s.covered) lines.push(s.covered+" existing note onsets replaced in the target range.");
         if (s.collision) lines.push(s.collision+" same-pitch, same-step collisions resolved.");
         if (s.cut) lines.push("Notes crossing a range edge are cut there.");
@@ -241,12 +241,21 @@
     }
     function applyPlan() {
       if (P !== App.P || t !== P.sel.t || p !== P.sel.p) { dialog.close(); return; }
+      const chosen = read();
       let plan;
-      try { plan = makePlan(P,read()); } catch { updateOptions(); return; }
+      try { plan = makePlan(P,chosen); } catch { updateOptions(); return; }
       for (const row of plan.tracks) {
         const T = P.tracks[row.ti];
         T.clips[plan.p] = row.notes;
         T.automation[plan.p] = row.curves;
+        // The plan lays a clip out on the pattern's length. A clip that loops at a length of its own follows the edit:
+        // a stretch scales that loop, a new pattern length keeps it while it still fits, and any other edit puts the
+        // clip on the pattern, so what the preview counts is what the editor shows and the transport plays.
+        const loops = P.performance.loops[row.ti], own = loops[plan.p];
+        if (own) {
+          const next = chosen.op === "stretch" ? Math.max(1,Math.round(own * chosen.size / plan.currentBars)) : chosen.op === "resize" ? own : 0;
+          loops[plan.p] = next < plan.total ? next : 0;
+        }
       }
       P.pats[plan.p].bars = plan.bars;
       App.commit(); App.refresh(); dialog.close();

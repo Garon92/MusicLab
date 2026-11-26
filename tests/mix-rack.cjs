@@ -8,7 +8,7 @@ module.exports = async function mixRack(reference) {
   page.on("pageerror", e => errors.push(e.message));
   try {
     await page.goto(reference.url());
-    await page.getByRole("button",{name:"MOD…",exact:true}).click();
+    await page.getByRole("button",{name:"MODULATION…",exact:true}).click();
     let dlg = page.getByRole("dialog",{name:"Modulation matrix"});
     await dlg.getByLabel("Modulation track").selectOption("1");
     await dlg.getByLabel("Macro 1 name").fill("Napětí");

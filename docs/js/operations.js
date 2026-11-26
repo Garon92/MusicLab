@@ -116,7 +116,7 @@
     if (scope === "selection" || scope === "clip") return { tracks:[t], patterns:[p] };
     if (scope === "pattern") return { tracks:allIndices, patterns:[p] };
     if (scope === "track") return { tracks:[t], patterns:allIndices };
-    if (scope === "song") return { tracks:allIndices, patterns:[...new Set(P.chain)] };
+    if (scope === "song") return { tracks:allIndices, patterns:App.songPatterns(P) };
     if (scope === "custom") return { tracks:[...state.tracks].sort((a,b)=>a-b), patterns:[...state.patterns].sort((a,b)=>a-b) };
     return { tracks:allIndices, patterns:allIndices };
   }
@@ -159,6 +159,8 @@
         let patch;
         switch (id) {
           case "quantize": {
+            // A note past the clip's end is not heard. It stays where it is: the grid must not pull it into the clip.
+            if (n.s >= steps) continue;
             const end = boundary(n);
             const nearest = Math.min(Math.floor((end-1)/grid),Math.round((n.s+(n.off||0))/grid)) * grid;
             const s = Math.round(n.s + (nearest-n.s)*v.strength/100);
@@ -192,7 +194,7 @@
           const key = keys[0], prev = key === "r" ? n.r || 1 : n[key];
           const format = value => key === "n" ? App.noteName(value) : key === "s" ? "step " + (value+1) :
             key === "l" ? byCount(value,"step") : key === "r" ? byCount(value,"hit") : Math.round(value*100) + "%";
-          result.example = track.name + " / " + App.PATS[pi] + " · " + format(prev) + " → " + format(patch[key]);
+          result.example = track.name + " / " + App.PATS[pi] + " · " + format(prev) + " › " + format(patch[key]);
         }
         if (apply) for (const key of keys) {
           if (key === "off" && !patch.off) delete n.off;
@@ -253,7 +255,7 @@
           result.tracks++;
           if (!result.example) {
             const key = keys[0], def = App.DEF.trk[key];
-            result.example = tr.name + (def ? " · "+def.l+" "+App.fmt(def,tr[key])+" → "+App.fmt(def,patch[key]) : " · "+tr.kind.toUpperCase());
+            result.example = tr.name + (def ? " · "+def.l+" "+App.fmt(def,tr[key])+" › "+App.fmt(def,patch[key]) : " · "+tr.kind.toUpperCase());
           }
           if (apply) for (const k of keys) tr[k] = patch[k];
         }
@@ -337,7 +339,8 @@
         ["track","Current track · "+P.tracks[t].name+" / all patterns"],["custom","Choose tracks and patterns…"]];
       if (selection.size && (state.id !== "clear" || state.values.material === "notes"))
         arr.unshift(["selection","Selected notes · "+selection.size]);
-      if (P.chain.length) arr.push(["song","Song patterns · "+[...new Set(P.chain)].map(i=>App.PATS[i]).join(" ")]);
+      const played = App.songPatterns(P);
+      if (played.length) arr.push(["song","Song patterns · "+played.map(i=>App.PATS[i]).join(" ")]);
       arr.push(["all","All tracks and patterns"]);
       return arr;
     }
@@ -362,7 +365,7 @@
         });
         b.setAttribute("aria-pressed",String(selected.has(k)));
         b.setAttribute("aria-label",tip(k));
-        b.title = tip(k);
+        b.dataset.tip = tip(k);
         choices.append(b);
       }
       container.append(h("span",{text:title}),choices,all);

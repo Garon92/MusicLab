@@ -187,7 +187,7 @@
       if(length<.005 || raw.length<2 || raw.duration+first<c.when+.01) throw Error("RECORDING TOO SHORT");
       const buffer=crop(raw,c.when-first,c.end ? c.end-c.when : length);
       const name=(c.mode==="take" ? "TAKE" : c.mode==="loop" ? "LAYER" : "INPUT")+" "+(App.P.audio.regions.length+1);
-      const id=App.addBuffer(name,buffer);
+      const id=App.addBuffer(name,buffer,{floating:true});
       if(c.mode==="take") {
         const r=pool().find(x=>x.id===c.regionId);
         if (!r) throw Error("TAKE TARGET REMOVED");
@@ -421,7 +421,7 @@
     const old=document.activeElement, tag=old?.tagName, label=old?.getAttribute("aria-label") || old?.textContent;
     const body=h("div.dlg-body.ast-body"),r=find();
     const tabs=["timeline","looper"].map(v=>action(v==="timeline"?"Timeline":"Looper",v==="timeline"?"AUDIO REGIONS AND ALTERNATE TAKES":"RECORD AND OVERDUB LOOP LAYERS",()=>{if(capture)return;stopLoop();view=v;render();},!!capture,view===v?"on":""));
-    body.append(h("div.ast-head",null,h("h2",{text:"Audio studio"}),...tabs,h("span.sp"),action("Close","RETURN TO CONSOLE",()=>studio.close())));
+    body.append(h("div.ast-head",null,h("h2",{text:"Audio studio"}),...tabs,h("span.sp")));
     const zoomCtl=select("View",[[0,"FIT"],[2,"2 BARS"],[4,"4 BARS"],[8,"8 BARS"],[16,"16 BARS"],[32,"32 BARS"]],zoom,v=>{zoom=+v;viewportStart=zoom?Math.floor(cursor/(zoom*App.spb(App.P)))*zoom*App.spb(App.P):0;render();});
     body.append(h("div.ast-toolbar",null,select("Track",trackOptions(),track,v=>{track=+v;App.select(track,App.P.sel.p);selected="";render();}),
       number("Cursor · step",cursor,0,MAX,.001,v=>{if(loopClock)stopLoop();cursor=v;render();}),select("Snap",[[0,"FREE"],[1,"1/16"],[2,"1/8"],[4,"1/4"],[App.spb(App.P),"BAR"]],snap,v=>{snap=+v;render();}),zoomCtl,
@@ -467,7 +467,7 @@
     }
     body.append(h("output.ast-status",{role:"status",text:notice || (r ? r.name+" · "+r.len.toFixed(3)+" S · "+r.takes.length+" TAKE"+(r.takes.length===1?"":"S") : "DROP AUDIO ON A LANE · CLICK TO SET CURSOR · DRAG A REGION TO MOVE")}));
     if(capture)for(const el of body.querySelectorAll("input,select,button")){
-      if(el.textContent!=="Stop recording" && el.textContent!=="Close")el.disabled=true;
+      if(el.textContent!=="Stop recording")el.disabled=true;
     }
     studio.replaceChildren(body);
     const next=[...body.querySelectorAll("button,select,input")].find(el=>el.tagName===tag && !el.disabled && (el.getAttribute("aria-label") || el.textContent)===label);
@@ -527,8 +527,8 @@
     function renderSample() {
       if(!ready())return;
       const S=App.samples.get(d.id), original=App.samples.get(d.warpSource || d.id);
-      const body=h("div.dlg-body.ast-body"),close=action("Close","RETURN TO DEVICE",()=>dlg.close());
-      body.append(h("div.ast-head",null,h("h2",{text:"Sample editor"}),h("span.sp"),close));
+      const body=h("div.dlg-body.ast-body");
+      body.append(h("h2",{text:"Sample editor"}));
       if(!S || !original){body.append(h("output.ast-status",{text:"LOAD AUDIO IN THE SAMPLE MODULE TO EDIT IT"}));dlg.replaceChildren(body);return;}
       const edges=App.AudioDSP.sliceEdges(d),cv=h("canvas.ast-wave",{"aria-label":"Sample waveform with slice boundaries",role:"img"});
       const bounds=()=>[Math.min(d.st,d.en),Math.max(d.st,d.en)];
@@ -572,7 +572,7 @@
         try{
           const out=await App.AudioDSP.warp(original.buffer,from/to,spec.anchors,()=>ready() && d.id===oldId);
           if(!ready() || d.id!==oldId)return;
-          const newId=App.addBuffer(original.name.slice(0,32)+" WARP",out);
+          const newId=App.addBuffer(original.name.slice(0,32)+" WARP",out,{floating:true});
           update(()=>Object.assign(d,retimeMarkers(d,spec.anchors),{warpSource:sourceId,id:newId,warpSpec:spec}));
           text="STRETCH APPLIED · ORIGINAL RETAINED";
         }catch(e){text=e.message;}finally{busy=false;renderSample();}

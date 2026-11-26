@@ -135,7 +135,7 @@
     track.onchange=()=>{ti=+track.value;attach();};pick.onchange=()=>{band=+pick.value;sync();audition();};
     mode.onchange=match.onchange=audition;
     const play=btn("Play","Toggle transport to audition this track in the mix",()=>App.Seq.toggle());
-    body.append(h("div.rack-head",null,h("h2",{text:"Parametric EQ"}),btn("Close","Return to console",()=>dialog.close())),
+    body.append(
       h("div.rack-row",null,field("Channel",track),enable,play), cv,
       h("div.rack-row",null,field("Band",pick),read,bandOn),
       h("div.rack-row.eq-monitor",null,field("Monitor",mode),h("label",null,match," Level match A/B"),status),

@@ -111,14 +111,41 @@ module.exports = async function consoleRules(page) {
   await page.waitForFunction(() => document.querySelector("dialog[open]").dataset.st === "ADD A ROW TO THE LIST");
   await page.keyboard.press("Escape");
 
-  // Find shows one window of matches that follows the selection instead of scrolling.
+  // Find is the map of the console: every panel's tools on one screen, nothing scrolled, the selection moved by keys.
   await page.keyboard.press("Control+k");
   for (let i = 0; i < 13; i++) await page.keyboard.press("ArrowDown");
   const found = await page.evaluate(() => {
-    const list = document.querySelector("dialog.find-dialog .find-list"), selected = list.querySelector("[aria-selected=true]");
-    return { rows: list.children.length, id: selected?.id, count: document.querySelector(".find-count").textContent };
+    const dlg = document.querySelector("dialog.find-dialog"), map = dlg.querySelector(".find-map"), selected = map.querySelector("[aria-selected=true]");
+    const box = dlg.getBoundingClientRect(), rows = [...map.querySelectorAll(".find-option")];
+    return {
+      id: selected?.id, count: dlg.querySelector(".find-count").textContent, groups: [...map.querySelectorAll("h3")].map(e => e.textContent),
+      inside: rows.every(r => { const b = r.getBoundingClientRect(); return b.height > 0 && b.top >= box.top && b.bottom <= box.bottom - (parseFloat(getComputedStyle(dlg, "::after").height) || 0) + 1 && b.left >= box.left && b.right <= box.right; }),
+      cut: rows.flatMap(r => [...r.children]).filter(e => e.scrollWidth > e.clientWidth + 1).map(e => e.textContent), strip: dlg.dataset.st,
+    };
   });
-  assert.equal(found.rows, 10); assert.equal(found.id, "find-option-13"); assert.match(found.count, /^14 \/ \d+$/);
+  assert.equal(found.id, "find-option-13"); assert.match(found.count, /^14 \/ \d+$/);
+  assert.ok(found.inside, "every row of the map is on screen at 1100 × 620");
+  assert.deepEqual(found.cut, [], "no label of the map is cut off");
+  for (const group of ["Transport", "Clip matrix", "Song", "Edit", "Device", "Master", "Signal", "File", "Keys", "Gestures"]) assert.ok(found.groups.includes(group), group + " is on the map");
+  assert.match(found.strip, /ENTER = GO$/);
+  assert.deepEqual(await page.evaluate(audit), []);
+  // Sideways keys cross to the neighbouring column; typing narrows the map to what matches.
+  const before = found.id;
+  await page.keyboard.press("ArrowRight");
+  assert.notEqual(await page.evaluate(() => document.querySelector(".find-map [aria-selected=true]").id), before);
+  await page.keyboard.type("sidech");
+  assert.equal(await page.evaluate(() => document.querySelector(".find-map [aria-selected=true] strong").textContent), "Sidechain");
+  assert.deepEqual(await page.evaluate(audit), []);
+  // A query that matches nearly everything still fits: the weakest matches make room and are counted.
+  await page.getByRole("combobox", { name: "Search commands" }).fill("e");
+  const broad = await page.evaluate(() => {
+    const dlg = document.querySelector("dialog.find-dialog"), body = dlg.querySelector(".dlg-body"), box = dlg.getBoundingClientRect();
+    const strip = parseFloat(getComputedStyle(dlg, "::after").height) || 0;
+    return { fits: [...dlg.querySelectorAll(".find-option, .find-more")].every(r => r.getBoundingClientRect().bottom <= box.bottom - strip + 1),
+      rows: dlg.querySelectorAll(".find-option").length, note: dlg.querySelector(".find-map > .find-more")?.textContent || "" };
+  });
+  assert.ok(broad.fits && broad.rows > 30, "a broad query fits the smallest window: " + JSON.stringify(broad));
+  assert.match(broad.note, /weaker matches/);
   assert.deepEqual(await page.evaluate(audit), []);
   await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 1600, height: 900 });

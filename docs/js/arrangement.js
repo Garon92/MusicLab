@@ -10,10 +10,15 @@
   function preview(P,order) {
     const old=C().layout(P,P.chain), oldEnd=old.at(-1)?.end||0;
     const segs=[],slots=[];let cursor=0;
-    for(const entry of order){
+    // In a song the meter map ripples with the edit: an insert takes the meter of what follows it, so its length is
+    // whole bars of that meter however soon the old map changes after the insertion point. Without slots nothing
+    // ripples and the insert is measured along the map as it stands.
+    const ripples=P.chain.length>0;
+    const barAfter=i=>{const next=order.slice(i+1).find(e=>old[e.old]);return C().position(P,next ? old[next.old].from+(next.skip||0) : oldEnd).barSteps;};
+    for(const [i,entry] of order.entries()){
       const s=old[entry.old], from=s ? s.from+(entry.skip||0) : null;
-      const len=entry.len || (s ? s.end-s.from : entry.rest ? C().barsAfter(P,cursor,entry.bars||1)-cursor :
-        C().barsAfter(P,cursor,Math.min(P.pats[entry.p].bars,App.maxBars(P)))-cursor);
+      const bars=()=>entry.rest ? entry.bars||1 : Math.min(P.pats[entry.p].bars,App.maxBars(P));
+      const len=entry.len || (s ? s.end-s.from : ripples ? bars()*barAfter(i) : C().barsAfter(P,cursor,bars())-cursor);
       const override=entry.rest ? {rest:true,offset:0,steps:len} : entry.len || entry.skip ? {rest:!!s?.rest,offset:(s?.offset||0)+(entry.skip||0),steps:len} : s ? P.arrangement.slots?.[entry.old] : null;
       slots.push(override ? {...override} : null);
       segs.push({from,len,to:cursor,entry});cursor+=len;
@@ -59,10 +64,21 @@
         }
         const aligned=part.from!=null ? points(list,part) : [];
         result.set(row.at,row);
-        for(const p of aligned)result.set(p.at,p.at===row.at?{...row,...p}:p);
+        for(const p of aligned) {
+          if(p.at!==row.at){result.set(p.at,p);continue;}
+          // A point on a part's first step keeps its tempo and ramp; the tempo arriving there now comes from the new neighbour.
+          const {inBpm,...own}=p;result.set(p.at,{...row,...own});
+        }
       }
       const out=[...result.values()].sort((a,b)=>a.at-b.at);
-      return kind==="tempo" ? out : out.filter((e,i)=>!i || out[i-1].sig!==e.sig || Cn.position(old,split.find(p=>p.to===e.at)?.from||0).inside!==0);
+      // A row that only restates what is already in force is left out, the first one included:
+      // a point on step 0 would take the song's start away from the project's own BPM and signature.
+      if(kind==="tempo") {
+        const kept=[];
+        for(const e of out){const prev=kept.at(-1) || {bpm:P.bpm,ramp:false};if(e.ramp || prev.ramp || e.bpm!==prev.bpm)kept.push(e);}
+        return kept;
+      }
+      return out.filter((e,i)=>(i ? out[i-1].sig!==e.sig : e.sig!==P.sig) || Cn.position(old,split.find(p=>p.to===e.at)?.from||0).inside!==0);
     }
     const regions=[];
     for(const r of P.audio.regions) {
@@ -118,7 +134,7 @@
       for(let i=0;i<order.length;) {
         if(!(order[i].old>=s.first && order[i].old<s.first+s.count)){i++;continue;}
         const first=i++;
-        while(i<order.length && order[i].old>=s.first && order[i].old<s.first+s.count && (order[i].old>order[i-1].old || order[i].old===order[i-1].old && order[i].skip>order[i-1].skip))i++;
+        while(i<order.length && order[i].old>=s.first && order[i].old<s.first+s.count && (order[i].old>order[i-1].old || order[i].old===order[i-1].old && (order[i].skip||0)>(order[i-1].skip||0)))i++;
         sections.push({...s,first,count:i-first});
       }
     }

@@ -10,7 +10,7 @@
     const track = P().tracks[ti];
     if (track.kind === kind) return;
     App.releaseAll();
-    App.E?.panic();
+    App.E?.cutTrack(ti);
     track.kind = kind;
     App.commit();
     App.E?.syncTrack(ti);
@@ -49,11 +49,11 @@
       const el = $("top");
       el.innerHTML = "";
       nameEl = h("button.tc.nm", { type: "button", tip: "PROJECT NAME · CLICK TO RENAME", "aria-label": "Rename project" });
-      nameEl.onclick = () => UI.edit(nameEl, P().name, (s) => { P().name = s.toUpperCase().slice(0, 28); App.commit(); sync(); }, 28);
+      nameEl.onclick = (e) => UI.edit(nameEl, P().name, (s) => { P().name = s.toUpperCase().slice(0, 28); App.commit(); sync(); }, 28, e.detail === 0);
       playB = h("button.bt.ic", { html: ICON.play, tip: "PLAY / STOP · SPACE", type: "button" });
       playB.onclick = () => App.playToggle();
-      recB = btn("REC", "RECORD NOTES AND MAPPED CONTROLLERS INTO PLAYING CLIPS", () => { App.recArm = !App.recArm; sync(); }, "rec");
-      tapeB = btn("TAPE", "AUDIO RECORD · CAPTURES THE OUTPUT · STOP = TAKE", () => App.tape(), "rec");
+      recB = btn("REC", "RECORD NOTES AND MAPPED CONTROLLERS INTO PLAYING CLIPS", () => { App.recArm = !App.recArm; sync(); }, "rec.tog");
+      tapeB = btn("TAPE", "AUDIO RECORD · CAPTURES THE OUTPUT · STOP = TAKE", () => App.tape(), "rec.tog");
       posEl = h("div.tc.pos", { tip: "POSITION · PATTERN  BAR . BEAT . STEP" });
       const redraw = () => { App.Ed.sync(); App.Mx.sync(); };
       const tonal = { cls: "in", done: () => App.Dv.build() }; // note names (Eb or D#) follow key + scale everywhere
@@ -64,26 +64,27 @@
         UI.param(DEF.top.key, P, redraw, tonal),
         UI.param(DEF.top.scale, P, () => { redraw(); pms[3].paint(); }, tonal),
       ];
-      clickB = btn("CLICK", "METRONOME · NOT RECORDED", () => { P().click ^= 1; App.commit(); sync(); });
-      takeEl = h("div.tc.take", { tip: "LAST TAPE TAKE · CLICK = SAVE WAV · DRAG ONTO A TRACK OR PAD = USE AS SAMPLE" });
-      takeEl.onpointerdown = (e) => { if (e.button === 0) UI.drag(e, { type: "take", data: 0, label: "TAKE", click: () => App.saveTake() }); };
+      clickB = btn("CLICK", "METRONOME · NOT RECORDED", () => { P().click ^= 1; App.commit(); sync(); }, "tog");
+      takeEl = h("div.tc.take.dg", { tip: "LAST TAPE TAKE · CLICK = SAVE WAV · DRAG ONTO A TRACK OR PAD = USE AS SAMPLE · RIGHT-CLICK = MENU" });
+      takeEl.onpointerdown = (e) => { if (e.button === 0) UI.drag(e, { type: "take", data: 0, label: "TAKE", hint: "DROP ON A TRACK, A PAD OR THE SAMPLE VIEW = USE THE TAKE AS A SAMPLE", click: () => App.saveTake() }); };
+      takeEl.oncontextmenu = () => UI.menu(takeEl, [{ label: "Save WAV", value: "save", key: "24-BIT" }, { label: "Discard take", value: "drop" }], (v) => { if (v === "save") App.saveTake(); else { App.take = null; sync(); } });
       omL = h("i"); omR = h("i"); omT = h("span.omv", { text: "-INF" });
       om = h("div.tc.om", { tip: "OUTPUT PEAK dBFS · LEFT OVER RIGHT · RED = LIMITER IS HOLDING THE MIX DOWN, LOWER SOMETHING" }, h("span.l", { text: "OUT" }), h("span.omb", null, omL, omR), omT);
-      midiB = btn("MIDI", "MIDI DEVICES · CONTROLLER LEARN · CLOCK", () => App.midi());
-      const fileB = btn("FILE ▾", "OPEN, SAVE, IMPORT AND EXPORT", () =>
+      midiB = btn("MIDI…", "MIDI DEVICES · CONTROLLER LEARN · CLOCK", () => App.midi());
+      const fileB = btn("FILE", "OPEN, SAVE, IMPORT AND EXPORT · LIBRARY · TUNING · RESET", () =>
         UI.menu(fileB, [
-          { label: "Open project…", value: "open", key: ".JSON" }, { label: "Save project", value: "save", key: "⌘/CTRL S" },
+          { label: "Open project…", value: "open", key: ".JSON" }, { label: "Save project", value: "save", key: "CTRL/CMD S" },
           "-",
           { label: "Import MIDI…", value: "import-midi", key: ".MID" }, { label: "Export MIDI", value: "mid", key: ".MID" },
           { label: "Export audio", value: "wav", key: "24-BIT WAV" }, { label:"Export stems…", value:"stems", key:"WAV / ZIP" }, "-", {label:"Material library…",value:"library"}, "-",
           { label: "Project tuning…", value: "tuning", key:"SCALA" }, { label: "Reset project…", value: "new" }, { label: "Restore last reset…", value: "restore", disabled: !App.hasRecovery() }
-        ], v => v === "tuning" ? App.InstrumentLab.tuning() : App.file(v)));
+        ], v => v === "tuning" ? App.InstrumentLab.tuning() : App.file(v)), "mnu");
       fileB.setAttribute("aria-label", "File"); fileB.setAttribute("aria-haspopup", "menu");
       undoB = btn("UNDO", "UNDO · CTRL Z", () => App.doUndo(-1));
       redoB = btn("REDO", "REDO · CTRL SHIFT Z", () => App.doUndo(1));
       el.append(
         h("div.tc.logo", { text: "MUSICLAB" }), nameEl,
-        h("div.tc.grp", null, playB, recB, btn("CAPTURE","RETRIEVE RECENT KEYBOARD OR MIDI PLAYING",()=>App.Retrospective.open()), tapeB), posEl,
+        h("div.tc.grp", null, playB, recB, btn("CAPTURE…","RETRIEVE WHAT WAS JUST PLAYED ON THE KEYS OR MIDI · NO RECORDING NEEDED",()=>App.Retrospective.open()), tapeB), posEl,
         pms[0], h("div.tc", null, btn("TAP", "TAP TEMPO", tap)), pms[1], pms[2], pms[3], pms[4], h("div.tc", null, clickB),
         h("div.sp"), takeEl, om,
         h("div.tc.grp", null, midiB, undoB, redoB, fileB),
@@ -108,7 +109,8 @@
       takeEl.hidden = !App.take;
       if (App.take) takeEl.textContent = "TAKE " + mmss(App.take.duration);
       midiB.classList.toggle("on", App.midiN > 0);
-      midiB.textContent = App.midiN > 0 ? "MIDI " + App.midiN : "MIDI";
+      midiB.textContent = (App.midiN > 0 ? "MIDI " + App.midiN : "MIDI") + "…";
+      midiB.setAttribute("aria-label", App.midiN > 0 ? "MIDI " + App.midiN : "MIDI");
       pms.forEach((p) => p.paint());
       pos(App.Seq.pos);
     }
@@ -142,6 +144,7 @@
   /* ═════ MATRIX: tracks × patterns, mixer in the row header, song chain below ═════ */
   App.Mx = (() => {
     const heads = [], rows = [], cells = [], slots = [], lv = new Float32Array(8), shown = new Float32Array(8), mbuf = new Float32Array(512);
+    const barsDef = { k: "bars", l: "BARS", name: "PATTERN LENGTH IN BARS · NOTES PAST THE END ARE KEPT BUT NOT PLAYED", min: 1, max: 16, def: 1, int: 1, f: (v) => v + " BAR" };
     let contextEl, grid, cv, cx, ph, songEl, songB, lenEl, phOn = false, runPat = -1, runSlot = -1;
 
     function build() {
@@ -154,11 +157,17 @@
         ["M", "MUTE"], ["S", "SOLO"], ["LEVEL", "TRACK LEVEL · BAR BEHIND = LIVE SIGNAL"], ["PAN", "TRACK PAN"],
       ]) grid.append(h("div.mx-h", { text: t, tip }));
       for (let p = 0; p < 8; p++) {
-        const e = h("div.mx-p", { tip: "PATTERN " + PATS[p] + " · CLICK = SELECT · DRAG ONTO SONG = ADD · DRAG ONTO ANOTHER PATTERN = COPY" }, h("b", { text: PATS[p] }), h("i"));
+        // The length is a value like any other: drag, wheel or type it. Shown capped to what the signature allows.
+        const len = { get bars() { return Math.min(P().pats[p].bars, App.maxBars(P())); }, set bars(v) { P().pats[p].bars = v; } };
+        const bars = UI.param(barsDef, () => len, () => { App.Ed.sync(); sync(); }, { cls: "c" });
+        const e = h("div.mx-p.dg", { tip: "PATTERN " + PATS[p] + " · CLICK = SELECT · DRAG ONTO THE SONG ROW = ADD · DRAG ONTO ANOTHER PATTERN = COPY · RIGHT-CLICK = MENU" }, h("b", { text: PATS[p] }), bars);
         e.onpointerdown = (ev) => {
-          if (ev.button === 0) UI.drag(ev, { type: "pat", data: p, label: "PATTERN " + PATS[p], click: () => App.select(P().sel.t, p) });
+          if (ev.button !== 0 || ev.target.closest(".pm")) return;
+          UI.drag(ev, { type: "pat", data: p, label: "PATTERN " + PATS[p], hint: "DROP ON THE SONG ROW = ADD TO THE SONG · ON ANOTHER PATTERN = COPY EVERY TRACK", click: () => App.select(P().sel.t, p) });
         };
+        e.oncontextmenu = (ev) => { if (!ev.target.closest(".pm")) patMenu(e, p); };
         UI.drop(e, { pat: (src) => App.copyPattern(src, p), material:data=>App.Library.drop(data,{p}) });
+        e.bars = bars;
         heads.push(e);
         grid.append(e);
       }
@@ -166,26 +175,40 @@
         const T = () => P().tracks[t];
         const push = () => { App.E && App.E.syncTrack(t); App.touch(); };
         const drops = { file: (f) => App.dropFiles(f, { ti: t }), take: () => App.dropTake({ ti: t }) };
-        const nm = h("div.mx-n", { tip: "TRACK " + (t + 1) + " · CLICK = SELECT · DOUBLE-CLICK = RENAME · DROP AUDIO = LOAD" }, h("i", { text: pad2(t + 1) }), h("span"));
+        const nm = h("div.mx-n.dg", { tip: "TRACK " + (t + 1) + " · CLICK = SELECT · DOUBLE-CLICK = RENAME · DRAG ONTO ANOTHER TRACK = COPY THE DEVICE · DROP AUDIO = LOAD · RIGHT-CLICK = MENU" }, h("i", { text: pad2(t + 1) }), h("span"));
         const rename = () => UI.edit(nm, T().name, (s) => { T().name = s.toUpperCase().slice(0, 10); App.commit(); sync(); App.Dv.build(); App.Ed.sync(); }, 10);
-        nm.onclick = () => App.select(t);
+        nm.onpointerdown = (ev) => {
+          if (ev.button === 0) UI.drag(ev, { type: "track", data: t, label: "DEVICE " + pad2(t + 1) + " " + T().name, hint: "DROP ON ANOTHER TRACK = COPY THIS INSTRUMENT THERE · NOTES AND MIXER STAY", click: () => App.select(t) });
+        };
         nm.ondblclick = rename;
-        UI.drop(nm, {...drops,material:data=>App.Library.drop(data,{ti:t})});
+        nm.oncontextmenu = () => trackMenu(nm, t, rename);
+        UI.drop(nm, {...drops, track: (src) => App.copyDevice(src, t), material:data=>App.Library.drop(data,{ti:t})});
         const kd = h("div.mx-k", {tip:"INSTRUMENT TYPE · CHANGE IN DEVICE"});
         kd.onclick = () => App.select(t);
-        const mB = h("button.mx-b.m", { text: "M", tip: "MUTE", type: "button" }), sB = h("button.mx-b.s", { text: "S", tip: "SOLO", type: "button" });
-        mB.onclick = () => { T().mute ^= 1; App.commit(); App.E && App.E.syncAll(); sync(); };
-        sB.onclick = () => { T().solo ^= 1; App.commit(); App.E && App.E.syncAll(); sync(); };
+        const mB = h("button.mx-b.m", { text: "M", tip: "MUTE · ALT-CLICK = MUTE ALL THE OTHERS, AGAIN = NONE", type: "button" }), sB = h("button.mx-b.s", { text: "S", tip: "SOLO · ALT-CLICK = SOLO ONLY THIS ONE, AGAIN = NONE", type: "button" });
+        // ALT makes the switch exclusive; a second ALT-click on the same row clears the whole column.
+        const flip = (key, only) => (ev) => {
+          const all = P().tracks;
+          if (!ev.altKey) all[t][key] ^= 1;
+          else {
+            const alone = all.every((x, i) => !!x[key] === (only ? i === t : i !== t));
+            all.forEach((x, i) => (x[key] = alone ? 0 : +(only ? i === t : i !== t)));
+          }
+          App.commit(); App.E && App.E.syncAll(); sync();
+        };
+        mB.onclick = flip("mute", false);
+        sB.onclick = flip("solo", true);
         const vol = UI.param(DEF.trk.vol, T, push, { cls: "c", meter: true }), pan = UI.param(DEF.trk.pan, T, push, { cls: "c" });
         grid.append(nm, kd, mB, sB, vol, pan);
         const row = { nm, kd, mB, sB, vol, pan, cl: [] };
         for (let p = 0; p < 8; p++) {
-          const c = h("div.cl", { tip: "CLIP " + pad2(t + 1) + "/" + PATS[p] + " · CLICK = EDIT · DRAG = COPY TO ANOTHER CELL" });
+          const c = h("div.cl", { tip: "CLIP " + pad2(t + 1) + "/" + PATS[p] + " · CLICK = EDIT · DRAG = COPY TO ANOTHER CELL · RIGHT-CLICK = MENU" });
           c.onpointerdown = (ev) => {
             if (ev.button !== 0) return;
-            if (T().clips[p].length || Object.keys(T().automation[p]).length) UI.drag(ev, { type: "clip", data: { t, p }, label: "CLIP " + pad2(t + 1) + "/" + PATS[p], click: () => App.select(t, p) });
+            if (App.filled(t, p)) UI.drag(ev, { type: "clip", data: { t, p }, label: "CLIP " + pad2(t + 1) + "/" + PATS[p], hint: "DROP ON A CELL = COPY · ON A FILLED CELL = CHOOSE HOW TO COMBINE", click: () => App.select(t, p) });
             else App.select(t, p);
           };
+          c.oncontextmenu = () => clipMenu(c, t, p);
           UI.drop(c, { clip: (src) => App.copyClip(src, { t, p }), ...drops, material:data=>App.Library.drop(data,{ti:t,p}) });
           row.cl.push(c); cells.push(c);
           grid.append(c);
@@ -198,11 +221,13 @@
 
       songB = btn("SONG", "SONG MODE · ON = PLAY THE CHAIN · OFF = LOOP THE SELECTED PATTERN", () => {
         if (!P().chain.length) { App.Song.open(); return; }
-        P().song ^= 1;
+        const live = P().performance.source !== "arrangement";
+        if (live) { P().performance.source = "arrangement"; P().song = 1; UI.msg("TRANSPORT FOLLOWS THE SONG AGAIN · LIVE… SWITCHES TO LAUNCHED CLIPS"); }
+        else P().song ^= 1;
         App.commit();
         if (App.Seq.playing) App.Seq.play();
         sync(); App.Top.sync();
-      }, "sgb");
+      }, "sgb.tog");
       const arrange = btn("ARRANGE…", "EDIT SONG ORDER, REPEAT SECTIONS OR MAKE AN INDEPENDENT VARIATION", () => App.Song.open());
       songEl = h("div.mx-s", null, songB, arrange, btn("CHORDS…","SONG CHORD TRACK", () => App.Harmony.open()), btn("AUDIO…","AUDIO TIMELINE, TAKES AND LOOPER", () => App.AudioStudio.open()));
       for (let i = 0; i < 32; i++) {
@@ -211,8 +236,10 @@
           const ch = P().chain;
           if (ev.button !== 0) return;
           if (i >= ch.length) return;
-          UI.drag(ev, { type: "song", data: i, label: "SLOT " + (i + 1) + " · " + PATS[ch[i]], click: () => { App.Seq.startAt(i); App.select(P().sel.t, ch[i]); sync(); } });
+          const rest = !!P().arrangement?.slots?.[i]?.rest; // empty bars: stored as pattern A, but they are no pattern
+          UI.drag(ev, { type: "song", data: i, label: "SLOT " + (i + 1) + " · " + (rest ? "EMPTY BARS" : PATS[ch[i]]), hint: "DROP ON ANOTHER SLOT = MOVE IT THERE", click: () => { App.Seq.startAt(i); if (!rest) App.select(P().sel.t, ch[i]); sync(); } });
         };
+        s.oncontextmenu = () => { if (i < P().chain.length) slotMenu(s, i); };
         UI.drop(s, { pat: (p) => App.Song.insert(i, p), song: (j) => App.Song.move(j, i) });
         slots.push(s);
         songEl.append(s);
@@ -225,13 +252,66 @@
       el.append(h("div.hd.matrix-head", null, h("span.tg", {text:"CLIP MATRIX"}), contextEl, h("span.sp"), btn("LIVE…","LAUNCH CLIPS AND RECORD A PERFORMANCE",() => App.Live.open()), process, phrase), grid, songEl);
     }
 
+    /* ── every object answers a right-click with the things that can be done to it ── */
+    const pick = (el, items, run, label) => UI.menu(el, items, (v) => run[v] && run[v](), { label });
+    const clipMenu = (el, t, p) => {
+      const has = App.filled(t, p);
+      App.select(t, p);
+      pick(el, [
+        { label: "Duplicate to next free cell", value: "dup", disabled: !has },
+        { label: "Clear", value: "clear", disabled: !has },
+        "-",
+        { label: "Length, repeat, stretch…", value: "phrase" },
+        { label: "Batch edit…", value: "batch" },
+        { label: "Save to library…", value: "lib", disabled: !has },
+      ], { dup: () => App.duplicateClip(t, p), clear: () => App.clearClip(t, p), phrase: () => App.Phrases.open("clip"), batch: () => App.Operations.open(), lib: () => App.Library.open() },
+      "Clip " + pad2(t + 1) + "/" + PATS[p]);
+    };
+    const patMenu = (el, p) => {
+      const has = P().tracks.some((_, t) => App.filled(t, p));
+      App.select(P().sel.t, p);
+      pick(el, [
+        { label: "Add to song", value: "song", disabled: P().chain.length >= 32 },
+        { label: "Duplicate to next free pattern", value: "dup", disabled: !has },
+        { label: "Clear all tracks", value: "clear", disabled: !has },
+        "-",
+        { label: "Length, repeat, stretch…", value: "phrase" },
+        { label: "Save to library…", value: "lib", disabled: !has },
+      ], { song: () => App.Song.insert(P().chain.length, p), dup: () => App.duplicatePattern(p), clear: () => App.clearPattern(p), phrase: () => App.Phrases.open("pattern"), lib: () => App.Library.open() },
+      "Pattern " + PATS[p]);
+    };
+    const trackMenu = (el, t, rename) => {
+      const T = P().tracks[t];
+      App.select(t);
+      pick(el, [
+        { label: "Rename", value: "rename" },
+        "-",
+        ...Object.entries(instruments).map(([k, name]) => ({ label: name, value: k, on: T.kind === k, key: "DEVICE" })),
+        "-",
+        { label: "Patch…", value: "patch" }, { label: "Modulation…", value: "mod" }, { label: "Routing…", value: "mix" }, { label: "Parametric EQ…", value: "eq" },
+        "-",
+        { label: "Clear all clips", value: "clear", disabled: !T.clips.some((_, k) => App.filled(t, k)) },
+      ], { rename, syn: () => changeKind(t, "syn"), kit: () => changeKind(t, "kit"), smp: () => changeKind(t, "smp"), patch: () => App.Patches.open(), mod: () => App.Rack.modulate(),
+        mix: () => App.Rack.mixer(t), eq: () => App.ParametricEQ.open(t), clear: () => App.clearTrack(t) },
+      "Track " + pad2(t + 1) + " " + T.name);
+    };
+    const slotMenu = (el, i) => {
+      const pat = P().chain[i], rest = !!P().arrangement?.slots?.[i]?.rest;
+      pick(el, [
+        { label: "Start here", value: "start" }, { label: rest ? "Empty bars" : "Edit pattern " + PATS[pat], value: "edit", disabled: rest }, { label: "Remove from song", value: "remove" },
+        "-", { label: "Arrange…", value: "arr" },
+      ], { start: () => { App.Seq.startAt(i); sync(); }, edit: () => App.select(P().sel.t, pat), remove: () => App.Song.remove(i), arr: () => App.Song.open() },
+      "Song slot " + pad2(i + 1));
+    };
+
     function sync() {
-      const p = P(), s = p.sel, mb = App.maxBars(p), any = p.tracks.some((x) => x.solo), cue = App.Seq.queued();
+      const p = P(), s = p.sel, any = p.tracks.some((x) => x.solo), cue = App.Seq.queued();
+      barsDef.max = App.maxBars(p);
       contextEl.textContent = p.tracks[s.t].name + " / " + PATS[s.p];
       heads.forEach((e, k) => {
         e.classList.toggle("sel", k === s.p);
         e.classList.toggle("cue", cue === k);
-        e.lastChild.textContent = Math.min(p.pats[k].bars, mb) + " BAR";
+        e.bars.paint();
       });
       rows.forEach((r, t) => {
         const T = p.tracks[t], on = t === s.t;
@@ -244,16 +324,20 @@
         r.sB.setAttribute("aria-label", "Solo " + T.name); r.sB.setAttribute("aria-pressed", String(!!T.solo));
         r.mB.classList.toggle("on", !!T.mute); r.sB.classList.toggle("on", !!T.solo);
         r.vol.paint(); r.pan.paint();
-        r.cl.forEach((c, k) => c.classList.toggle("sel", on && k === s.p));
+        r.cl.forEach((c, k) => { c.classList.toggle("sel", on && k === s.p); c.classList.toggle("dg", T.clips[k].length > 0 || Object.keys(T.automation[k]).length > 0); });
       });
-      songB.classList.toggle("on", !!p.song);
-      songEl.classList.toggle("off", !p.song);
+      // Lit only while the transport really follows the song; launched clips or a take have taken it over otherwise.
+      const arranged = p.performance.source === "arrangement";
+      songB.classList.toggle("on", !!p.song && arranged);
+      songB.dataset.tip = arranged ? "SONG MODE · ON = PLAY THE CHAIN · OFF = LOOP THE SELECTED PATTERN" : "THE TRANSPORT IS PLAYING " + (p.performance.source === "take" ? "A RECORDED TAKE" : "LAUNCHED CLIPS") + " · CLICK = BACK TO THE SONG";
+      songEl.classList.toggle("off", !p.song || !arranged);
       const spans=App.Conductor.layout(p,p.chain);
       slots.forEach((e, i) => {
         const has = i < p.chain.length;
         e.textContent = has ? spans[i].rest?"—":PATS[p.chain[i]] : "";
-        e.dataset.tip = has ? "SLOT " + pad2(i+1) + " · CLICK TO START HERE · DRAG TO REORDER" : "DROP A PATTERN TO APPEND · ARRANGE EDITS THE SONG";
+        e.dataset.tip = has ? "SLOT " + pad2(i+1) + " · CLICK = START HERE · DRAG = MOVE · RIGHT-CLICK = MENU" : "DROP A PATTERN HERE TO ADD IT TO THE SONG";
         e.classList.toggle("e", !has);
+        e.classList.toggle("dg", has);
         e.classList.toggle("at", has && !!p.song && i === App.Seq.start());
       });
       const end=spans.at(-1)?.end||0,m=App.Conductor.position(p,end);
@@ -441,7 +525,7 @@
         btn(name.toUpperCase(), "INSTRUMENT TYPE · NOTES STAY · EACH TYPE KEEPS ITS OWN SETTINGS",
           () => changeKind(ti, k), T.kind === k ? "on" : ""));
       const patch = btn("PATCH…", "LOAD AN INSTRUMENT SOUND OR COPY THE SOUND OF ANOTHER TRACK", () => App.Patches.open());
-      el.append(h("div.hd", null, h("span.tg", {text:"DEVICE"}), h("span.ti", {text:pad2(ti+1) + " " + T.name}), h("span.grp", null, kinds), h("span.sp"), btn("MOD…", "MODULATION ROUTING FOR THIS DEVICE", () => App.Rack.modulate()), patch));
+      el.append(h("div.hd", null, h("span.tg", {text:"DEVICE"}), h("span.ti", {text:pad2(ti+1) + " " + T.name}), h("span.grp", null, kinds), h("span.sp"), btn("MODULATION…", "ROUTE LFOS, MACROS, VELOCITY AND ENVELOPES TO THIS DEVICE AND ITS MIXER STRIP", () => App.Rack.modulate()), patch));
 
       const body = h("div.dv-b");
       const tp = (k) => UI.param(DEF.trk[k], T, push);
@@ -504,14 +588,20 @@
       } else {
         const k = p.sel.pad, pd = T.kit.pads[k], tg = { ti, pad: k };
         const pads = T.kit.pads.map((x, i) => {
-          const e = h("div.pd" + (i === k ? ".on" : ""), { tip: "PAD " + (i + 1) + " · CLICK = SELECT + PLAY · DROP AUDIO FILE = LOAD · RENAME IN EDIT" }, h("i", { text: i + 1 }), h("span", { text: x.name }), x.src ? h("u", { text: "SMP" }) : null);
+          const e = h("div.pd.dg" + (i === k ? ".on" : ""), { tip: "PAD " + (i + 1) + " · CLICK = SELECT + PLAY · DRAG ONTO ANOTHER PAD = COPY THE SOUND, ALT = SWAP · DROP AUDIO = LOAD · RIGHT-CLICK = MENU" }, h("i", { text: i + 1 }), h("span", { text: x.name }), x.src ? h("u", { text: "SMP" }) : null);
           e.onpointerdown = (ev) => {
             if (ev.button !== 0) return;
             const E = App.audio();
             E && E.play(ti, 36 + i, 0.9);
+            UI.drag(ev, { type: "pad", data: i, label: "PAD " + (i + 1) + " " + x.name, hint: "DROP ON ANOTHER PAD = COPY THIS SOUND THERE · HOLD ALT = SWAP THE TWO" });
             if (p.sel.pad !== i) { p.sel.pad = i; App.touch(); build(); App.Ed.draw(); }
           };
-          UI.drop(e, { file: (f) => App.dropFiles(f, { ti, pad: i }), take: () => App.dropTake({ ti, pad: i }) });
+          e.oncontextmenu = () => UI.menu(e, [{ label: "Rename", value: "rename" }, { label: "Load audio…", value: "load" }, { label: "Back to init sound", value: "reset" }], (v) => {
+            if (v === "rename") UI.edit(e, x.name, (s) => { x.name = s.toUpperCase().slice(0, 8); App.commit(); build(); App.Ed.sync(); }, 8);
+            else if (v === "load") App.pickFile("audio/*", (f) => App.dropFiles(f, { ti, pad: i }));
+            else App.resetPad(ti, i);
+          }, { label: "Pad " + (i + 1) + " " + x.name });
+          UI.drop(e, { file: (f) => App.dropFiles(f, { ti, pad: i }), take: () => App.dropTake({ ti, pad: i }), pad: (src, ev) => App.copyPad(ti, src, i, ev.altKey) });
           return e;
         });
         padEls = pads;
@@ -550,11 +640,14 @@
       grV = h("span.v", { text: "0.0" }); grB = h("i");
       const gr = h("div.pm.ro", { tip: "GAIN REDUCTION · HOW MUCH COMPRESSOR + LIMITER PULL THE MIX DOWN (dB)" }, h("span.l", { text: "REDUCE" }), grV, h("span.b", null, grB));
       el.append(
-        h("div.hd", null, h("span.tg", { text: "MASTER" }), h("span.ti", { text: "SENDS + OUTPUT" }), h("span.sp"), btn("ROUTING…","INSERTS, BUSES AND SIDECHAINS", () => App.Rack.mixer())),
+        h("div.hd", null, h("span.tg", { text: "MASTER" }), h("span.sp"),
+          btn("ROUTING…", "INSERT CHAINS, BUSES, PARALLEL AND BAND SPLITS, SIDECHAIN · PER TRACK AND BUS", () => App.Rack.mixer()),
+          btn("EQ…", "PARAMETRIC EQ OF THE SELECTED TRACK · FOUR BANDS OVER ITS LIVE SPECTRUM", () => App.ParametricEQ.open(P().sel.t)),
+          btn("SCENES…", "SNAPSHOTS OF MIX AND DEVICE SETTINGS · RECALL, MORPH AND SONG CUES", () => App.Scenes.open())),
         h("div.dv-b.f5", null,
           mod("DELAY", 2, [q("dtime"), q("dfb"), q("dtone"), q("dwid")]),
-          mod("REVERB", 1, P().impulse?.sample ? [h("div.inst-overview",{text:App.samples.get(P().impulse.sample)?.name || "CUSTOM IR",tip:"USER IMPULSE RESPONSE"})] : [q("rsize"), q("rdamp")],
-            [btn("IR…","SELECT OR IMPORT A CONVOLUTION IMPULSE RESPONSE",()=>App.SignalWorkshop.openImpulse())]),
+          mod("REVERB", 1, [...(P().impulse?.sample ? [h("div.inst-overview",{style:"grid-row:span 2",text:App.samples.get(P().impulse.sample)?.name || "CUSTOM IR",tip:"THE REVERB IS A RECORDED IMPULSE RESPONSE · IR… CHANGES OR REMOVES IT"})] : [q("rsize"), q("rdamp")]),
+            btn("IR…","IMPULSE RESPONSE · USE A RECORDED SPACE INSTEAD OF THE GENERATED REVERB",()=>App.SignalWorkshop.openImpulse())]),
           mod("EQ", 1, [q("high"), q("mid"), q("low")]),
           mod("OUTPUT", 1, [q("comp"), gr, q("vol")])),
       );

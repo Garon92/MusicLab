@@ -35,8 +35,7 @@
     if(d.design!==design){d.design=design;App.commit();App.Dv.build();App.E?.syncTrack(ti);}
     const ui=shell(type==="graph"?"Modular instrument":"Wavetable instrument");
     function commit(){if(P!==App.P)return;App.commit();App.E?.syncTrack(ti);App.Dv.build();}
-    ui.body.append(h("div.dlg-buttons",null,action("Audition C4",()=>App.audio()?.play(ti,60,.85,0,1,true)),
-      action("Close",()=>ui.dlg.close())));
+    ui.body.append(h("div.dlg-buttons",null,action("Audition C4",()=>App.audio()?.play(ti,60,.85,0,1,true))));
     ui.dlg.addEventListener("close",()=>App.releaseAll(),{once:true});
     if(type==="graph")graphEditor(d.graph,ui,commit);else tableEditor(d,ui,commit,ti);
   }
@@ -127,7 +126,7 @@
     }
     function draw(){
       drawBoard();drawInspector();drawWire();routes.replaceChildren();
-      g.cables.forEach((c,i)=>routes.append(h("div",null,h("span",{text:c.from+" → "+c.to+" / "+c.port}),
+      g.cables.forEach((c,i)=>routes.append(h("div",null,h("span",{text:c.from+" › "+c.to+" / "+c.port}),
         numeric("Gain for cable "+(i+1),c.amount,-2,2,.01,v=>{c.amount=v;commit();}),
         action("×",()=>{g.cables.splice(i,1);commit();draw();},"Disconnect "+c.from+" from "+c.to))));
     }
@@ -235,7 +234,7 @@
         row(field("Degree zero",select("Scale root note",names,t.root,v=>{t.root=+v;update();})),
           field("Reference key",select("Reference MIDI note",names,t.reference,v=>{t.reference=+v;update();})),field("Reference · Hz",ref)),
         field("Scale name",scaleName),field("Intervals",intervals),h("p.dlg-tip",{text:"CENTS WITH A DECIMAL POINT OR RATIOS · THE LAST VALUE REPEATS THE SCALE"}),
-        row(apply,action("Close",()=>ui.dlg.close())));
+        h("div.dlg-buttons",null,apply));
     }
     draw();
   }

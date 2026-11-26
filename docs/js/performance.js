@@ -53,7 +53,9 @@
       for (const t of tracks) pending.push({at:due,t,p,offset:0});
     }
     for (const t of tracks) S.active[t]=p;
-    App.commit();
+    // A launch is playing, not editing: it is saved with the project but is not an undo step,
+    // so a long session at the launcher leaves the edit history as it was.
+    App.touch();
     if (!App.Seq.playing && p >= 0) App.Seq.play();
     App.Top.sync();
   }
@@ -125,14 +127,13 @@
     if (onchange) el.onchange=()=>onchange(el.value);
     return el;
   }
-  const num=(label,min,max,value)=>h("input",{type:"number","aria-label":label,min,max,step:1,value});
+  const num=(label,min,max,value)=>h("input",{type:"number","aria-label":label,min,max,step:1,value,required:true});
   function open(initial="launcher") {
     const P=App.P,S=P.performance,node=App.Workspace.begin("Live performance"),body=h("div.dlg-body.pf-body"),stage=h("div.pf-stage");
     let tab=initial==="take"?"take":"launcher",focusT=P.sel.t,focusP=P.sel.p,update=()=>{};
     const mode=select("Transport source",[["arrangement","Pattern / song"],["live","Live clips"],["take","Performance take"]],S.source,source);
     const tabs=select("Performance view",[["launcher","Clip launcher"],["take","Edit recorded take"]],tab,v=>{tab=v;render();});
-    const done=btn("Close","Return to the console",()=>node.close());
-    body.append(h("h2",{text:"Live performance"}),h("div.pf-line",null,field("Transport",mode),field("View",tabs)),stage,h("div.dlg-buttons",null,done));
+    body.append(h("div.pf-line",null,field("Transport",mode),field("View",tabs)),stage);
     function launcher() {
       const grid=h("div.pf-grid",{"aria-label":"Live clip launcher"}),cells=[];
       grid.append(h("span",{text:"SCENE"}));
@@ -151,7 +152,7 @@
           b.classList.toggle("pf-filled",!!P.tracks[t].clips[p].length);
           cells.push({b,t,p}); grid.append(b);
         }
-        grid.append(btn("■","Stop track "+(t+1)+" at the launch boundary",()=>launch([t],-1)));
+        {const stop=btn("","Stop track "+(t+1)+" at the launch boundary",()=>launch([t],-1),"sq");stop.setAttribute("aria-label","Stop track "+(t+1));grid.append(stop);}
       }
       const quant=select("Launch quantization",[["step","1 step"],["beat","1 beat"],["bar","1 bar"]],S.quant,v=>{S.quant=v;App.commit();});
       const loop=num("Clip loop steps",0,256,S.loops[focusT][focusP]);

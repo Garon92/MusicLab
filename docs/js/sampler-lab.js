@@ -171,7 +171,6 @@
     }
     function draw() {
       const z=zones[at],name=x=>App.samples.get(x.sample)?.name||"Missing sample";
-      const close=btn("Close","Return to sampler",()=>dlg.close());
       const list=h("select",{"aria-label":"Zone"},zones.map((z,i)=>h("option",{value:i,text:(i+1)+" · "+name(z)})));
       list.value=at;list.onchange=()=>{at=+list.value;draw();};
       const add=btn("Import samples…","Load files and build zones from pitch and velocity in their names",()=>App.pickFile("audio/*",load));
@@ -182,7 +181,7 @@
       use.disabled=busy || !App.samples.has(d.id) || zones.length>=128;
       const chart=h("canvas.zone-map",{"aria-label":"Mapped notes (horizontal) and velocity (vertical)","role":"img"});
       const status=h("output.ast-status",{role:"status",text:info});
-      body.replaceChildren(h("div.ast-head",null,h("h2",{text:"Multisample zones"}),h("span.sp"),close),
+      body.replaceChildren(h("h2",{text:"Multisample zones"}),
         h("div.ast-toolbar",null,add,use, d.mode!==3 && zones.length?btn("Play zones","Switch this sampler to zone playback",()=>commit("Zone playback enabled")):null, h("p.dlg-tip",{text:"FILE NAMES LIKE GLASS_C4_V80_RR1.WAV SET ROOT AND VELOCITY LAYER"})),chart);
       if(z){
         const hear=btn("Audition sample","Play the original recording for this zone",()=>audition(z));

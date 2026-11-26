@@ -3,7 +3,7 @@
   "use strict";
   const {h,btn}=App.UI, copy=x=>JSON.parse(JSON.stringify(x)), limit=32;
   const pad=n=>String(n+1).padStart(2,"0"), label=(text,ctl)=>h("label.arr-field",null,text,ctl);
-  const num=(name,min,max,value,step=1)=>h("input",{"aria-label":name,type:"number",min,max,step,value});
+  const num=(name,min,max,value,step=1)=>h("input",{"aria-label":name,type:"number",min,max,step,value,required:true});
   const selector=(name,items)=>h("select",{"aria-label":name},items.map(([v,text])=>h("option",{value:v,text})));
   const row=(...items)=>h("div.arr-row",null,...items);
   const ranges=P=>App.Conductor.layout(P,P.chain);
@@ -32,6 +32,12 @@
     if(from===to || App.P.chain[from]==null)return;
     const start=App.Seq.start();
     change(order=>{const item=order.splice(from,1)[0];order.splice(Math.min(to,order.length),0,item);},order=>order.findIndex(e=>e.old===start));
+  }
+  // Taking a slot out closes the gap: everything on the song ruler after it moves earlier with it.
+  function remove(at) {
+    if(App.P.chain[at]==null)return;
+    const start=App.Seq.start();
+    change(order=>order.splice(at,1),()=>Math.max(0,start-Number(at<start)));
   }
 
   function chart(canvas,P,first,last,onPick,onMove) {
@@ -105,7 +111,7 @@
     const P=App.P,D=copy(P), node=App.Workspace.begin("Song arrangement"), A=D.arrangement,C=App.Conductor;
     let first=App.clamp(App.Seq.start(),0,Math.max(0,D.chain.length-1)),last=first,anchor=first,dirty=false,tab=startTab==="conductor"?"map":startTab==="automation"?"automation":"song", resize;
     const body=h("div.dlg-body.song-editor"), center=h("div.arr-content"), summary=h("output.arr-summary"),status=h("output.arr-status",{role:"status"});
-    const grid=h("div.song-slots",{role:"group","aria-label":"Song slots"}), cv=h("canvas.arr-timeline",{role:"img","aria-label":"Song timeline with sections, chords, eight tracks, launches and conductor",title:"Select or Shift-select slots. Drag a section or selected range to move it across all lanes."});
+    const grid=h("div.song-slots",{role:"group","aria-label":"Song slots"}), cv=h("canvas.arr-timeline",{role:"img","aria-label":"Song timeline with sections, chords, eight tracks, launches and conductor",tip:"CLICK = SELECT A SLOT · SHIFT-CLICK = A RANGE · DRAG A SECTION OR THE SELECTED RANGE = MOVE IT ACROSS ALL LANES"});
     const gap=selector("Insert position",[["after","After selection"],["before","Before selection"]]);
     const copies=num("Additional copies",1,31,1), blank=num("Empty bars",1,16,4), cut=num("Split at bar",2,8192,2);
     const name=h("input",{type:"text",maxlength:32,placeholder:"Name","aria-label":"Section name"});
@@ -119,7 +125,8 @@
     const current=()=>entries(D), where=()=>D.chain.length?(gap.value==="before"?first:last+1):0;
     function edit(order,a,b=a) {
       if(order.length>limit){status.textContent="Song holds 32 slots.";return;}
-      try{App.Arrangement.relocate(D,order);dirty=true;first=anchor=Math.max(0,a);last=Math.max(first,b);status.textContent="";render();}
+      // The selection always names slots that exist, whatever range the edit asked to select.
+      try{App.Arrangement.relocate(D,order);const top=Math.max(0,D.chain.length-1);dirty=true;first=anchor=App.clamp(a,0,top);last=App.clamp(b,first,top);status.textContent="";render();}
       catch(e){status.textContent=e.message;}
     }
     function dragRange(a,b,target){
@@ -134,14 +141,30 @@
       A.sections=A.sections.filter(s=>s.first+s.count<=first || s.first>last);A.sections.push({name:title,first,count:last-first+1});
       A.sections.sort((a,b)=>a.first-b.first);dirty=true;render();
     }
+    // Meter changes are stored in steps. Setting, changing or removing one alters the width of the bars after it,
+    // so each later change goes back onto the bar number it was on; left where it was, it would cut a bar short.
+    const laterMeters=from=>A.meters.filter(m=>m.at>from).map(m=>({sig:m.sig,bar:C.position(D,m.at).bar}));
+    function setMeters(head,bar,later) {
+      const before=A.meters;A.meters=head;
+      for(const m of later){bar=Math.max(m.bar,bar+1);A.meters=[...A.meters,{at:C.barStart(D,bar),sig:m.sig}];}
+      if(A.meters.every(m=>m.at<=65536))return true;
+      A.meters=before;status.textContent="Change exceeds the conductor timeline.";return false;
+    }
     function setCue(type) {
       if(!at.reportValidity() || type==="tempo"&&!tempo.reportValidity())return;
-      const step=C.barStart(D,at.valueAsNumber-1);
+      const bar=at.valueAsNumber-1,step=C.barStart(D,bar);
       if(step>65536){status.textContent="Change exceeds the conductor timeline.";return;}
-      const e=type==="tempo"?{at:step,bpm:tempo.valueAsNumber,ramp:shape.value==="ramp"}:{at:step,sig:+signature.value};
-      A[type]=[...A[type].filter(m=>m.at!==step),e].sort((a,b)=>a.at-b.at);dirty=true;render();
+      if(type==="tempo")A.tempo=[...A.tempo.filter(m=>m.at!==step),{at:step,bpm:tempo.valueAsNumber,ramp:shape.value==="ramp"}].sort((a,b)=>a.at-b.at);
+      else if(!setMeters([...A.meters.filter(m=>m.at<step),{at:step,sig:+signature.value}],bar,laterMeters(step)))return;
+      dirty=true;render();
     }
-    function delCue(type,sel){if(sel.selectedIndex<0)return;A[type]=A[type].filter(e=>e.at!==+sel.value);dirty=true;render();}
+    function delCue(type,sel){
+      if(sel.selectedIndex<0)return;
+      const gone=+sel.value;
+      if(type==="tempo")A.tempo=A.tempo.filter(e=>e.at!==gone);
+      else{const head=A.meters.filter(m=>m.at<gone),last=head.at(-1);if(!setMeters(head,last?C.position(D,last.at).bar:-1,laterMeters(gone)))return;}
+      dirty=true;render();
+    }
     function listCues(type,sel){
       const before=sel.value;
       sel.replaceChildren(...A[type].map(e=>h("option",{value:e.at,text:"Bar "+(C.position(D,e.at).bar+1)+"  ·  "+(type==="tempo"?+e.bpm.toFixed(2)+" BPM  "+(e.ramp?"↗ next":"hold"):App.SIGS[e.sig].join("/"))})));
@@ -150,7 +173,8 @@
     function loadCue(type,sel){const e=A[type].find(c=>c.at===+sel.value);if(!e)return;at.value=C.position(D,e.at).bar+1;if(type==="tempo"){tempo.value=e.bpm;shape.value=e.ramp?"ramp":"hold";}else signature.value=e.sig;}
     tempoList.onchange=()=>loadCue("tempo",tempoList);meterList.onchange=()=>loadCue("meters",meterList);
     const save=btn("Apply arrangement","Apply all timeline edits as one undo step",()=>{
-      if(App.P!==P){node.close();return;}apply(P,D,first);if(P.chain[first]!=null)App.select(P.sel.t,P.chain[first]);node.close();
+      // A slot of empty bars is stored as pattern A and stands for no pattern: selecting it leaves the editor where it is.
+      if(App.P!==P){node.close();return;}apply(P,D,first);if(P.chain[first]!=null && !P.arrangement.slots?.[first]?.rest)App.select(P.sel.t,P.chain[first]);node.close();
     },"confirm-action");
     const tabs=[["song","Arrangement"],["map","Tempo & meter"],["automation","Song automation"]].map(([id,title])=>{
       const b=button(title,"Show "+title,()=>{tab=id;render();});b.dataset.section=id;return b;
@@ -173,7 +197,8 @@
         const selected=A.sections.findIndex(s=>s.first===first && s.count===selection);if(selected>=0)sections.value=selected;
         sections.onchange=()=>{const s=A.sections[+sections.value];if(sections.value!==""&&s){first=anchor=s.first;last=first+s.count-1;name.value=s.name;render();}};
         const bank=h("div.arr-bank",{role:"group","aria-label":"Insert pattern"},...Array.from(App.PATS,(v,i)=>button(v,"Insert pattern "+v,()=>add(i),n<limit)));
-        const unused=D.pats.findIndex((pat,i)=>pat.bars===1 && !D.chain.includes(i) && !D.tracks.some(t=>t.clips[i].length||Object.keys(t.automation[i]).length));
+        const played=App.songPatterns(D);
+        const unused=D.pats.findIndex((pat,i)=>pat.bars===1 && !played.includes(i) && !D.tracks.some(t=>t.clips[i].length||Object.keys(t.automation[i]).length));
         center.append(grid,row(gap,bank,label("Empty bars",blank),button("Insert space","Insert silent bars and shift all later material",()=>{
           if(blank.reportValidity()){const list=current(),i=where();list.splice(i,0,{p:0,rest:true,bars:+blank.value});edit(list,i);}
         },n<limit)),row(h("b",{text:n?"Slot "+pad(first)+(last!==first?"–"+pad(last):""):"No slots"}),
@@ -203,9 +228,9 @@
       requestAnimationFrame(()=>chart(cv,D,first,last,select,dragRange));
     }
     copies.oninput=render;
-    body.append(h("h2",{text:"Song arrangement"}),summary,cv,h("p.dlg-tip",{text:"BRIGHT = NOTES · DIM = AUDIO · AMBER = AUTOMATION, CUES, TEMPO AND METER"}),row(...tabs),center,status,h("div.dlg-buttons",null,btn("Cancel","Discard pending arrangement edits",()=>node.close()),save));
+    body.append(h("h2",{text:"Song arrangement"}),summary,cv,h("p.dlg-tip",{text:"BRIGHT = NOTES · DIM = AUDIO · AMBER = AUTOMATION, CUES, TEMPO AND METER"}),h("div.arr-tabs",{role:"group","aria-label":"Arrangement view"},...tabs),center,status,h("div.dlg-buttons",null,btn("Cancel","Discard pending arrangement edits",()=>node.close()),save));
     node.classList.add("arr-dialog","arr-full");node.append(body);render();node.showModal();
     resize=new ResizeObserver(()=>chart(cv,D,first,last,select,dragRange));resize.observe(cv);node.addEventListener("close",()=>resize.disconnect(),{once:true});
   }
-  App.Song={open,insert,move};
+  App.Song={open,insert,move,remove};
 })();

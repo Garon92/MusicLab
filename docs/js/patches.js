@@ -130,7 +130,7 @@
     body.append(h("h2",{text:"Instrument patches"}),h("div.arr-summary",{text:App.pad2(ti+1)+" "+T.name+" / "+names[kind]}),
       h("label.patch-field",null,"Load sound",list),caption,forget,
       h("label.patch-field",null,"Save settings in this browser",h("span.arr-row",null,name,save)),
-      h("div.dlg-buttons",null,btn("Close","Close patches",()=>node.close()),apply));
+      h("div.dlg-buttons",null,apply));
     node.classList.add("patch-dialog"); node.append(body); populate(); update(); node.showModal();
   }
   App.Patches = {open};

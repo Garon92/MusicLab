@@ -174,10 +174,28 @@
       if(n.start){v.src.push(n);n.start(time);}
       nodes.set(m.id,{input:n,output:output || n});v.nodes.push(n);
     }
+    // What leaves the patch is bounded (±8, far above any normal level): stacked gains cannot push the strip's filters to infinity.
+    let exit=null;
+    const out=()=>{
+      if(!exit){
+        const pre=ctx.createGain(),clip=ctx.createWaveShaper(),post=ctx.createGain();
+        pre.gain.value=1/8;clip.curve=new Float32Array([-1,1]);post.gain.value=8;
+        pre.connect(clip).connect(post).connect(head);v.nodes.push(pre,clip,post);exit=pre;
+      }
+      return exit;
+    };
+    const kinds=new Map(g.nodes.map(m=>[m.id,m.type]));
     for(const c of g.cables){
-      const source=nodes.get(c.from).output,dest=c.to==="out"?head:nodes.get(c.to).input;
+      const source=nodes.get(c.from).output,dest=c.to==="out"?out():nodes.get(c.to).input;
       const wire=ctx.createGain();wire.gain.value=c.amount*(c.port==="pitch"?1200:c.port==="rate"?10:1);
-      source.connect(wire).connect(c.port==="pitch"?dest.detune:c.port==="rate"?dest.frequency:c.port==="gain"?dest.gain:dest);
+      let from=source.connect(wire);
+      // A filter swept at audio rate becomes unstable and turns the whole output into NaN. Its pitch input follows
+      // movement up to 30 Hz, which is what sweeping a filter means; oscillators keep audio-rate FM.
+      if(c.port==="pitch" && kinds.get(c.to)!=="osc" && kinds.get(c.to)!=="lfo"){
+        const slow=ctx.createBiquadFilter();slow.type="lowpass";slow.frequency.value=30;slow.Q.value=-3;
+        from=from.connect(slow);v.nodes.push(slow);
+      }
+      from.connect(c.port==="pitch"?dest.detune:c.port==="rate"?dest.frequency:c.port==="gain"?dest.gain:dest);
       v.nodes.push(wire);
     }
     v.releaseModules=at=>{for(const [p,r] of releases){p.cancelScheduledValues(at);p.setTargetAtTime(0,at,r/4);}};

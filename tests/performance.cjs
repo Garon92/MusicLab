@@ -24,7 +24,7 @@ module.exports=async function checkPerformance(reference){
     assert.equal(await page.evaluate(()=>App.P.tracks[5].automation[2].vol.points.at(-1).s),80);
     await page.getByRole("button",{name:"DRAW",exact:true}).click();
     await page.evaluate(()=>App.select(1,0));
-    await page.getByRole("button",{name:"GROOVE",exact:true}).click();
+    await page.getByRole("button",{name:"GROOVE…",exact:true}).click();
     let d=page.getByRole("dialog");
     await d.getByLabel("Live recording timing").selectOption("off");
     await d.getByRole("button",{name:"Extract clip",exact:true}).click();

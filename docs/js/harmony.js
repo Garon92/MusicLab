@@ -34,7 +34,8 @@
       data={meters:P.arrangement?.meters,sig:P.sig,steps:ends.at(-1),ends,voices:new Map()};memo.set(H,data);
     }
     const step=at%data.steps,index=data.ends.findIndex(end=>step<end),chord=H.chords[index];
-    if(chord.rest)return null;
+    // A timeline with no length has no chord at any step.
+    if(!chord || chord.rest)return null;
     // Consecutive identical assignments sustain across the edit boundary.
     const different=c=>c.rest || c.root!==chord.root || (mode==="chord"&&c.type!==chord.type);
     const previous=H.chords[(index+H.chords.length-1)%H.chords.length];
@@ -71,9 +72,17 @@
     const list=h("select.pf-take-list",{size:6,"aria-label":"Chord progression"});
     const root=select("Chord root",App.NOTES.map((s,i)=>[i,s]),P.key),type=select("Chord quality",Object.keys(types).map(k=>[k,k]),"maj");
     const bars=num("Chord duration in bars",1,16,1),total=h("output"),status=h("output");
-    function read(){const c=chords[list.selectedIndex];if(c){root.value=c.root;type.value=c.type;bars.value=c.bars;}}
+    // An arrangement edit stores a chord's length in steps. Bars shows that length where it is whole bars,
+    // and Update keeps the stored length unless Bars was changed.
+    let spans=[],shown=1;
+    function read(){
+      const i=list.selectedIndex,c=chords[i];if(!c)return;
+      const a=App.Conductor.position(P,spans[i].from),b=App.Conductor.position(P,spans[i].end);
+      shown=c.steps && !a.inside && !b.inside ? App.clamp(b.bar-a.bar,1,16) : c.bars;
+      root.value=c.root;type.value=c.type;bars.value=shown;
+    }
     function draw(i) {
-      const spans=App.Arrangement.chordList({...P,harmony:{chords}});
+      spans=App.Arrangement.chordList({...P,harmony:{chords}});
       list.replaceChildren(...chords.map((c,k)=>{const s=spans[k],bar=App.Conductor.position(P,s.from).bar+1;
         return h("option",{value:k,text:"BAR "+App.pad2(bar)+"    "+(c.rest?"—":App.NOTES[c.root]+" "+c.type)+"    "+(c.steps?c.steps+" steps":"× "+c.bars)});}));
       list.selectedIndex=Math.min(i,chords.length-1);total.textContent=(spans.at(-1)?.end||0)+" steps";read();
@@ -81,9 +90,10 @@
     list.onchange=read;
     function edit(add){
       if(!bars.reportValidity())return;
-      const i=list.selectedIndex,c={root:+root.value,type:type.value,bars:+bars.value};
+      // A chord is never shorter than one bar: a timeline without length stops the transport.
+      const i=list.selectedIndex,old=chords[i],c={root:+root.value,type:type.value,bars:App.clamp(Math.round(+bars.value)||1,1,16)};
       if(add && chords.length<64){chords.splice(i+1,0,c);draw(i+1);}
-      else if(!add && i>=0){chords[i]=c;draw(i);}
+      else if(!add && i>=0){chords[i]=old.steps && c.bars===shown ? {...c,bars:old.bars,steps:old.steps} : c;draw(i);}
     }
     function shift(by){const from=list.selectedIndex,to=from+by;if(from>=0 && to>=0 && to<chords.length){const [c]=chords.splice(from,1);chords.splice(to,0,c);draw(to);}}
     const tracks=h("div.pf-follow");

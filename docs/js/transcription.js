@@ -117,7 +117,6 @@
       const el=h("select",{"aria-label":label},items.map(([v,text])=>h("option",{value:v,text})));
       el.value=val;el.onchange=()=>fn(+el.value);return field(label,el);
     }
-    const close=btn("Close","Discard this review and return to the console",()=>dlg.close());
     const startBox=number("Start in region (s)",0,0,total,"any",v=>{from=v;invalidate();});
     const endBox=number("End in region (s)",to,0,total,"any",v=>{to=v;invalidate();});
     const scan=btn("Analyze range","Detect the pitch and duration of one note at a time",scanRange);
@@ -183,9 +182,9 @@
       clip.push(...added);clip.sort((a,b)=>a.s-b.s || a.n-b.n);
       if(needed>App.Live.length(P,ti,pi))P.performance.loops[ti][pi]=needed;
       App.select(ti,pi);App.commit();dlg.close();App.refresh();
-      App.UI.msg(added.length+" TRANSCRIBED NOTES → "+T.name+" / "+App.PATS[pi]);
+      App.UI.msg(added.length+" TRANSCRIBED NOTES › "+T.name+" / "+App.PATS[pi]);
     }
-    body.append(h("div.ast-head",null,h("h2",{text:"Transcribe melody"}),h("small",{text:name||S.name}),h("span.sp"),close),
+    body.append(h("h2",{text:"Transcribe melody · "+(name||S.name)}),
       h("div.ast-toolbar",null,field("Start in region · s",startBox),field("End in region · s",endBox),scan),
       h("div.transcript-scroll",null,table),
       h("div.ast-toolbar",null,choice("Destination track",tracks.map(({i,t})=>[i,(i+1)+" · "+t.name]),ti,v=>{ti=v;sync();}),

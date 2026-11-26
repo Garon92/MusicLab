@@ -113,7 +113,7 @@
       const {ti,key}=learn;
       cfg.bindings=cfg.bindings.filter(x=>!(x.port===port && x.ch===ch && x.cc===a) && !(x.ti===ti && x.key===key));
       cfg.bindings.push({ti,key,ch,cc:a,port}); cancelLearn(); App.commit(); draw?.();
-      App.UI.msg("CC "+a+" → "+App.P.tracks[ti].name+" / "+label(ti,key)); return;
+      App.UI.msg("CC "+a+" › "+App.P.tracks[ti].name+" / "+label(ti,key)); return;
     }
     const link=cfg.bindings.find(x=>x.cc===a && x.ch===ch && (!x.port || x.port===port));
     if (!link) return;
@@ -137,6 +137,7 @@
       p.onmidimessage=use ? receive : null;
       if (use) ids.push(p.id);
     }
+    if (clockPort && !ids.includes(clockPort)) resetClock(); // the port that was driving the clock is gone
     App.releaseMidi(ids); App.midiN=ids.length; App.Top.sync(); draw?.();
   }
   async function connect() {
@@ -180,10 +181,9 @@
       const list=h("div.tool-list");
       for(const b of cfg.bindings) {
         const remove=btn("Remove","Remove this assignment",()=>{cfg.bindings=cfg.bindings.filter(x=>x!==b);App.commit();redraw();});
-        list.append(h("div.tool-item",null,h("span",{text:(access?.inputs.get(b.port)?.name || "Input")+" · CH "+(b.ch+1)+" · CC "+b.cc+" → "+App.P.tracks[b.ti].name+" / "+label(b.ti,b.key)}),remove));
+        list.append(h("div.tool-item",null,h("span",{text:(access?.inputs.get(b.port)?.name || "Input")+" · CH "+(b.ch+1)+" · CC "+b.cc+" › "+App.P.tracks[b.ti].name+" / "+label(b.ti,b.key)}),remove));
       }
-      body.append(list,h("p.dlg-tip",{text:"ARM REC AND PLAY · CONTROLLER MOVES ARE WRITTEN INTO THE PLAYING CLIP’S AUTOMATION"}),
-        h("div.dlg-buttons",null,btn("Close","Return to the console",()=>node.close())));
+      body.append(list,h("p.dlg-tip",{text:"ARM REC AND PLAY · CONTROLLER MOVES ARE WRITTEN INTO THE PLAYING CLIP’S AUTOMATION"}));
     };
     draw=(message="")=>{status=message;redraw();}; redraw();
     node.addEventListener("close",()=>{draw=null;if(!picking)cancelLearn();},{once:true}); node.showModal();

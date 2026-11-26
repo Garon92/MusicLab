@@ -59,7 +59,7 @@
       const strip=h("div.cycle-cells",{"aria-label":title+" cycle position"});
       const paint=()=>strip.replaceChildren(...line.values.map(v=>h("span",{text:key==="pitch"?(v<0?"–":kit?String(v):App.noteName(v)):v+"%"})));
       const hint=key==="pitch"?(kit?"Drum keys 36–43 · dash rests":"MIDI keys or C4, D#4 · dash rests"):key==="accent"?"Velocity · 0–100%":"Duration · 0–400% of the pitch clock";
-      input.title=hint;input.onchange=()=>{
+      input.dataset.tip=hint;input.onchange=()=>{
         const tokens=input.value.trim().split(/[\s,]+/).filter(Boolean);
         const values=tokens.map(s=>key==="pitch"?pitch(s):/^\d+$/.test(s)?Number(s):NaN);
         if(values.length>32 || values.some(v=>!Number.isInteger(v) || (key==="pitch"?(v!==-1 && (v<(kit?36:0) || v>(kit?43:127))):(v<0 || v>(key==="gate"?400:100))))){
@@ -128,7 +128,7 @@
     written.disabled=!targets.length;recent.disabled=true;
     body.append(h("h2",{text:"Cycle sequencer · "+T.name}),col,h("div.arr-row",null,field("Start step",from),play,read),
       h("div.arr-row",null,field("Length · steps",len),field("Empty clip",dest),written,recent),
-      status,h("div.dlg-buttons",null,btn("Close","Return to the console",()=>node.close())));
+      status);
     if(!targets.length)status.textContent="All eight clips on this track contain material.";
     node.append(body);node.addEventListener("close",stop,{once:true});node.showModal();
   }

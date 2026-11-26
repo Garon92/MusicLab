@@ -117,7 +117,7 @@
     }
     track.onchange=range.onchange=align.onchange=refresh;
     body.append(h("h2",{text:"Capture recent notes"}),h("div.tool-fields",null,field("Source",track),field("Range",range),field("Start",align)),summary,graphic,
-      h("div.tool-fields",null,field("Empty clip",target),play,insert),status,h("p.dlg-tip",{text:"CAPTURE RECOVERS WHAT WAS PLAYED ON THE KEYS OR MIDI WITHOUT RECORDING"}),h("div.dlg-buttons",null,btn("Close","Return to the console",()=>node.close())));
+      h("div.tool-fields",null,field("Empty clip",target),play,insert),status,h("p.dlg-tip",{text:"CAPTURE RECOVERS WHAT WAS PLAYED ON THE KEYS OR MIDI WITHOUT RECORDING"}));
     node.append(body);node.showModal();refresh();node.addEventListener("close",clearPreview,{once:true});
   }
   App.Retrospective={start,end,open,mark(){if(records.length && App.E)clock();},rebind(){clearPreview();for(const r of records)r.P=App.P;},reset(){clearPreview();records=[];previousPoint=null;}};

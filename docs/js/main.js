@@ -35,6 +35,7 @@
   };
   App.doUndo = d => {
     App.releaseAll();
+    App.recClose?.(); App.Ed.settle?.(); // a recording pass or a move still in progress becomes its own step first
     if (!(d<0 ? App.canUndo() : App.canRedo())) { UI.msg(d<0 ? "NOTHING TO UNDO" : "NOTHING TO REDO");return; }
     const running=Seq.playing, slot=Seq.frame()?.si;
     if (running) Seq.stop();
@@ -97,6 +98,74 @@
     redraw();
     App.select(P.sel.t, b);
   };
+  // Clearing removes what the cell plays: its notes, its curves and its own loop length.
+  const filled = (T, p) => T.clips[p].length > 0 || Object.keys(T.automation[p]).length > 0;
+  const wipe = (ti, p) => {
+    const P = App.P, T = P.tracks[ti];
+    T.clips[p] = []; T.automation[p] = {};
+    if (P.performance?.loops) P.performance.loops[ti][p] = 0;
+  };
+  const cleared = (what) => { App.commit(); redraw(); UI.msg(what + " CLEARED · UNDO BRINGS IT BACK"); };
+  App.filled = (t, p) => filled(App.P.tracks[t], p);
+  App.clearClip = (t, p) => { if (!filled(App.P.tracks[t], p)) return; wipe(t, p); cleared("CLIP " + pad2(t + 1) + "/" + App.PATS[p]); };
+  App.clearPattern = (p) => {
+    const P = App.P;
+    if (!P.tracks.some((T) => filled(T, p))) return;
+    for (let t = 0; t < 8; t++) wipe(t, p);
+    cleared("PATTERN " + App.PATS[p]);
+  };
+  App.clearTrack = (t) => {
+    const T = App.P.tracks[t];
+    if (!T.clips.some((_, p) => filled(T, p))) return;
+    for (let p = 0; p < 8; p++) wipe(t, p);
+    cleared("TRACK " + pad2(t + 1) + " " + T.name);
+  };
+  // The first pattern after this one that the target has nothing in, so a copy never lands on material.
+  const nextFree = (p, test) => { for (let k = 1; k < 8; k++) { const q = (p + k) % 8; if (!test(q)) return q; } return -1; };
+  App.duplicateClip = (t, p) => {
+    const q = nextFree(p, (k) => filled(App.P.tracks[t], k));
+    if (q < 0) { UI.msg("NO EMPTY CELL ON THIS TRACK"); return; }
+    App.copyClip({ t, p }, { t, p: q });
+  };
+  App.duplicatePattern = (p) => {
+    const P = App.P, q = nextFree(p, (k) => P.tracks.some((T) => filled(T, k)));
+    if (q < 0) { UI.msg("NO EMPTY PATTERN"); return; }
+    App.copyPattern(p, q);
+  };
+  // One instrument on another track: the device and its samples, not the notes or the mixer strip.
+  App.copyDevice = (a, b) => {
+    if (a === b) return;
+    const P = App.P, A = P.tracks[a], B = P.tracks[b];
+    releaseAll();
+    App.E?.panic();
+    B.kind = A.kind; B.syn = clone(A.syn); B.smp = clone(A.smp); B.kit = clone(A.kit); B.arp = clone(A.arp);
+    App.commit();
+    App.E?.syncTrack(b);
+    if (P.sel.t === b) { App.Dv.build(); App.Sg.source(); }
+    redraw();
+    App.select(b);
+    UI.msg("DEVICE OF " + pad2(a + 1) + " " + A.name + " COPIED TO " + pad2(b + 1) + " " + B.name + " · UNDO REVERTS");
+  };
+  App.copyPad = (ti, a, b, swap) => {
+    if (a === b) return;
+    const P = App.P, pads = P.tracks[ti].kit.pads, from = clone(pads[a]), to = clone(pads[b]);
+    pads[b] = from;
+    if (swap) pads[a] = to;
+    P.sel.pad = b;
+    App.commit();
+    App.E?.syncTrack(ti);
+    App.Dv.build(); App.Ed.sync();
+    UI.msg("PAD " + (a + 1) + (swap ? " AND " + (b + 1) + " SWAPPED" : " COPIED TO PAD " + (b + 1)) + " · UNDO REVERTS");
+  };
+  App.resetPad = (ti, i) => {
+    const P = App.P, fresh = App.newKit().pads[i];
+    P.tracks[ti].kit.pads[i] = fresh;
+    App.commit();
+    App.E?.syncTrack(ti);
+    App.Dv.build(); App.Ed.sync();
+    UI.msg("PAD " + (i + 1) + " BACK TO " + fresh.name + " · UNDO REVERTS");
+  };
+
   /* ── samples ── */
   const AUDIO = /\.(wav|mp3|ogg|oga|flac|m4a|aac|aif|aiff|webm|opus)$/i;
   const assign = (tg, id) => {
@@ -384,7 +453,7 @@
       if (!current()) return;
       await finishRecordings();
       if (!current()) return;
-      App.commit();installProject(project);
+      App.commit();installProject(project,App.take); // the take is a recording of what was heard, not part of the project it replaces
       UI.msg((isMidi?"MIDI IMPORTED · ":"OPENED ") + project.name + (samplesStored ? "" : " · SAMPLES IN THIS TAB ONLY · SAVE A PROJECT COPY"));
     } catch (e) {
       if (current()) UI.msg(e instanceof SyntaxError ? "INVALID PROJECT JSON" : e.message || "IMPORT FAILED");
@@ -439,8 +508,12 @@
     // Snapped forward, the playhead reaches this note in a moment: it was just heard, so skip that one trigger.
     if (near > c.step) Seq.skip.set(nt, App.E.ctx.currentTime + c.sd);
     App.Ed.draw(); App.Mx.draw();
-    return { nt, clip, t0: App.E.ctx.currentTime, sd: c.sd };
+    return { nt, clip, t0: App.E.ctx.currentTime, sd: c.sd, n };
   };
+  // A pass of recording is one undo step, however many notes it holds: it is closed when the playing pauses,
+  // when the transport stops and before an undo.
+  let recOpen = false, recT = 0;
+  const recClose = (App.recClose = () => { clearTimeout(recT); if (recOpen) { recOpen = false; App.commit(); } });
   App.noteOn = (note, vel, id) => {
     const E = App.audio();
     if (held.has(id)) return;
@@ -465,20 +538,25 @@
     App.Ed.key(d.note, false);
     App.E && App.E.noteOff(d.ti, d.note);
     if (d.rec) {
-      d.rec.nt.l = clamp(Math.round((App.E.ctx.currentTime - d.rec.t0) / d.rec.sd), 1, App.MAX_STEPS);
+      // Held past the end of the clip, the note stops at the end: a longer one could not be seen or shortened.
+      d.rec.nt.l = clamp(Math.round((App.E.ctx.currentTime - d.rec.t0) / d.rec.sd), 1, Math.max(1, d.rec.n - d.rec.nt.s));
       d.rec.clip.sort((a, b) => a.s - b.s || a.n - b.n);
-      App.commit();
+      recOpen = true; App.touch();
+      clearTimeout(recT); recT = setTimeout(recClose, 2000);
       App.Ed.draw(); App.Mx.draw();
     }
   };
 
-  App.silence = () => { releaseAll(); Seq.stop(); App.E?.panic(true); UI.msg("TRANSPORT STOPPED · ALL SOUND OFF"); };
+  App.silence = () => { releaseAll(); App.recClose(); Seq.stop(); App.E?.panic(true); UI.msg("TRANSPORT STOPPED · ALL SOUND OFF"); };
   App.playToggle = () => {
     if (!Seq.playing) {
-      const P = App.P, bank = Seq.songOn() ? P.chain : [P.sel.p];
+      const P = App.P, bank = Seq.songOn() ? App.songPatterns(P) : [P.sel.p];
       if (!bank.some(p => P.tracks.some(t => t.clips[p].length)) && !P.click && !App.AudioStudio.durationSteps(P) && P.performance.source === "arrangement")
         UI.msg("EMPTY " + (Seq.songOn() ? "SONG" : "PATTERN") + " · CLICK THE NOTE GRID OR ARM REC AND PLAY");
+      // The launcher and a recorded take replace the song as what PLAY plays. Say so, since nothing else on the console does.
+      else if (P.performance.source !== "arrangement") UI.msg("PLAYING " + (P.performance.source === "take" ? "THE RECORDED TAKE" : "LAUNCHED CLIPS") + " · SONG RETURNS TO THE ARRANGEMENT");
     }
+    if (Seq.playing) App.recClose(); // stopping closes the recording pass
     Seq.toggle();
   };
   window.addEventListener("keydown", (e) => {

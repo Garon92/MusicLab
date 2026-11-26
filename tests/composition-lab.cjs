@@ -10,7 +10,7 @@ module.exports=async function compositionLab(reference){
   try{
     await page.goto(reference.url());await page.waitForSelector("#ed canvas");
     await page.evaluate(()=>App.select(1,0));
-    await button("CYCLES").click();
+    await button("CYCLES…").click();
     const cycles=page.getByRole("dialog",{name:"Cycle sequencer"});
     await cycles.getByLabel("Pitch steps").fill("C3 D3 E3 G3 A3");
     await cycles.getByLabel("Pitch clock").selectOption("2/3");

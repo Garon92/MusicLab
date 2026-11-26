@@ -40,11 +40,9 @@
       hd.next = btn("›", "NEXT FOUR BARS · MANUAL PAGING HOLDS THIS VIEW UNTIL THE NEXT PLAY", () => turnPage(1));
       hd.prev.setAttribute("aria-label", "Previous bars");
       hd.next.setAttribute("aria-label", "Next bars");
-      hd.bars = h("span.ed-page", {title:"Visible bars / pattern length", tip:"VISIBLE BARS / PATTERN LENGTH · SET LENGTH IN PHRASE"});
-      hd.dn = btn("↓", "TRANSPOSE CLIP DOWN · SHIFT = OCTAVE", (e) => transpose(e.shiftKey ? -12 : -1));
-      hd.up = btn("↑", "TRANSPOSE CLIP UP · SHIFT = OCTAVE", (e) => transpose(e.shiftKey ? 12 : 1));
+      hd.bars = h("span.ed-page", {tip:"VISIBLE BARS / PATTERN LENGTH · SET THE LENGTH ON THE PATTERN LETTER IN THE MATRIX"});
       hd.ch = [1, 3, 4].map((n) => btn(String(n), "NOTES PER CLICK · " + (n === 1 ? "SINGLE NOTE" : n === 3 ? "TRIAD IN SCALE" : "SEVENTH CHORD IN SCALE"), () => { chord = n; sync(); }));
-      hd.fold = btn("FOLD", "SHOW ONLY NOTES OF THE SCALE", () => { App.P.fold ^= 1; App.touch(); sync(); });
+      hd.fold = btn("FOLD", "SHOW ONLY NOTES OF THE SCALE", () => { App.P.fold ^= 1; App.touch(); sync(); }, "tog");
       hd.od = btn("-", "VIEW ONE OCTAVE DOWN · WHEEL OVER GRID = SCROLL PITCH", () => view(-12));
       hd.ou = btn("+", "VIEW ONE OCTAVE UP · WHEEL OVER GRID = SCROLL PITCH", () => view(12));
       hd.draw = btn("DRAW", "CLICK TO DRAW · SHIFT-CLICK TO SELECT NOTES", () => chooseTool("draw"));
@@ -57,16 +55,17 @@
       hd.count = h("span.ed-count", { "aria-live": "polite" });
       hd.remove = btn("DEL", "DELETE SELECTED NOTES · DELETE OR BACKSPACE", removeSelection);
       hd.dup = btn("DUP", "DUPLICATE SELECTED NOTES AFTER THE SELECTION · CTRL/CMD D", duplicate);
-      hd.nudge = [
-        btn("←", "MOVE SELECTED NOTES ONE STEP EARLIER · LEFT", () => nudge(-1, 0)),
-        btn("→", "MOVE SELECTED NOTES ONE STEP LATER · RIGHT", () => nudge(1, 0)),
-        btn("↓", "MOVE SELECTED NOTES ONE ROW DOWN · SHIFT = OCTAVE", (e) => nudge(0, 1, e.shiftKey)),
-        btn("↑", "MOVE SELECTED NOTES ONE ROW UP · SHIFT = OCTAVE", (e) => nudge(0, -1, e.shiftKey))
-      ];
+      // One set of arrows: they move the selected notes, or the whole clip when nothing is selected.
+      const mover = (dir, name, dx, dy) => {
+        const b = btn("", "MOVE " + name + " · THE SELECTED NOTES, OR THE WHOLE CLIP WHEN NOTHING IS SELECTED" + (dy ? " · SHIFT = OCTAVE" : " · WRAPS AROUND THE CLIP"), (e) => shiftNotes(dx, dy, e.shiftKey), "ar." + dir);
+        b.setAttribute("aria-label", "Move " + name.toLowerCase());
+        return b;
+      };
+      hd.move = [mover("l", "ONE STEP EARLIER", -1, 0), mover("r", "ONE STEP LATER", 1, 0), mover("d", "ONE ROW DOWN", 0, 1), mover("u", "ONE ROW UP", 0, -1)];
       hd.lr = btn("RPT", "REPEATS PER STEP · 1–8 HITS", () => { lane = "r"; sync(); });
       hd.lv = btn("VEL", "LANE SHOWS NOTE VELOCITY", () => { lane = "v"; sync(); });
       hd.lp = btn("PROB", "LANE SHOWS NOTE PROBABILITY · BELOW 100% A NOTE PLAYS BY CHANCE", () => { lane = "p"; sync(); });
-      hd.euc = btn("EUCLID", "SPREAD N HITS EVENLY OVER A CYCLE ON THE LAST TOUCHED ROW", () => euclid());
+      hd.euc = btn("EUCLID", "SPREAD N HITS EVENLY OVER A CYCLE ON THE LAST TOUCHED ROW", () => euclid(), "mnu");
       rd = h("span.rd");
       el.append(h("div.hd.ed-tools", null,
         h("span.tg", { text: "EDIT" }), hd.title,
@@ -76,9 +75,15 @@
         h("span.grp", null, h("span.tg", { text: "VIEW" }), hd.od, hd.ou, hd.fold),
         h("span.grp", null, h("span.tg", { text: "LANE" }), hd.lv, hd.lp, hd.lr), h("span.sp"), rd),
       h("div.hd.ed-actions", null,
-        h("span.grp", null, h("span.tg", { text: "NOTES" }), hd.count, hd.nudge, hd.dup, hd.remove),
-        h("span.grp", null, h("span.tg", { text: "CLIP" }),
-          btn("<", "SHIFT CLIP ONE STEP EARLIER", () => rotate(-1)), btn(">", "SHIFT CLIP ONE STEP LATER", () => rotate(1)), hd.dn, hd.up, hd.euc,btn("CYCLES","INDEPENDENT PITCH, ACCENT AND GATE CLOCKS · AUDITION AND PRINT",()=>App.Cycles.open()),btn("GROOVE","GROOVE TEMPLATE · NOTE TIMING · RECORD QUANTIZATION",()=>App.Groove.open()),btn("RULES","NOTE CONDITIONS, RANDOM SEED AND PRINTING A PLAYED PASS",()=>App.Rules.open()),App.Rules.fillButton())));
+        h("span.grp", null, h("span.tg", { text: "SELECTED" }), hd.count),
+        h("span.grp", { role: "group", "aria-label": "Move notes" }, h("span.tg", { text: "MOVE" }), hd.move),
+        h("span.grp", null, hd.dup, hd.remove),
+        h("span.sp"),
+        h("span.grp", { role: "group", "aria-label": "Note generators" }, h("span.tg", { text: "WRITE" }), hd.euc,
+          btn("CYCLES…", "INDEPENDENT PITCH, ACCENT AND GATE CLOCKS · AUDITION AND PRINT", () => App.Cycles.open()),
+          btn("GROOVE…", "GROOVE TEMPLATE · NOTE TIMING · RECORD QUANTIZATION", () => App.Groove.open()),
+          btn("RULES…", "NOTE CONDITIONS, RANDOM SEED AND PRINTING A PLAYED PASS", () => App.Rules.open())),
+        App.Rules.fillButton()));
       cv = h("canvas", { tabindex: "0", "aria-label": "Note editor. In Select mode drag a box or Shift-click notes. Use arrow keys to move a selection.", role: "application" }); ph = h("div.ed-ph");
       el.addEventListener("keydown", shortcuts);
       el.addEventListener("click", e => {
@@ -115,11 +120,31 @@
     }
 
     /* ── clip operations ── */
-    const edit = (fn) => { const c = ctx(); fn(c); c.clip.sort((a, b) => a.s - b.s || a.n - b.n); App.commit(); sync(); App.Mx.sync(); };
+    // Moving a selection with the arrow keys is one edit however many steps it takes. While it travels, the notes
+    // it passes over are left alone; what lies under it where it comes to rest is replaced, as when a drag is dropped.
+    let travel = 0, travelClip = null;
+    const land = () => {
+      if (!travel) return;
+      clearTimeout(travel); travel = 0;
+      const clip = travelClip; travelClip = null;
+      if (selection.size && [...selection].every((nt) => clip.includes(nt))) carve(clip, selection);
+      clip.sort((a, b) => a.s - b.s || a.n - b.n);
+      App.commit(); draw(); App.Mx.sync();
+    };
+    const edit = (fn) => { land(); const c = ctx(); fn(c); c.clip.sort((a, b) => a.s - b.s || a.n - b.n); App.commit(); sync(); App.Mx.sync(); };
     const view = (d) => {
-      const { T } = ctx(), visible = rowList();
-      T.lo = clamp(visible[visible.length - 1].n + d, 0, 128 - (G.rows || ROWS));
+      const { T, P } = ctx(), visible = rowList();
+      let low = visible[visible.length - 1].n + d;
+      // Folded to a scale, the view starts on the next scale note at or above `lo`: going down has to land on one,
+      // or a gap wider than the step (pentatonic, blues, harmonic minor) rounds straight back up.
+      if (P.fold && d < 0) while (low > 0 && !App.inScale(P, low)) low--;
+      T.lo = clamp(low, 0, 128 - (G.rows || ROWS));
       hov = null; App.touch(); draw();
+    };
+    const shiftNotes = (dx, dy, big) => {
+      if (selection.size) nudge(dx, dy, big);
+      else if (dx) rotate(dx);
+      else transpose(dy < 0 ? (big ? 12 : 1) : big ? -12 : -1);
     };
     const rotate = (d) => edit((c) => { const n = App.Live.length(c.P,c.ti,c.pi); for (const nt of c.clip) if (nt.s < n) nt.s = (nt.s + d + n) % n; });
     const transpose = (d) => {
@@ -281,6 +306,7 @@
     const later = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); }); };
 
     function sync() {
+      land();
       const { P, ti, pi, T } = ctx(), total=App.Live.length(P,ti,pi), bars=Math.ceil(total/App.spb(P)), keys=isKeys(T);
       const shape = T.kind + ":" + (T.kind === "smp" ? [T.smp.mode, T.smp.slices].join(":") : "");
       if (selectionClip !== T.clips[pi] || selectionShape !== shape) {
@@ -295,13 +321,13 @@
       hd.title.textContent = pad2(ti + 1) + " " + T.name + " / " + PATS[pi];
       const {start, end} = range(), barSteps = App.spb(P);
       hd.bars.textContent = bars <= 4 ? String(bars) : (1 + start / barSteps) + "–" + Math.ceil(end / barSteps) + "/" + bars;
-      hd.bars.title=total+" steps · "+barSteps+" steps per bar";
+      hd.bars.dataset.tip="VISIBLE BARS / PATTERN LENGTH · "+total+" STEPS, "+barSteps+" PER BAR · SET THE LENGTH ON THE PATTERN LETTER IN THE MATRIX";
       hd.prev.hidden = hd.next.hidden = bars <= 4;
       hd.prev.disabled = start === 0;
       hd.next.disabled = end === App.Live.length(P,P.sel.t,pi);
       hd.ch.forEach((b, i) => { b.classList.toggle("on", [1, 3, 4][i] === chord); b.disabled = !keys; });
       hd.fold.classList.toggle("on", !!P.fold);
-      for (const b of [hd.fold, hd.od, hd.ou, hd.dn, hd.up]) b.disabled = !keys;
+      for (const b of [hd.fold, hd.od, hd.ou]) b.disabled = !keys;
       App.Automation.sync();
       hd.lv.classList.toggle("on", lane === "v"); hd.lp.classList.toggle("on", lane === "p"); hd.lr.classList.toggle("on", lane === "r");
       litStep = -2;
@@ -359,8 +385,7 @@
     }
     function updateSelection() {
       hd.count.textContent = selection.size;
-      hd.count.title = selection.size + " selected";
-      for (const b of [...hd.nudge, hd.dup, hd.remove]) b.disabled = !selection.size;
+      for (const b of [hd.dup, hd.remove]) b.disabled = !selection.size;
       const activeTool = App.Automation.active() ? "auto" : tool;
       for (const [b, value] of [[hd.draw, "draw"], [hd.select, "select"], [hd.auto, "auto"]]) {
         b.classList.toggle("on", value === activeTool);
@@ -437,15 +462,18 @@
     }
     function nudge(ds, dr, octave) {
       if (!selection.size || !shiftGroup(originals(selection), ds, dr, octave)) return;
-      edit(({ clip, T }) => {
-        carve(clip, selection);
-        if (ds) revealSelection();
-        if (!dr || !isKeys(T)) return;
+      const { clip, T } = ctx();
+      if (ds) revealSelection();
+      if (dr && isKeys(T)) {
         const ordered = rowList(), pitches = [...selection].map(nt => nt.n);
         const above = Math.min(...pitches) - ordered[0].n;
         const below = Math.max(...pitches) - ordered[ordered.length - 1].n;
         if (above > 0 || below < 0) T.lo = clamp(ordered[ordered.length - 1].n + (above > 0 ? above : below), 0, 128 - (G.rows || ROWS));
-      });
+      }
+      // Still travelling: nothing is replaced and no undo step is written until the keys rest (see land).
+      travelClip = clip;
+      clearTimeout(travel); travel = setTimeout(land, 350);
+      App.touch(); draw(); App.Mx.draw();
     }
     function shortcuts(e) {
       if (App.Automation.active() || e.target.closest("input, select, textarea, [contenteditable], [role=dialog], dialog") ||
@@ -461,7 +489,7 @@
       if (!act && mod && e.code === "KeyD" && selection.size) command = duplicate;
       if (!mod && e.key === "Escape" && (act || selection.size)) command = () => {
         if (act) cancelGesture();
-        else { selection.clear(); updateSelection(); draw(); }
+        else { land(); selection.clear(); updateSelection(); draw(); }
       };
       if (!act && !mod && selection.size) {
         const actions = {
@@ -504,6 +532,7 @@
       cv.setPointerCapture(e.pointerId);
     }
     function cancelGesture(paint = true) {
+      land();
       const a = act;
       if (!a) return;
       act = null;
@@ -540,6 +569,7 @@
 
     function down(e) {
       if (act || !e.isPrimary || (e.button !== 0 && e.button !== 2)) return;
+      land();
       const m = at(e), { P, ti, T, clip } = ctx();
       UI.closeMenu();
       if (!m.zone) return;
@@ -569,7 +599,8 @@
       pickPad(o);
       if (hit) {
         const grab = Math.min(G.cw * 0.34, 0.8 * G.rem);
-        const resize = hit.s + hit.l <= G.end && m.x >= G.gx + (hit.s + hit.l - G.start) * G.cw - grab;
+        const tail = Math.min(hit.s + hit.l, G.steps); // a note that runs past the clip is grabbed where the clip ends
+        const resize = tail <= G.end && m.x >= G.gx + (tail - G.start) * G.cw - grab;
         const group = selection.has(hit) ? [...selection] : [hit];
         begin(e, resize ? "size" : "move", { note: hit, grp: group, old: originals(group), st0: m.step, r0: m.row });
         selection = new Set(group); lastLen = hit.l; lastVel = hit.v;
@@ -698,7 +729,12 @@
       if (cv) sync();
     }
 
-    return { build, sync, draw, frame, key, reset, range, selected: () => new Set(selection),
+    // Where a cell of the grid is on screen (inside its left third, mid height), for tools and tests that click it.
+    const cellAt = (step, row) => {
+      const r = cv.getBoundingClientRect();
+      return { x: r.left + ((G.gx + (step - G.start + 0.3) * G.cw) / W) * r.width, y: r.top + ((G.ry + (row + 0.5) * G.rh) / H) * r.height };
+    };
+    return { build, sync, draw, frame, key, reset, range, settle: land, cellAt, selected: () => new Set(selection),
       cancel() { cancelGesture(); App.Automation.cancel(); } };
   })();
 })();

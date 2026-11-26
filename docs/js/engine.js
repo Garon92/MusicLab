@@ -17,6 +17,28 @@
     "for(let k=0;k<m;k++){this.a[this.n]=l?l[k]:0;this.b[this.n]=r?r[k]:0;if(++this.n===4096)this.flush()}return true}}" +
     'registerProcessor("ml-rec",R)';
 
+  // A DynamicsCompressorNode looks ahead (6 ms in today's engines). Whatever sums a compressed path with an
+  // uncompressed one, or trims a render to its start, needs the real figure, so it is measured once: an impulse through
+  // a compressor that does nothing. The compressor is fed a trace of signal first, because that is how it runs here
+  // (every strip is kept awake) and because Firefox lets the first block through a compressor that was idle untouched,
+  // which makes a cold one look as if it had no look-ahead at all. Seconds; 0 until it lands a moment after load.
+  App.compLag = 0;
+  App.compLagReady = (async () => {
+    try {
+      const sr = 48000, at = sr / 4, ctx = new OfflineAudioContext(1, sr / 2, sr), b = ctx.createBuffer(1, sr / 2, sr), x = b.getChannelData(0);
+      x.fill(0.001); x[at] = 0.5;
+      const src = ctx.createBufferSource(), c = ctx.createDynamicsCompressor();
+      src.buffer = b; c.threshold.value = 0; c.ratio.value = 1;
+      src.connect(c).connect(ctx.destination); src.start(0);
+      const d = (await ctx.startRendering()).getChannelData(0);
+      let k = 0;
+      for (let i = 1; i < d.length; i++) if (Math.abs(d[i]) > Math.abs(d[k])) k = i;
+      App.compLag = Math.abs(d[k]) > 0.05 && k >= at ? (k - at) / sr : 0;
+    } catch (e) { App.compLag = 0; }
+    return App.compLag;
+  })();
+  App.compLagFrames = (sr) => Math.floor(App.compLag * sr + 1e-6);
+
   const reverse = (buf) => {
     const out = new AudioBuffer({ length: buf.length, sampleRate: buf.sampleRate, numberOfChannels: buf.numberOfChannels });
     for (let c = 0; c < buf.numberOfChannels; c++) out.getChannelData(c).set(Float32Array.from(buf.getChannelData(c)).reverse());
@@ -102,6 +124,14 @@
     }
     E.tracks = tr;
     const rack = E.rack = App.makeRackGraph(ctx, getP, tr, mix, returns, opt.stems);
+    // A parameter only follows its schedule while its node is being rendered, and a node that nothing audible passes
+    // through is not. A silent source into every strip and a muted sink for the modulation buses keep them rendered
+    // between notes: a control moved in silence is already there when the next note starts, an LFO runs at the rate
+    // it shows, and the master's compressors are warm before the first sound instead of fading in underneath it
+    // (Firefox starts that fade when signal first arrives).
+    const awake = ctx.createConstantSource(), asleep = G(0);
+    awake.offset.value = 0; awake.start(); asleep.connect(ctx.destination);
+    for (const t of tr) { awake.connect(t.instrument); t.cutHz.connect(asleep); t.cut.connect(asleep); t.pitch.connect(asleep); }
 
     const devOf = (T) => (T.kind === "syn" ? T.syn : T.kind === "smp" ? T.smp : null);
     const qOf = (d) => (d.ftype === 3 ? 0.7 + d.res * 0.6 : d.res); // LP/HP take resonance in dB, BP takes Q
@@ -177,6 +207,7 @@
       // a new oscillator is born at 440 Hz: give it its rate before it runs, or the first moments modulate at audio rate
       if (!t.lfo) { t.lfo = ctx.createOscillator(); t.lfo.frequency.value = hz; t.lfo.connect(t.lg); t.lfo.start(); }
       else set(t.lfo.frequency, hz);
+      t.lfoHz = hz; // the rate asked for; the param itself may still be gliding towards it
       t.lfo.type = WAVE[d.lw];
       if (t.ldest !== dest) {
         t.lg.disconnect();
@@ -281,6 +312,18 @@
       if(key==="comp")schedule(comp.ratio,1+9*from,1+9*to);
       if(key==="dwid")schedule(pL.pan,-from,-to);
     };
+    // What a cue can carry of a device in time: the wavetable position, and the LFO's depth and free rate while it stays
+    // on one destination. A cue that moves the LFO to another destination or wave takes effect when its scene is recalled.
+    E.sceneDevice=(index,a,b,start,end)=>{
+      const t=tr[index], da=a[a.kind], db=b[b.kind];
+      const schedule=(p,x,y)=>{sceneWritten.add(p);p.setValueAtTime(x,start);if(x!==y)p.linearRampToValueAtTime(y,end);};
+      if(a.kind==="syn" && b.kind==="syn")schedule(t.scanBase.offset,da.scan||0,db.scan||0);
+      if(a.kind==="kit" || b.kind==="kit" || !t.lfo || !da.ldest || da.ldest!==db.ldest || da.ldest!==t.ldest)return;
+      const depth=d=>[0,d.ldep*d.ldep*1200,d.ldep*3600,d.ldep*0.5,d.ldep][d.ldest];
+      schedule(t.lg.gain,depth(da),depth(db));
+      if(da.ldest===3)schedule(t.trem.gain,1-da.ldep*.5,1-db.ldep*.5);
+      if(!da.lsync && !db.lsync)schedule(t.lfo.frequency,da.lrate,db.lrate);
+    };
     E.endScenes=()=>{
       for(const p of sceneWritten)p.cancelScheduledValues(ctx.currentTime);
       sceneWritten.clear();rack.endScenes();delete E.sceneTrack;
@@ -293,7 +336,7 @@
       rack.restart(t);
       for (const x of tr) if (x.lfo) {
         const old = x.lfo, o = ctx.createOscillator();
-        o.type = old.type; o.frequency.value = old.frequency.value;
+        o.type = old.type; o.frequency.value = x.lfoHz ?? old.frequency.value;
         o.connect(x.lg); o.start(t);
         try { old.stop(t); } catch (e) {}
         old.onended = () => old.disconnect();
@@ -344,13 +387,17 @@
       if (tOff == null || tOff > dAt) p.setTargetAtTime(peak * s, dAt, d / 4);
       if (tOff != null) p.setTargetAtTime(0, Math.max(tOff, t), r / 4);
     };
+    // A new note takes over from what is sounding. A note the sequencer has already scheduled for later is not
+    // touched: for a mono track the time it starts is returned, and the new note ends there instead.
     const limit = (i, t, mono) => {
-      let n = 0, old = null;
+      let n = 0, old = null, ahead = null;
       for (const v of E.voices.slice()) if (v.ti === i && v.tEnd > t) {
+        if (v.t0 > t) { if (mono && (ahead == null || v.t0 < ahead)) ahead = v.t0; continue; }
         if (mono) cut(v, t, 0.006);
         else { n++; if (!old || v.t0 < old.t0) old = v; }
       }
       if (!mono && n >= 14 && old) cut(old, t, 0.01);
+      return ahead;
     };
 
     const zoneCounters = new WeakMap();
@@ -362,7 +409,7 @@
         S=App.samples.get(d.mode===3 ? zone?.sample : d.id);
         if (!S) return null;
       }
-      limit(i, t, !poly && !smp && d.mode === 1);
+      const ahead = limit(i, t, !poly && !smp && d.mode === 1);
       const v = { ti: i, note, t0: t, tEnd: Infinity, src: [], nodes: [], mods: [], f: [], live: dur == null, kt: 2 ** ((d.ftrk * (note - 60)) / 12) };
       const outG = (v.out = G()), amp = (v.amp = G(0));
       amp.connect(outG).connect(t_.instrument);
@@ -477,6 +524,7 @@
       v.rel = rel; v.frel = d.fr;
       watch(v);
       if (tOff != null) finish(v, tOff + rel * 1.5 + 0.03);
+      if (ahead != null) cut(v, ahead, 0.006);
       return v;
     };
 
@@ -485,7 +533,12 @@
       const p = T.kit.pads[k];
       if (!p) return null;
       const t_ = tr[i];
-      if (p.chk) for (const x of E.voices.slice()) if (x.ti === i && x.chk === p.chk) cut(x, t, 0.004);
+      // A choke group cuts what is sounding; a hit already scheduled for later chokes this one when it arrives.
+      let choked = null;
+      if (p.chk) for (const x of E.voices.slice()) if (x.ti === i && x.chk === p.chk) {
+        if (x.t0 > t) { if (choked == null || x.t0 < choked) choked = x.t0; }
+        else cut(x, t, 0.004);
+      }
       const v = { ti: i, note: 36 + k, pad: k, chk: p.chk, t0: t, tEnd: 0, src: [], nodes: [], mods: [], f: [], live: false };
       const outG = (v.out = G()), pn = ctx.createStereoPanner();
       pn.pan.value = p.pan;
@@ -558,6 +611,7 @@
       }
       watch(v);
       finish(v, end + 0.04);
+      if (choked != null) cut(v, choked, 0.004);
       return v;
     };
 
@@ -570,13 +624,19 @@
     // The browser's compressor fades in over its first ~150 ms of life (measured), which would soften
     // the first sound of a session. Nothing is allowed to start before it has settled.
     const WARM = 0.15;
-    const soon = (t) => Math.max(t || 0, ctx.currentTime, live ? WARM : 0);
+    // "Now" reaches the audio thread a few milliseconds late, and an envelope that began in the past has lost its
+    // first part: a short drum hit came out up to 14 dB too quiet at random. A played note therefore starts a
+    // hair ahead of the clock, where every segment of its envelope is still to come.
+    const LEAD = live ? Math.max(ctx.baseLatency || 0, 0.006) : 0;
+    const soon = (t) => Math.max(t || 0, ctx.currentTime + LEAD, live ? WARM : 0);
     // Sequenced note with a known length.
     E.play = (i, note, vel, t, dur, poly=false) => {
       const voice=start(i,note,clamp(vel,0,1),soon(t),dur,poly);
       if(voice)voice.sequenced=true;
       return voice;
     };
+    // One track falls silent (its device is being replaced); everything else keeps playing.
+    E.cutTrack = (i) => { const t = ctx.currentTime; for (const v of E.voices.slice()) if (v.ti === i) cut(v, t, 0.008); };
     E.releaseClip = (i,time) => {
       for(const voice of E.voices) if(voice.ti===i && voice.sequenced)cut(voice,time,.004);
     };

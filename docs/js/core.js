@@ -45,6 +45,8 @@
   const beatSteps = (P) => (SIGS[P.sig][1] === 4 ? 4 : SIGS[P.sig][0] % 3 === 0 ? 6 : 2);
   const maxBars = (P) => Math.min(MAX_BARS, Math.floor(MAX_STEPS / spb(P)));
   const patSteps = (P, pi) => Math.min(P.pats[pi].bars, maxBars(P)) * spb(P);
+  // The patterns a song really plays. A slot of empty bars is stored as pattern A with a rest flag and belongs to none.
+  const songPatterns = (P) => [...new Set(P.chain.filter((_, i) => !P.arrangement?.slots?.[i]?.rest))];
   const inScale = (P, m) => SCALES[P.scale][1].includes(pc(m - P.key));
 
   // Stack diatonic thirds on a note; out-of-scale roots and the chromatic scale fall back to a dominant shape.
@@ -412,16 +414,21 @@
   const save = (s) => {
     try { localStorage.setItem(KEY, s); } catch (e) { App.UI?.msg("LOCAL SAVE FAILED · USE FILE > SAVE"); }
   };
+  // What is on screen is not an edit. The selection, the scale fold and each track's pitch view are saved with the
+  // project, but they never make an undo step and an undo never takes them back.
+  const noView = function (k, v) { return ((k === "sel" || k === "fold") && this.tracks) || (k === "lo" && this.clips) ? undefined : v; };
+  const content = (P) => JSON.stringify(P, noView);
   // Checkpoint: one undo step per finished gesture.
   App.commit = (projectChange = false) => {
-    const s = JSON.stringify(App.P);
-    if (s === hist.st[hist.i]?.data) return;
+    const s = JSON.stringify(App.P), key = content(App.P);
+    clearTimeout(saveT);
+    save(s);
+    if (key === hist.key) return;
     hist.st.length = hist.i + 1;
     hist.st.push({ data: s, projectChange });
     if (hist.st.length > 160) hist.st.shift();
     hist.i = hist.st.length - 1;
-    clearTimeout(saveT);
-    save(s);
+    hist.key = key;
     App.Top?.history?.();
   };
   // Save without a checkpoint (selection, view position, mid-drag values).
@@ -433,12 +440,13 @@
   const step = (d) => {
     const i = hist.i + d;
     if (i < 0 || i >= hist.st.length) return false;
-    const sel = App.P.sel;
+    const sel = App.P.sel, fold = App.P.fold, lows = App.P.tracks.map((t) => t.lo);
     const crossesProject = hist.st[d < 0 ? hist.i : i].projectChange;
     App.historyCrossedProject=!!crossesProject;
     hist.i = i;
     App.P = JSON.parse(hist.st[i].data);
-    if (!crossesProject) App.P.sel = sel;
+    if (!crossesProject) { App.P.sel = sel; App.P.fold = fold; App.P.tracks.forEach((t, k) => (t.lo = lows[k])); }
+    hist.key = content(App.P);
     clearTimeout(saveT);
     save(JSON.stringify(App.P));
     App.Top?.history?.();
@@ -592,6 +600,6 @@
   Object.assign(App, {
     clamp, NOTES, PATS, SCALES, SIGS, DEF, pc, noteName, mtof, uid, pad2, spb, beatSteps, maxBars, patSteps, inScale,
     chordNotes, chordName, fmt, parse, toN, fromN, UNIT, fHz, fTime, fDb, defs, newProject, newKit, sanitize, wav, peaks, N,
-    automationKeys, curveBase, curveValue, curveShape, MAX_STEPS, MAX_BARS,
+    automationKeys, curveBase, curveValue, curveShape, MAX_STEPS, MAX_BARS, songPatterns,
   });
 })();

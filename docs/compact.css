@@ -46,6 +46,8 @@
   }
   .mx-h, .mx-k, .mx-p i { font-size: 9px; letter-spacing: .025em; }
   .mx-n, .mx-p { padding-inline: 4px; gap: 4px; }
+  .mx-n.dg, .mx-p.dg { padding-left: 11px; } .mx-p { padding-right: 0; } .mx-p .pm { padding: 0 4px; }
+  .md-g > .bt { margin-left: 3px; }
   .mx-s { flex-basis: 21px; }
   .mx-s .sgb { flex-basis: 78px; }
   .mx-len { flex-basis: 47px; font-size: 9px; }

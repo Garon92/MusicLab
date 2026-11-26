@@ -115,7 +115,7 @@
       count.textContent=taps?taps.hits.length+" hits":"";
       tiles.replaceChildren(...G.slots.map((s,i)=>{
         const ms=s?Math.round(15000/P.bpm*s.off):null;
-        return h("span",{text:ms==null?"·":(ms>0?"+":"")+ms,title:"Step "+(i+1)+(s?" · "+ms+" ms · velocity "+Math.round(s.v*127):" · unused")});
+        return h("span",{text:ms==null?"·":(ms>0?"+":"")+ms,tip:"Step "+(i+1)+(s?" · "+ms+" ms · velocity "+Math.round(s.v*127):" · unused")});
       }));
     }
     function targets(){return scope.value==="notes"?[...selected].filter(n=>clip.includes(n)):scope.value==="clip"?clip:P.tracks.flatMap(T=>T.clips[p]);}
@@ -157,7 +157,7 @@
         if(!ms.reportValidity())return;const notes=targets();notes.forEach(nt=>setOff(nt,+ms.value*P.bpm/15000));changed("Timing set",notes.length);})),
       h("div.pf-line",null,field("Template cycle",length),btn("Extract clip","Read timing and accents from the active clip",()=>store(clip,P.tracks[t].name+" / "+App.PATS[p],+length.value))),
       h("div.pf-line",null,field("Capture input",src),rec,pad,count),h("div.pf-line",null,name,tiles),
-      h("div.pf-line",null,field("Strength",strength),amt,field("Accents",useVel),apply),status,h("div.dlg-buttons",null,btn("Close","Return to the console",()=>node.close())));
+      h("div.pf-line",null,field("Strength",strength),amt,field("Accents",useVel),apply),status);
     node.classList.add("pf-dialog");node.append(body);sync();node.showModal();
     const timer=setInterval(()=>{if(taps)count.textContent=taps.hits.length+" hits";},120);node.addEventListener("close",()=>{clearInterval(timer);closeCapture();},{once:true});
   }

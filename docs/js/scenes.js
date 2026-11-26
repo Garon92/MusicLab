@@ -205,6 +205,7 @@
       for(const k of layer.mix)if(!automated(k))E.sceneParam(k,i,tr[k],to[k],time,end);
       if(layer.device && (tr.kind!=="kit" || to.kind!=="kit") && !automated("cutoff"))
         E.sceneParam("cutoff",i,tr[tr.kind]?.cut??20000,to[to.kind]?.cut??20000,time,end);
+      if(layer.device)E.sceneDevice?.(i,tr,to,time,end);
       for(const j of layer.macros)if(!automated("macro"+(j+1)))E.rack.sceneMacro(i,j,strip.macros[j],dest.macros[j],time,end);
       if(layer.eq)E.rack.eq(i).schedule(strip.eq,dest.eq,time,end);
     }
@@ -338,14 +339,14 @@
       S.items=S.items.filter(v=>v.id!==id);S.cues=S.cues.filter(c=>c.id!==id);id="";name.value="";App.commit();restartCues();message("Deleted "+s.name);render();
     });
     const add=btn("Add song cue","Schedule the stored scene and its saved scope at this bar",()=>{
-      if(!start.reportValidity() || !saved())return;
+      if(!start.reportValidity() || !Number.isInteger(start.valueAsNumber) || start.valueAsNumber<1 || !saved())return;
       const at=App.Conductor?.barStart(P,+start.value-1)??(+start.value-1)*App.spb(P);
       if(S.cues.some(c=>c.at===at && c.id===id)){message("This scene already has a cue at this bar");return;}
       S.cues.push({at,id,bars:+bars.value});S.cues.sort((a,b)=>a.at-b.at);App.commit();restartCues();render();message("Song cue added");
     });
     const play=btn("Play","Toggle transport for live scene morphs",()=>{App.Seq.toggle();});
     name.oninput=buttons;pick.onchange=changeScene;
-    body.append(h("div.rack-head",null,h("h2",{text:"Setting scenes"}),btn("Close","Return to console",()=>node.close())),
+    body.append(
       h("div.rack-row",null,field("Scene",pick),field("Name",name),store,del),
       h("section.rack-section",null,h("h3",{text:"Recall scope"}),tx,gx),
       h("div.rack-row",null,field("Transition",bars),call,play),

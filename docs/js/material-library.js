@@ -131,7 +131,7 @@
     if(project!==App.P)return;
     try {
       const {dest,durable}=await insert(meta,withSounds,target);
-      App.UI.msg(meta.name+" → "+App.P.tracks[dest.tracks[0]].name+" / "+App.PATS[dest.p]+(durable?"":" · SAVE PROJECT TO KEEP AUDIO"));
+      App.UI.msg(meta.name+" › "+App.P.tracks[dest.tracks[0]].name+" / "+App.PATS[dest.p]+(durable?"":" · SAVE PROJECT TO KEEP AUDIO"));
     } catch(e){App.UI.msg(e.message);}
   }
   function open() {
@@ -167,14 +167,14 @@
           const yes=btn("Confirm delete","Delete "+m.name,()=>action(async()=>{await write(m,null);rows=rows.filter(r=>r.id!==m.id);render();status.textContent="Removed "+m.name;}));
           remove.replaceWith(yes);yes.focus();
         });
-        const title=h("strong.library-drag",{text:m.name,title:"Drag onto a matrix cell, track or pattern"});
+        const title=h("strong.library-drag.dg",{text:m.name,tip:"DRAG ONTO A FREE MATRIX CELL, A TRACK OR A PATTERN · THE DIALOG STEPS ASIDE"});
         title.onpointerdown=e=>{
           if(e.button!==0 || busy)return;
           e.preventDefault();
           App.UI.drag(e,{type:"material",label:m.name,data:{meta:m,withSounds:sound.checked,project},
             hint:"DROP ON A FREE MATRIX CELL, TRACK OR PATTERN",start:()=>node.close()});
         };
-        list.append(h("div.tool-item",null,h("div",null,title,h("small",{text:m.scope+" · "+m.bpm+" BPM · "+m.tracks.length+" track"+(m.tracks.length===1?"":"s")+" · "+m.notes+" notes"+(m.tags ? " · "+m.tags : "")+" → "+destText(m)})),play,add,remove));
+        list.append(h("div.tool-item",null,h("div",null,title,h("small",{text:m.scope+" · "+m.bpm+" BPM · "+m.tracks.length+" track"+(m.tracks.length===1?"":"s")+" · "+m.notes+" notes"+(m.tags ? " · "+m.tags : "")+" › "+destText(m)})),play,add,remove));
       }
       if(!matches.length)list.append(h("p.tool-status",{text:rows.length?"No match":"Library empty"}));
     }
@@ -184,7 +184,7 @@
     body.append(h("h2",{text:"Material library"}),h("div.tool-fields",null,field("Capture",scope),field("Name",name),field("Tags",tags),captureButton),
       h("h3",{text:"Saved material"}),h("div.tool-fields",null,field("Search",search),field("Min BPM",low),field("Max BPM",high)),list,
       h("label.tool-check",null,sound," Apply saved sounds to occupied tracks"),h("p.dlg-tip",{text:"DRAG A NAME ONTO THE MATRIX · FREE TRACKS TAKE THE STORED SOUND"}),
-      status,h("div.dlg-buttons",null,btn("Stop audition","Stop preview audio",()=>{stop();status.textContent="Audition stopped";}),btn("Close","Return to the console",()=>node.close())));
+      status,h("div.dlg-buttons",null,btn("Stop audition","Stop preview audio",()=>{stop();status.textContent="Audition stopped";})));
     node.append(body);node.addEventListener("close",stop,{once:true});node.showModal();
     action(async()=>{rows=(await read("index")).sort((a,b)=>b.date-a.date);render();status.textContent="";});
   }

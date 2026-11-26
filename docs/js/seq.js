@@ -36,15 +36,17 @@
         let count=0;
         for(const e of pending){
           if(e.time>=before)break;
-          if(e.cut){
-            E.releaseClip?.(e.ti,e.time);
-            if(live)App.MidiIO?.cut?.(e.ti,e.time);
-          }else{
-            E.play(e.ti,e.note,e.velocity,e.time,e.duration,e.poly);
-            if(live && !P.tracks[e.ti].mute && (!P.tracks.some(t=>t.solo)||P.tracks[e.ti].solo))
-              App.MidiIO?.note(e.ti,e.note,e.velocity,e.time,e.duration);
-          }
-          count++;
+          count++; // counted before it plays: an event that cannot be played is dropped, not retried on every tick
+          try{
+            if(e.cut){
+              E.releaseClip?.(e.ti,e.time);
+              if(live)App.MidiIO?.cut?.(e.ti,e.time);
+            }else{
+              E.play(e.ti,e.note,e.velocity,e.time,e.duration,e.poly);
+              if(live && !P.tracks[e.ti].mute && (!P.tracks.some(t=>t.solo)||P.tracks[e.ti].solo))
+                App.MidiIO?.note(e.ti,e.note,e.velocity,e.time,e.duration);
+            }
+          }catch(error){if(live)App.UI.msg("A NOTE ON TRACK "+(e.ti+1)+" COULD NOT BE PLAYED · "+String(error.message||error).slice(0,60).toUpperCase());}
         }
         if(count)pending.splice(0,count);
       }
@@ -59,7 +61,10 @@
     const clipLength=!chain && source==="arrangement" && P.performance ? Math.max(...P.performance.loops.map(row=>row[pattern])) : 0;
     const harmony=source==="arrangement" && !chain ? App.Harmony?.duration(P)||0 : 0;
     const sceneEnd=source==="arrangement" ? (P.scenes?.cues||[]).reduce((end,c)=>Math.max(end,C().barsAfter(P,c.at,c.bars||0)),0) : 0;
-    const total=Math.max(music,clipLength,harmony,sceneEnd,chain ? App.SongCurves.end(P) : 0,App.AudioStudio?.durationSteps(P)||0);
+    let total=Math.max(music,clipLength,harmony,sceneEnd,App.AudioStudio?.durationSteps(P)||0);
+    // A looping pattern repeats under anything longer than itself (audio, chords, a long clip), so the cycle is a whole
+    // number of pattern lengths: otherwise the pattern restarts mid-bar every time round.
+    if(!chain && source==="arrangement" && total>count && count>0)total=Math.ceil(total/count)*count;
     return {source,chain,list,slots,ends,music,total};
   }
   function position(P,layout,at,realtime=false) {
@@ -307,11 +312,19 @@
     const end=range ? range.to : layout.total, from=range ? range.from : 0;
     if (![from,end].every(Number.isFinite) || from<0 || end<=from || end>layout.total+1e-6) throw Error("SELECT A RANGE INSIDE THE ARRANGEMENT");
     const steps=Math.ceil(end), span=seconds(P,end), sr=App.E?.ctx.sampleRate || 48000;
-    const naturalTail=Math.max(Math.min(12,1.5+P.fx.rsize),App.Rack?.tailSeconds?.(P)||0,App.SignalWorkshop?.impulseDuration(P)||0);
+    await App.compLagReady;
+    const lag=stems?.length ? 0 : 2*App.compLagFrames(sr); // compressor and limiter on the master; stems are taken before them
+    // The render ends when the sound does: reverb, then the delay line ringing down 60 dB, then the longest release in use.
+    const echo=P.tracks.some(t=>t.dly>0) ? (()=>{
+      const dt=clamp([0.125,1/6,0.25,1/3,0.375,0.5,2/3,0.75,1,2][P.fx.dtime]*60/P.bpm,.01,2.4);
+      return P.fx.dfb>0.001 ? 2*dt*Math.log(.001)/Math.log(P.fx.dfb) : 2*dt;
+    })() : 0;
+    const release=1.5*Math.max(0,...P.tracks.map(t=>t.kind!=="kit" && t.clips.some(c=>c.length) ? t[t.kind].ar||0 : 0));
+    const naturalTail=Math.min(30,Math.max(Math.min(12,1.5+P.fx.rsize),echo,release,App.Rack?.tailSeconds?.(P)||0,App.SignalWorkshop?.impulseDuration(P)||0));
     const tail=range ? clamp(Number(range.tail)||0,0,30) : naturalTail;
     if (span > 1200) throw Error("LONGER THAN 20 MIN");
     // Start at project zero to reconstruct previous sounding notes, envelopes and effects.
-    const PRE=.3, until=PRE+span, channels=stems?.length ? stems.length*2 : 2, frames=Math.ceil((until+tail)*sr);
+    const PRE=.3, until=PRE+span, channels=stems?.length ? stems.length*2 : 2, frames=Math.ceil((until+tail)*sr)+lag;
     if(stems?.length && frames*channels*4>768*1024*1024)throw Error("SELECT FEWER STEMS OR SHORTEN ARRANGEMENT");
     const ctx=new OfflineAudioContext(channels,frames,sr);
     const E=App.Engine(ctx,()=>P,{offline:true,stems});
@@ -349,7 +362,7 @@
     if(layout.source==="take")P.tracks.forEach((_,ti)=>events.cut(ti,range?until:t));
     events.flush();
     if (!rendering) rendering = ctx.startRendering(); else await ctx.resume();
-    return {full:await rendering, cut:Math.round((PRE+seconds(P,from)) * sr)};
+    return {full:await rendering, cut:Math.round((PRE+seconds(P,from)) * sr)+lag};
   }
   Seq.projectSteps=P=>plan(P).total;
   Seq.renderSong=renderSong;
