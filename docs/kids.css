@@ -602,3 +602,12 @@ html.face-kids body:has(>#kids-root[hidden])::before{content:"";position:fixed;l
 .kv-volume .kv-tempo-thumb svg{width:86%;height:86%}
 @media(max-width:1400px){.kv-header .kv-monitor-bands{display:none}}
 @media(max-width:1200px){.kv-header .kv-output{min-width:76px}}
+
+/* While PLAY runs the whole band grooves: everyone leans one way on a beat and the other way on the next. A member's
+   own motion (kids-stage.js) plays on top of it when it has a note. */
+.kv-stage.grooving .kv-member:not(.resting) .kv-member-figure>svg{animation:kv-groove var(--groove,.6s) ease-in-out infinite alternate}
+@keyframes kv-groove{from{transform:rotate(-5deg) translateY(0)}50%{transform:rotate(0) translateY(-3%)}to{transform:rotate(5deg) translateY(0)}}
+.kv-left{position:absolute;z-index:3;top:8%;width:clamp(18px,2.2vw,34px);aspect-ratio:1;pointer-events:none}
+.kv-left-drops{top:auto;bottom:30%}
+.kv-left-waves{top:40%}
+@media(prefers-reduced-motion:reduce){.kv-stage.grooving .kv-member .kv-member-figure>svg{animation:none}}

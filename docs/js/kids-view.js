@@ -145,6 +145,7 @@
     stageKeys=state.hits.map(beats=>new Set(beats.flat().map(([part,row])=>memberKey(part,row))));
     const signature=list.map(([k])=>k).join(",")+"|"+(state.costumes||[]).join(",");
     stage.querySelector(".kv-stage-scope").textContent=state.song&&state.chain.length?"Celá písnička":"Dílek "+letter(state.pattern);
+    stage.classList.toggle("grooving",!!state.playing);stage.style.setProperty("--groove",(60/(App.KidsMusic.tempos[state.tempo]||100)).toFixed(3)+"s");
     if(stage.dataset.members===signature)return;
     stage.dataset.members=signature;stageMembers.clear();stageFloor.replaceChildren();lastResting="";stageList=[];
     stage.classList.toggle("empty",!list.length);
@@ -153,7 +154,7 @@
       const sound=part>=4?App.KidsWorld.groups[part-4].sounds[row]:null,name=sound?sound.label:partLabel(part);
       const picture=sound?App.KidsPictures.sound(sound.id):character(part,state.costumes?.[part]||0);
       const m=button(stageFloor,"Zahrát: "+name,"member",'<span class="kv-member-figure">'+picture+'</span><span class="kv-member-name">'+name+'</span>',()=>{
-        call("hear",part,part<4?2:row);bop(m.firstChild,part<4?9:13);sing(m,part);
+        call("hear",part,part<4?2:row);App.KidsStage.act(m,part,row,.3);sing(m,part);
       },"kv-member"+(part<4?" kv-member-musician":""));
       m.dataset.key=key;m.style.setProperty("--part",colour[part]);stageMembers.set(key,m);stageList.push({key,part,el:m});
     }
@@ -165,7 +166,7 @@
     const together=new Set();
     for(const [part,row] of hits){
       parts.add(part);
-      if(stageOn){const m=stageMembers.get(memberKey(part,row));if(m){bop(m.firstChild,part<4?9:13);sing(m,part);together.add(memberKey(part,row));}}
+      if(stageOn){const m=stageMembers.get(memberKey(part,row));if(m){App.KidsStage.act(m,part,row,60/(App.KidsMusic.tempos[model.tempo]||100)/2);sing(m,part);together.add(memberKey(part,row));}}
       else if(part===model.track&&pattern===model.pattern){bop(pads[row]?.querySelector(".kv-row-picture"),10);bop(cells[row]?.[beat]?.querySelector(".kv-note-image"),8);}
     }
     if(!stageOn)for(const part of parts)bop(partButtons[part]?.querySelector(".kv-character-wrap"),7);

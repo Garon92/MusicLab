@@ -680,6 +680,8 @@ module.exports = async function regressions(page) {
     const slider = loudPage.locator('#kids-root [data-k="volume"]');
     const box = await slider.boundingBox();
     await loudPage.mouse.click(box.x + box.width * 0.18, box.y + box.height / 2); // the quiet end
+    // The output level is set on the audio clock; WebKit reports it once the audio thread has taken it.
+    await loudPage.waitForFunction(() => Math.abs(App.E.out.gain.value - App.P.fx.vol ** 2) < 1e-3 && App.P.fx.vol < App.KidsMusic.masterMax, null, { timeout: 3000 });
     const quiet = await loudPage.evaluate(() => ({ step: +document.querySelector('[data-k="volume"]').value, vol: App.P.fx.vol, gain: App.E.out.gain.value, max: App.KidsMusic.masterMax }));
     assert.ok(quiet.step <= 1 && quiet.vol < quiet.max * 0.6 && Math.abs(quiet.gain - quiet.vol ** 2) < 1e-3, JSON.stringify(quiet));
     await loudPage.locator('#kids-root [data-k="note"][data-row="0"][data-col="0"]').click();

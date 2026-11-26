@@ -20,7 +20,7 @@ module.exports = async function kidsStage(reference) {
     Element.prototype.animate = function (frames, options) {
       const a = animate.call(this, frames, options), el = this;
       queueMicrotask(() => {
-        if (a.id !== "kv-bop" || !App.Seq.playing) return;
+        if (!["kv-bop", "kv-act"].includes(a.id) || !App.Seq.playing) return; // a hop on the desk, a member's own motion on stage
         const pos = App.Seq.pos, member = el.closest(".kv-member"), card = el.closest(".kv-musician"), lane = el.closest(".kv-lane");
         const what = member ? "member " + member.dataset.key : card ? "card " + card.dataset.index : el.closest(".kv-row-pad") ? "pad " + [...lane.parentNode.children].indexOf(lane) : "note " + el.closest(".kv-cell")?.dataset.row + "." + el.closest(".kv-cell")?.dataset.col;
         hops.push({ pat: pos?.pat, beat: Math.floor((pos?.step ?? 0) / 2) % 8, what });
@@ -91,7 +91,13 @@ module.exports = async function kidsStage(reference) {
     await page.locator('.kv-member[data-key="4:0"]').click();
     await page.waitForFunction(() => App.KidsMusic.levels()[4] > 0.01, null, { timeout: 3000 });
     await listen(); await playFor(1900);
-    assert.deepEqual(await heard(0), await expected(0, "stage"), "on stage, each member hops on its own notes");
+    assert.deepEqual(await heard(0), await expected(0, "stage"), "on stage, each member moves on its own notes");
+    // Each moves its own way, and the band grooves to the beat while PLAY runs.
+    assert.deepEqual(await page.evaluate(() => [[0, 0], [4, 0], [4, 3], [5, 3], [5, 4], [11, 3]].map(([p, r]) => App.KidsStage.motionOf(p, r))), ["drum", "nod", "stretch", "boing", "turn", "lift"]);
+    await key("play").click();
+    await page.waitForFunction(() => document.querySelector(".kv-stage").classList.contains("grooving") && getComputedStyle(document.querySelector(".kv-member .kv-member-figure svg")).animationName === "kv-groove");
+    await key("play").click();
+    await page.waitForFunction(() => !document.querySelector(".kv-stage").classList.contains("grooving"));
     for (const [width, height] of sizes) { await page.setViewportSize({ width, height }); await layout("Stage"); }
     await page.setViewportSize({ width: 1100, height: 620 });
     // They stand as a crowd, not in a grid: the musician on a riser at the back, the farm animals nearer and lower.
@@ -128,6 +134,6 @@ module.exports = async function kidsStage(reference) {
     await key("stageBack").click();
     assert.equal(await page.locator(".kv-cell").first().isVisible(), true);
     assert.deepEqual(errors, []);
-    console.log("Kids stage · the band of a piece and of a song as a crowd on a riser, members resting outside their piece, hops on each note on the desk and on stage, a scene when two meet, six viewports, empty stage");
+    console.log("Kids stage · the band of a piece and of a song as a crowd on a riser, members resting outside their piece, hops on the desk and each member's own motion on stage on its notes, a groove while playing, a scene when two meet, six viewports, empty stage");
   } finally { await context.close(); }
 };
