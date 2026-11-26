@@ -19,7 +19,7 @@ const states = [
   ["zones", "{const i=App.P.tracks.findIndex(t=>t.kind==='smp');if(i>=0){App.select(i,0);App.SamplerLab.zones(i);}}"],
   ["impulse", "App.SignalWorkshop.openImpulse()"], ["bench", "App.SignalBench.open()"], ["scenes", "App.Scenes.open()"],
   ["parametric eq", "App.ParametricEQ.open(App.P.sel.t)"], ["midi", "App.MidiIO.open()"], ["library", "App.Library.open()"],
-  ["stems", "App.file('stems')"], ["reset", "App.file('new')"], ["find", "App.Finder.open()"],
+  ["open band song", "App.Kids.confirmImport(App.P,0)"], ["stems", "App.file('stems')"], ["reset", "App.file('new')"], ["find", "App.Finder.open()"],
 ];
 
 // What breaks a rule in the dialog on top, as short sentences; an empty list is a dialog that fits the console.
@@ -147,7 +147,12 @@ module.exports = async function consoleRules(page) {
   assert.ok(broad.fits && broad.rows > 30, "a broad query fits the smallest window: " + JSON.stringify(broad));
   assert.match(broad.note, /weaker matches/);
   assert.deepEqual(await page.evaluate(audit), []);
-  await page.keyboard.press("Escape");
+  await page.getByRole("combobox", { name: "Search commands" }).fill("kids");
+  await page.getByRole("option", { name: /Kids music studio/i }).waitFor();
+  assert.ok(await page.getByRole("group", {name:"Studio",exact:true}).isVisible());
+  await page.keyboard.press("Enter");
+  await page.locator('#kids-band [data-k="play"]').waitFor();
+  await page.evaluate(() => App.Kids.leave());
   await page.setViewportSize({ width: 1600, height: 900 });
   console.log("Console rules held in " + audited + " dialog states at three sizes · paging, status strip and command window");
 };

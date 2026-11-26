@@ -76,7 +76,7 @@
     el.onblur=()=>{pressed=false;paint();};return el;
   }
   window.addEventListener("keydown",e=>{
-    if(e.code==="Backslash" && !e.ctrlKey && !e.altKey && !e.metaKey && !e.target.closest?.("input,select,textarea,[contenteditable=true]")){
+    if(!App.Kids?.active && !App.Kids?.entering && e.code==="Backslash" && !e.ctrlKey && !e.altKey && !e.metaKey && !e.target.closest?.("input,select,textarea,[contenteditable=true]")){
       e.preventDefault();keyHeld=true;paint();
     }
   });

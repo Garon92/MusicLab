@@ -350,4 +350,4 @@ noscript { position: fixed; inset: 0; display: grid; place-items: center; backgr
 .finder-hit { outline: 2px solid var(--am); outline-offset: -2px; }
 .zone-summary { display: grid; grid-column: span 4; grid-row: span 2; align-content: center; padding: 0.4em; color: var(--t2); }
 .inst-overview { align-self: center; padding: 0.36rem; overflow: hidden; overflow-wrap: anywhere; color: var(--t2); font-size: 0.9rem; }
-#st .find-console { flex: 0 0 auto; height: 100%; padding: 0 0.6em; color: var(--t2); }
+#st .find-console, #st #kids-entry { flex: 0 0 auto; height: 100%; padding: 0 0.6em; color: var(--t2); }

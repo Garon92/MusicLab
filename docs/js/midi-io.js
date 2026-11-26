@@ -14,7 +14,7 @@
   }});
   let access, connecting, inputId="*", outputId="", clockMode=(()=>{try{const m=localStorage.getItem("musiclab.midi-clock");return ["send","follow"].includes(m)?m:"internal";}catch{return "internal";}})(), learn=null, draw, timer, phaseAt=0, lastPulse=0, pulses=0, clockPort="", resumeStep=0;
   let intervals=[];
-  const output = () => access?.outputs.get(outputId);
+  const output = () => App.Kids?.active ? null : access?.outputs.get(outputId);
   const connected = port => port?.state !== "disconnected";
   const stamp = (ctx,time) => Math.max(performance.now(),performance.now()+(time-ctx.currentTime)*1000);
   function send(bytes,when) {
@@ -99,6 +99,7 @@
     return next+App.clamp(offset,-.002,.002);
   }
   function receive(e) {
+    if(App.Kids?.active || App.Kids?.entering)return;
     const [st,a,b]=e.data, cmd=st&240, ch=st&15, port=e.currentTarget?.id || e.target?.id || "";
     if (inputId!== "*" && inputId!==port) return;
     if (st===0xf2 && clockMode==="follow") { resumeStep=(b<<7)|a;return; }

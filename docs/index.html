@@ -8,9 +8,10 @@
     <title>MUSICLAB</title>
     <link rel="icon" href="./assets/mark.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./assets/fonts/fonts.css?v=4e1bcf0d02" />
-    <link rel="stylesheet" href="./style.css?v=e1593e3191" />
+    <link rel="stylesheet" href="./style.css?v=5315a989e2" />
     <link rel="stylesheet" href="./compact.css?v=5ccc4c3f65" />
     <link rel="stylesheet" href="./dialog.css?v=59a747c622" />
+    <link rel="stylesheet" href="./kids.css?v=a656459d9b" />
   </head>
   <body>
     <div id="app">
@@ -20,17 +21,18 @@
       <section id="ed" class="pn"></section>
       <section id="dv" class="pn"></section>
       <section id="fx" class="pn"></section>
-      <footer id="st"><button class="bt find-console" type="button" aria-label="Find command" data-tip="FIND ANY TOOL, CONTROL OR TRACK · THE MAP OF THE CONSOLE, ITS KEYS AND GESTURES · CTRL/CMD K">FIND</button><span class="st-h"></span><span class="st-m" role="status"></span><span class="st-s"></span></footer>
+      <footer id="st"><button class="bt find-console" type="button" aria-label="Find command" data-tip="FIND ANY TOOL, CONTROL OR TRACK · THE MAP OF THE CONSOLE, ITS KEYS AND GESTURES · CTRL/CMD K">FIND</button><button id="kids-entry" class="bt" type="button" aria-label="Kids studio" data-tip="OPEN THE PICTURE AND SOUND STUDIO · YOUR CONSOLE PROJECT STAYS HERE">KIDS</button><span class="st-h"></span><span class="st-m" role="status"></span><span class="st-s"></span></footer>
     </div>
+    <main id="kids-root" hidden aria-label="Kids music studio"><div id="kids-band"></div><section id="kids-sound" hidden aria-label="Sound playground"></section></main>
     <input type="file" id="file" hidden />
     <noscript>MUSICLAB NEEDS JAVASCRIPT</noscript>
-    <script src="./js/core.js?v=ed66a7711b"></script>
+    <script src="./js/core.js?v=645d0c0872"></script>
     <script src="./js/conductor.js?v=f39fdbfe49"></script>
     <script src="./js/ui.js?v=247c2b06e9"></script>
     <script src="./js/instrument-lab.js?v=5de8147d73"></script>
     <script src="./js/instrument-design.js?v=e3a278935c"></script>
     <script src="./js/engine.js?v=5c94c4e385"></script>
-    <script src="./js/seq.js?v=875aa97a8d"></script>
+    <script src="./js/seq.js?v=dbca3e72e5"></script>
     <script src="./js/panels.js?v=a70f225e03"></script>
     <script src="./js/editor.js?v=5aaffea527"></script>
     <script src="./js/signal.js?v=3fc0717521"></script>
@@ -41,15 +43,15 @@
     <script src="./js/automation.js?v=fb2acdd11b"></script>
     <script src="./js/operations.js?v=c02e6c0196"></script>
     <script src="./js/phrases.js?v=f432e71038"></script>
-    <script src="./js/rack-dsp.js?v=c0da7fd181"></script>
-    <script src="./js/mix-rack.js?v=55e8b845f4"></script>
+    <script src="./js/rack-dsp.js?v=f726f25cf9"></script>
+    <script src="./js/mix-rack.js?v=8c02f52410"></script>
     <script src="./js/performance.js?v=4133ded178"></script>
     <script src="./js/groove.js?v=4859160802"></script>
     <script src="./js/harmony.js?v=12a41fe990"></script>
     <script src="./js/audio-dsp.js?v=a7c0fa7327"></script>
-    <script src="./js/audio-studio.js?v=94161420a5"></script>
+    <script src="./js/audio-studio.js?v=edde6adffe"></script>
     <script src="./js/material-library.js?v=0129645dda"></script>
-    <script src="./js/midi-io.js?v=4828a10fed"></script>
+    <script src="./js/midi-io.js?v=ebc3cc5c38"></script>
     <script src="./js/arrangement.js?v=d05728f82d"></script>
     <script src="./js/sampler-lab.js?v=4581838115"></script>
     <script src="./js/transcription.js?v=244af869ed"></script>
@@ -57,11 +59,17 @@
     <script src="./js/scenes.js?v=f8cb68ea7f"></script>
     <script src="./js/signal-workshop.js?v=c4214f01e4"></script>
     <script src="./js/signal-bench.js?v=da77b94723"></script>
-    <script src="./js/note-rules.js?v=ca75f63f82"></script>
+    <script src="./js/note-rules.js?v=161e8a5af3"></script>
     <script src="./js/retrospective.js?v=7f3307cc98"></script>
     <script src="./js/cycles.js?v=7323f7b4e3"></script>
     <script src="./js/song-curves.js?v=c54235b9da"></script>
-    <script src="./js/finder.js?v=161ce80c27"></script>
-    <script src="./js/main.js?v=62f3618bd5"></script>
+    <script src="./js/finder.js?v=a537206172"></script>
+    <script src="./js/kids-store.js?v=31be53e078"></script>
+    <script src="./js/kids-music.js?v=b35539fa1e"></script>
+    <script src="./js/kids-view.js?v=c8070565bb"></script>
+    <script src="./js/kids-scopes.js?v=c0c941be96"></script>
+    <script src="./js/kids-sound.js?v=6bf2192200"></script>
+    <script src="./js/kids.js?v=61520665d9"></script>
+    <script src="./js/main.js?v=e810a52214"></script>
   </body>
 </html>

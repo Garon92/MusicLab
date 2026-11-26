@@ -5,8 +5,8 @@
   const {h}=App.UI;
   const normal=text=>String(text).normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
   // Panels in the order they sit on the screen, then what the keyboard and the pointer do everywhere.
-  const GROUPS=["Transport","Clip matrix","Song","Edit","Device","Master","Signal","File","View","Keys","Gestures","Tracks","Controls"];
-  const CAP={Tracks:8,Controls:12};
+  const GROUPS=["Transport","Clip matrix","Song","Edit","Device","Master","Signal","File","View","Keys","Gestures","Tracks","Controls","Studio"];
+  const CAP={Tracks:8,Controls:12,Studio:10};
   // Where each panel's tools stand on the map: four columns of about the same height.
   const COLUMNS=[["Transport","Song"],["Clip matrix","Edit","Master"],["Device","Signal","View","Keys"],["File","Gestures"]];
   let finder;
@@ -47,6 +47,16 @@
 
     add("Play / stop","Transport","start transport přehrát zastavit",()=>App.playToggle(),"SPACE");
     add("Stop, all sound off","Transport","panic all notes off ticho",()=>App.silence(),"ESC");
+    add("Kids music studio","View / Kids","kids mode child band loops echo modulation sound playground dětské kapela polička",()=>App.Kids.enter());
+    note("Studio","Costumes · hold a musician","HOLD","kids band change sound");
+    note("Studio","Live pads · tap the selected player","TAP","kids record quantised band");
+    note("Studio","Accents and long notes","HOLD","kids note expression roll");
+    note("Studio","Echo, colour and vibrato","DRAG","kids sound playground modulation XY");
+    note("Studio","Record a movement","ARM + DRAG","kids gesture automation reverse");
+    note("Studio","Freeze the signal displays","SNOWFLAKE","kids waveform spectrum");
+    note("Studio","Reorder song pieces","DRAG","kids arrange chain");
+    note("Studio","Open a shelf song in console","HOLD","kids import parent");
+    note("Studio","Return through the lock","HOLD 2 SEC","kids exit parent");
     add("Tap tempo","Transport / Tap","tap bpm tempo by hand vyťukat",()=>press("top","TAP"));
     add("Record notes","Transport / Rec","arm overdub nahrávat noty",()=>{App.recArm=!App.recArm;App.Top.sync();});
     add("Tape the output","Transport / Tape","record master bounce live nahrát zvuk",()=>App.tape());
@@ -206,7 +216,7 @@
       // place. The columns are laid out here, not by the browser, so the map is the same in every engine.
       // Matching tracks and controls, which only a query brings up, go under whichever column is shortest.
       const cols=COLUMNS.map(names=>names.map(g=>boxes.get(g)).filter(Boolean));
-      for(const extra of ["Tracks","Controls"]){
+      for(const extra of ["Tracks","Controls","Studio"]){
         const x=boxes.get(extra);if(!x)continue;
         cols.reduce((short,c)=>c.reduce((t,y)=>t+y.size,0)<short.reduce((t,y)=>t+y.size,0)?c:short).push(x);
       }
@@ -259,6 +269,6 @@
     node.addEventListener("close",()=>{node.remove();if(finder===node)finder=null;App.UI.tip();if(!navigating && last?.isConnected)last.focus({preventScroll:true});},{once:true});
   }
   document.querySelector(".find-console").onclick=open;
-  window.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey) && !e.altKey && e.key.toLowerCase()==="k"){e.preventDefault();e.stopImmediatePropagation();open();}},true);
+  window.addEventListener("keydown",e=>{if(!App.Kids?.active && !App.Kids?.entering && (e.ctrlKey||e.metaKey) && !e.altKey && e.key.toLowerCase()==="k"){e.preventDefault();e.stopImmediatePropagation();open();}},true);
   App.Finder={open};
 })();

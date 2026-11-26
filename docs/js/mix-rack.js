@@ -5,7 +5,7 @@
   const divisions = [[0,"Free · Hz"],[.25,"1/16"],[.5,"1/8"],[1,"1/4"],[2,"1/2"],[4,"1/1"],[8,"2/1"]];
   const effects = {lowpass:"Low-pass",highpass:"High-pass",lowshelf:"Low shelf",highshelf:"High shelf",saturate:"Saturation",compress:"Compressor"};
   const branchEffects = {...effects,room:"Room reverb"};
-  const targets = {scan:"Wavetable position",cutoff:"Voice cutoff",pitch:"Voice pitch",tone:"Strip filter",drive:"Distortion",release:"Amp release",level:"Strip level",pan:"Pan",dly:"Delay send",rev:"Reverb send"};
+  const targets = {scan:"Wavetable position",cutoff:"Voice cutoff",pitch:"Voice pitch",vibratoDepth:"Vibrato depth · 0–150 ct",vibratoRate:"Vibrato rate · 2–10 Hz",tone:"Strip filter",drive:"Distortion",release:"Amp release",level:"Strip level",pan:"Pan",dly:"Delay send",rev:"Reverb send"};
   const trackIds = Array.from({length:8}, (_,i) => "track"+i);
   const kickIds = trackIds.map((_,i) => "kick"+i);
   const macroIds = ["macro1","macro2","macro3","macro4"];

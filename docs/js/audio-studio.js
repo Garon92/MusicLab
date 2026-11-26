@@ -182,13 +182,17 @@
   }
   async function finishCapture() {
     const c=capture;
-    if (!c || c.stopping)return;
+    if (!c || c.stopping)return c?.stopping;
     if(!c.rec){
       capture=null;
       if(c.awaitingNewInput)c.E.closeInput();
       notice="RECORDING CANCELLED";render();return;
     }
-    c.stopping=true;clearTimeout(captureTimer);
+    c.stopping=finishRecording(c);
+    return c.stopping;
+  }
+  async function finishRecording(c) {
+    clearTimeout(captureTimer);
     try {
       const lag=c.lag || 0, now=c.E.ctx.currentTime, end=Math.min(c.end!=null ? c.end+lag : now,now);
       const raw=await c.rec.stop();
@@ -653,5 +657,9 @@
     const r=find(),ti=App.P.sel.t;
     App.SignalWorkshop.openResample(ti,cursor,r?.track===ti?r:null);
   }
-  App.AudioStudio={open,openResample,openSpectral,addRegion:add,refreshPlayback,editSample,openTranscription,reset,sync:render,durationSteps,schedule,stopSources};
+  async function park(){
+    ++generation;stopLoop();
+    await finishCapture();
+  }
+  App.AudioStudio={park,open,openResample,openSpectral,addRegion:add,refreshPlayback,editSample,openTranscription,reset,sync:render,durationSteps,schedule,stopSources};
 })();

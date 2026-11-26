@@ -4,6 +4,17 @@ A single-screen music workstation for a desktop browser. Start with an empty gri
 
 [Open MUSICLAB](https://garon92.github.io/MusicLab/)
 
+## Pocket Band
+
+A second instrument face for children who play by ear and pictures. Open **KIDS** beside **FIND**, or bookmark [Pocket Band](https://garon92.github.io/MusicLab/?kids). The browser remembers which face you used. Each starts with its own project.
+
+- **Make a band.** Pick a musician and tap the round pads to place notes in an eight-step loop. Hold a note to cycle through a normal hit, an accent and a sustained note or drum roll. Hold the musician to try four different sounds. Tap the selected musician again for four live pads. Arm their red record button to put the performance on the beat.
+- **Play with sound.** Open the hand with ripples. At the lake, move right for more echo and up for more reverb. The clock changes echo spacing and the repeating wave changes feedback. In the prism, drag for brightness and saturation. In the wobble workshop, horizontal motion changes vibrato speed and vertical motion changes its depth. Moving the pad plays the current instrument even on an empty clip.
+- **Draw a movement.** Arm the red circle in the effects room and drag through the scene. The dotted trail replays with the music. Reverse turns the movement around, the eraser clears the pair of curves and Undo restores the edit. The two little screens show the actual stereo output as a waveform and a rainbow spectrum. The snowflake freezes both pictures while sound continues.
+- **Record a voice.** Tap the microphone and allow access to record. Tap again to finish, or wait six seconds. The voice musician plays that recording at different pitches and has a backwards costume. Recordings and songs are stored in this browser. System and headphone volume still determine how loud the result is.
+- **Build a song.** The sun, moon, leaf and kite each hold a separate loop. The connected-pieces button opens a song chain with room for 32 pieces. Choose a piece and use the arrows to move it. The star saves a song to the eight-space shelf. Each cover carries a rhythmic fingerprint.
+- **Return to the desk.** Hold the lock for two seconds to recover your console project. To work on a child’s song in the full workstation, hold its filled shelf cover for two seconds and choose **Open in console**. The notes, effect routes, automation and recording travel together. Console Undo restores the project you had open.
+
 ## First session
 
 1. Click an empty square in **Edit** to add a note. Click **Play** or press Space to loop the selected pattern. The track name and pattern letter above the grid show what you are editing.

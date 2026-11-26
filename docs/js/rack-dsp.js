@@ -228,6 +228,27 @@
       node.frequency.value = cfg.lfoBeats ? getP().bpm / (60 * cfg.lfoBeats) : cfg.lfoRate;
       node.connect(g.lfoOut); node.start(time); return node;
     };
+    // One sine per routed strip. Its depth and speed are independent,
+    // audio-rate destinations, including for drawn macro lanes and export.
+    function vibrato(t) {
+      const depth=shape(clipPositive), rate=shape(clipPositive), cents=gain(150), hz=gain(8), amount=gain(0);
+      depth.connect(cents).connect(amount.gain);
+      rate.connect(hz); amount.connect(t.pitch);
+      let oscillator;
+      function start(time) {
+        if (oscillator) {
+          const old=oscillator; old.stop(time);
+          old.onended=()=>{hz.disconnect(old.frequency);old.disconnect();};
+        }
+        oscillator=ctx.createOscillator();oscillator.frequency.value=2;
+        hz.connect(oscillator.frequency);oscillator.connect(amount);oscillator.start(time);
+      }
+      start(ctx.currentTime);
+      return {depth,rate,start,dispose(){
+        oscillator.stop();oscillator.disconnect();
+        depth.disconnect();rate.disconnect();cents.disconnect();hz.disconnect(oscillator.frequency);amount.disconnect();
+      }};
+    }
     const syncRoutes = (g, cfg, i) => {
       if (cfg.routes.some(r => r.source === "lfo")) {
         g.lfoOut ||= gain(); g.lfo ||= oscillator(g,cfg,ctx.currentTime);
@@ -239,6 +260,13 @@
       const sig = JSON.stringify(cfg.routes);
       if (sig === g.routeSig) return;
       clear(g.routeWires);
+      const vibratoRouted=cfg.routes.some(r=>r.target==="vibratoDepth" || r.target==="vibratoRate");
+      if (vibratoRouted && !g.vibrato) {
+        g.vibrato=vibrato(tracks[i]);
+        g.targets.vibratoDepth=[g.vibrato.depth,1];g.targets.vibratoRate=[g.vibrato.rate,1];
+      } else if (!vibratoRouted && g.vibrato) {
+        g.vibrato.dispose();g.vibrato=null;delete g.targets.vibratoDepth;delete g.targets.vibratoRate;
+      }
       if (g.bias) { g.bias.stop(); g.bias.disconnect(); g.bias = null; }
       for (const r of cfg.routes) {
         if (r.target === "drive" && !g.wet) addDrive(g, i);
@@ -341,6 +369,7 @@
     };
     const restart = time => strips.forEach((g,i) => {
       const cfg = getP().rack.strips[i];
+      g.vibrato?.start(time);
       if (!g.lfo || !cfg.lfoBeats) return;
       const old = g.lfo; old.stop(time); old.onended = () => old.disconnect();
       g.lfo = oscillator(g,cfg,time);

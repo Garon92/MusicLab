@@ -445,47 +445,64 @@
 
   /* ── history + local storage ──────────────────────────────────── */
   const KEY = "musiclab.v3";
-  const hist = { st: [], i: -1 };
-  let saveT = 0;
+  const makeHistory = (store = null) => ({ st: [], i: -1, store });
+  let hist = makeHistory();
+  let saveT = 0, lastConsoleWrite;
   const save = (s) => {
-    try { localStorage.setItem(KEY, s); } catch (e) { App.UI?.msg("LOCAL SAVE FAILED · USE FILE > SAVE"); }
+    if (hist.store) return hist.store.write(s);
+    // A tab returning from its songbook must not save an unchanged, parked
+    // project over music somebody has since edited in another console tab.
+    if (s === lastConsoleWrite) return true;
+    try { localStorage.setItem(KEY, s); lastConsoleWrite = s; return true; } catch (e) { App.UI?.msg("LOCAL SAVE FAILED · USE FILE > SAVE"); return false; }
+  };
+  // A workspace keeps its history and draft writer together. Finish the outgoing
+  // deferred view write before exposing the new project to either writer.
+  App.makeHistory = makeHistory;
+  App.swapHistory = (next) => {
+    if (saveT) App.flush();
+    const parked = hist;
+    hist = next;
+    return parked;
   };
   // What is on screen is not an edit. The selection, the scale fold and each track's pitch view are saved with the
   // project, but they never make an undo step and an undo never takes them back.
   const noView = function (k, v) { return ((k === "sel" || k === "fold") && this.tracks) || (k === "lo" && this.clips) ? undefined : v; };
   const content = (P) => JSON.stringify(P, noView);
   // Checkpoint: one undo step per finished gesture.
-  App.commit = (projectChange = false) => {
-    const s = JSON.stringify(App.P), key = content(App.P);
-    clearTimeout(saveT);
-    save(s);
-    if (key === hist.key) return;
+  App.commit = (projectChange = false, shelfEdit = null) => {
+    const s = JSON.stringify(App.P), key = content(App.P), slot = hist.store?.slot();
+    clearTimeout(saveT); saveT = 0;
+    const durable = save(s);
+    if (key === hist.key && slot === hist.st[hist.i]?.slot && !shelfEdit) return durable;
     hist.st.length = hist.i + 1;
-    hist.st.push({ data: s, projectChange });
+    hist.st.push({ data: s, projectChange, slot, shelfEdit });
     if (hist.st.length > 160) hist.st.shift();
     hist.i = hist.st.length - 1;
     hist.key = key;
     App.Top?.history?.();
     App.lamps?.();
+    return durable;
   };
   // Save without a checkpoint (selection, view position, mid-drag values).
   App.touch = () => {
     clearTimeout(saveT);
-    saveT = setTimeout(() => save(JSON.stringify(App.P)), 400);
+    saveT = setTimeout(() => { saveT = 0; save(JSON.stringify(App.P)); }, 400);
   };
-  App.flush = () => { clearTimeout(saveT); save(JSON.stringify(App.P)); };
+  App.flush = () => { clearTimeout(saveT); saveT = 0; return save(JSON.stringify(App.P)); };
   const step = (d) => {
     const i = hist.i + d;
     if (i < 0 || i >= hist.st.length) return false;
     const sel = App.P.sel, fold = App.P.fold, lows = App.P.tracks.map((t) => t.lo);
-    const crossesProject = hist.st[d < 0 ? hist.i : i].projectChange;
+    const boundary = hist.st[d < 0 ? hist.i : i], crossesProject = boundary.projectChange;
+    const project = JSON.parse(hist.st[i].data);
+    if (!crossesProject) { project.sel = sel; project.fold = fold; project.tracks.forEach((t, k) => (t.lo = lows[k])); }
+    if (hist.store && !hist.store.restore(JSON.stringify(project), hist.st[i].slot, boundary.shelfEdit, d)) return false;
     App.historyCrossedProject=!!crossesProject;
     hist.i = i;
-    App.P = JSON.parse(hist.st[i].data);
-    if (!crossesProject) { App.P.sel = sel; App.P.fold = fold; App.P.tracks.forEach((t, k) => (t.lo = lows[k])); }
+    App.P = project;
     hist.key = content(App.P);
-    clearTimeout(saveT);
-    save(JSON.stringify(App.P));
+    clearTimeout(saveT); saveT = 0;
+    if (!hist.store) save(JSON.stringify(App.P)); // workspace restore also restores its shelf and slot
     App.Top?.history?.();
     return true;
   };
@@ -601,6 +618,12 @@
     idb.put({ id, name, blob }).catch(() => App.UI.msg("SAMPLE NOT STORED LOCALLY · USE FILE > SAVE"));
     return id;
   };
+  App.storeBuffer = async (name, buffer) => {
+    const id = uid(), blob = wav(buffer);
+    await idb.put({ id, name, blob });
+    register(id, name, buffer, blob);
+    return id;
+  };
   App.sampleIds = (P) => {
     const ids = new Set();
     for (const T of P.tracks) { if (T.smp.id) ids.add(T.smp.id); for (const p of T.kit.pads) if (p.id) ids.add(p.id); }
@@ -640,12 +663,12 @@
      only a tab that is open alone cleans (another tab's undo history may still hold a sample), it keeps all that
      this tab has decoded or can undo to, and a build older than the one that last saved cleans nothing, because a
      later build may keep sample ids where this one does not look. Raise REFS with every such new place. */
-  const REFS = 1, REFS_KEY = KEY + ".refs", TABS = "musiclab.tabs";
+  const REFS = 2, REFS_KEY = KEY + ".refs", TABS = "musiclab.tabs";
   App.tidySamples = async (projects) => {
     const locks = navigator.locks;
-    if (!locks) return 0;
     let known = 0, removed = 0;
     try { known = +localStorage.getItem(REFS_KEY) || 0; if (known < REFS) localStorage.setItem(REFS_KEY, REFS); } catch { known = Infinity; }
+    if (!locks) return 0;
     if (projects && known <= REFS) {
       // A reload asks while the page it replaces still holds its place for a moment, so wait for it briefly.
       const stop = new AbortController(), timer = setTimeout(() => stop.abort(), 2500);
@@ -653,6 +676,9 @@
         clearTimeout(timer);
         const keys = await idb.keys(), keep = new Set(App.samples.keys());
         const states = [...projects, App.P, ...hist.st.map((entry) => JSON.parse(entry.data))];
+        // Shelves are additional project roots. Their recordings belong to the
+        // saved songs, independent of which project is currently exported.
+        for (const extension of extensions) if (extension.storedProjects) states.push(...extension.storedProjects());
         for (const P of states) if (P) for (const id of App.sampleIds(P)) keep.add(id);
         const unused = keys.filter((id) => !keep.has(id));
         if (unused.length) { await idb.drop(unused); removed = unused.length; }

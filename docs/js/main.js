@@ -22,8 +22,8 @@
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) { UI.msg("THIS BROWSER HAS NO WEB AUDIO"); return null; }
     try { App.E = App.Engine(new AC({ latencyHint: "interactive" }), () => App.P); } catch (e) { UI.msg("AUDIO OUTPUT FAILED TO START"); return null; }
-    App.E.syncAll();
-    App.Sg.source();
+    if(App.Kids?.active){App.KidsMusic.sync();App.E.source("out");}
+    else {App.E.syncAll();App.Sg.source();}
     return App.E;
   };
 
@@ -238,6 +238,7 @@
     return tg;
   };
   App.dropFiles = async (files, tg) => {
+    if (App.Kids?.active || App.Kids?.entering) return;
     const proj = files.find((f) => /\.json$/i.test(f.name));
     if (proj) { await openFile(proj,false); return; }
     const midi = files.find(f => /\.midi?$/i.test(f.name) || /^(audio\/(x-)?midi)$/i.test(f.type));
@@ -255,7 +256,7 @@
         last = { ti: tg.ti, pad: tg.pad != null ? tg.pad + n : undefined };
         assign(last, id);
         n++;
-      } catch (e) { UI.msg("CANNOT DECODE " + f.name.toUpperCase()); }
+      } catch (e) { if (generation !== session) return; UI.msg("CANNOT DECODE " + f.name.toUpperCase()); }
       if (tg.pad == null && n) break;
     }
     if (n) {
@@ -270,11 +271,14 @@
   };
 
   /* ── tape: the output as audio ── */
-  let tapeBusy = false;
-  App.tape = async () => {
+  let tapeJob = null;
+  App.tape = () => {
+    if (!tapeJob) tapeJob = toggleTape().finally(() => { tapeJob = null; App.Top.sync(); });
+    return tapeJob;
+  };
+  async function toggleTape() {
     const E = App.audio();
-    if (!E || tapeBusy) return;
-    tapeBusy = true;
+    if (!E) return;
     const generation = session;
     try {
       if (App.taping) {
@@ -290,8 +294,8 @@
         if (generation !== session) await rec.stop();
         else App.taping = rec;
       }
-    } catch { UI.msg("TAPE RECORDING FAILED"); } finally { tapeBusy = false; App.Top.sync(); }
-  };
+    } catch { UI.msg("TAPE RECORDING FAILED"); }
+  }
   const download = (blob, name) => {
     const a = document.createElement("a"), url = URL.createObjectURL(blob);
     a.href = url; a.download = name.replace(/[\\/:*?"<>|]/g, "-");
@@ -320,11 +324,11 @@
     for (let c = 0; c < buf.numberOfChannels; c++) out.getChannelData(c).set(buf.getChannelData(c).subarray(i));
     return out;
   };
-  let recPending = false;
+  let recPending = null, samplerStop = null;
   App.recStart = async (tg,src) => {
     const E = App.audio(), generation = session;
-    if (!E || App.recTo || recPending) return;
-    recPending = true;
+    if (!E || App.recTo || recPending || samplerStop) return;
+    const request = recPending = {};
     try {
       const node = src === "in" ? await E.openInput() : E.out;
       if (generation !== session) return;
@@ -334,12 +338,16 @@
       App.Dv.build(); App.Top.sync();
       UI.msg("RECORDING " + (src === "in" ? "THE INPUT" : "THE OUTPUT") + " INTO TRACK " + pad2(tg.ti + 1) + " · STOP ON THE DEVICE OR ON REC IN THE TOP BAR");
     } catch { if (generation === session) UI.msg("RECORDING UNAVAILABLE · CHECK INPUT AND PERMISSIONS"); }
-    finally { recPending = false; }
+    finally { if (recPending === request) recPending = null; }
   };
-  App.recStop = async () => {
-    const r = App.recTo, generation = session;
-    if (!r) return;
+  App.recStop = () => {
+    if (!App.recTo) return samplerStop;
+    const r = App.recTo;
     App.recTo = null;
+    samplerStop = finishSampler(r, session).finally(() => { samplerStop = null; App.Dv.build(); App.Top.sync(); });
+    return samplerStop;
+  };
+  async function finishSampler(r, generation) {
     try {
       const buf = trim(await r.rec.stop());
       if (generation !== session) return;
@@ -347,8 +355,7 @@
       assign(r,App.addBuffer((r.src === "in" ? "INPUT " : "RESAMPLE ") + clock(),buf)); landed(r);
       UI.msg(buf.duration.toFixed(2) + " S RECORDED INTO TRACK " + pad2(r.ti + 1) + (r.pad != null ? " PAD " + (r.pad + 1) : "") + " · UNDO REVERTS");
     } catch { UI.msg("RECORDING COULD NOT BE SAVED"); }
-    finally { App.Dv.build(); App.Top.sync(); }
-  };
+  }
 
   /* ── projects, recovery and interchange ─────────────────────── */
   const backupKey = "musiclab.v3.before-reset";
@@ -489,7 +496,8 @@
   }
 
   async function finishRecordings() {
-    if (App.recTo) await App.recStop();
+    if (App.recTo || samplerStop) await App.recStop();
+    if (tapeJob) await tapeJob;
     if (App.taping) await App.tape();
   }
 
@@ -518,8 +526,9 @@
     });
     if (response === "save") return saveProject();
     if (response !== "reset") return;
-    ++fileRequest;
+    const request = ++fileRequest;
     await finishRecordings();
+    if (request !== fileRequest) return;
     App.commit();
     const changed = rememberReset();
     installProject(App.newProject(), App.take); // the dialog says the tape is kept: it is, where it was
@@ -535,8 +544,10 @@
       ["Recovery","Undo returns to the current project"]
     ],actions:[{id:"restore",label:"Restore project",primary:true}]});
     if (choice !== "restore") return;
-    ++fileRequest;
-    await finishRecordings(); App.commit(); installProject(clone(prev),App.take || backupTake);
+    const request = ++fileRequest;
+    await finishRecordings();
+    if (request !== fileRequest) return;
+    App.commit(); installProject(clone(prev),App.take || backupTake);
     UI.msg("RESTORED " + prev.name);
   }
 
@@ -567,8 +578,8 @@
   App.ProjectFiles = {pack:packProject, importSamples, blob:projectBlob, read:readProject, streamFrom:64 << 20};
 
   async function openFile(file, isMidi) {
-    const request = ++fileRequest;
-    const current = () => request === fileRequest;
+    const request = ++fileRequest, generation = session;
+    const current = () => request === fileRequest && generation === session;
     try {
       let project, entries, summary;
       if (isMidi) {
@@ -598,9 +609,9 @@
     }
   }
   App.pickFile = (accept, cb, multiple = true) => {
-    const inp = document.getElementById("file");
+    const inp = document.getElementById("file"), project = App.P, generation = session;
     inp.accept = accept; inp.multiple = multiple; inp.value = "";
-    inp.onchange = () => { if (inp.files.length) cb([...inp.files]); };
+    inp.onchange = () => { if (generation === session && project === App.P && inp.files.length) cb([...inp.files]); };
     inp.click();
   };
   App.file = async (v) => {
@@ -712,6 +723,13 @@
     if (Seq.toggle() === "rested") UI.msg("LIVE ENDED · PLAY IS " + (Seq.songOn() ? "THE SONG" : "PATTERN " + App.PATS[App.P.sel.p]) + " AGAIN");
   };
   window.addEventListener("keydown", (e) => {
+    if(App.Kids?.entering)return;
+    if (App.Kids?.active) {
+      if(e.code==="Space" && !e.defaultPrevented && !e.ctrlKey && !e.metaKey && !e.altKey){
+        e.preventDefault();if(!e.repeat)App.Kids.play();
+      }
+      return;
+    }
     if (!e.defaultPrevented && e.target.closest?.("dialog[data-instrument-keys]") && !e.target.closest?.("input,textarea,select,[contenteditable=true]") && !(e.ctrlKey || e.metaKey || e.altKey)) {
       const n=noteFor(e.code);
       if (n!=null) {e.preventDefault();if(!e.repeat)App.noteOn(n,.8,e.code);}
@@ -775,6 +793,7 @@
   function frame(ts) {
     requestAnimationFrame(frame);
     const c = Seq.frame();
+    if(App.Kids?.active){App.Kids.frame(c,ts);return;}
     App.Top.pos(c); App.Top.frame(); App.Mx.frame(c); App.Ed.frame(c); App.Fx.frame(); App.Sg.frame();
     if (ts - sysT < 500) return;
     sysT = ts;
@@ -805,6 +824,29 @@
     window.addEventListener("pointerdown", () => App.audio(), true);
     window.addEventListener("pagehide", () => App.flush());
     document.addEventListener("visibilitychange", () => { if (document.hidden) { releaseAll(); App.flush(); } });
+    App.Kids.init({
+      async park(){
+        ++fileRequest;
+        UI.closeMenu();UI.flush();releaseAll();App.Ed.settle?.();App.recClose();
+        await finishRecordings();
+        await App.AudioStudio.park();
+        const parked={armed:App.recArm,slot:Seq.start(),focus:App.Workspace.focused()};
+        Seq.stop(true);App.Live.finish();App.MidiIO.stop();App.MidiIO.reset();App.Library.stop();App.Scenes.reset();
+        ++session;recPending=null;App.recArm=false;
+        if(App.Sg.mode()==="in")App.Sg.reset();
+        App.E?.panic(true);App.E?.monitor(false);App.E?.closeInput();Seq.startAt(0);App.commit();
+        return parked;
+      },
+      resume(parked){
+        ++session;App.recArm=parked.armed;Seq.startAt(parked.slot);
+        App.refresh();App.Workspace.focus(parked.focus);UI.msg("CONSOLE PROJECT RESTORED");
+      },
+      async install(project){
+        const request=++fileRequest;await finishRecordings();
+        if(request!==fileRequest)return false;
+        App.commit();installProject(project,App.take);return true;
+      }
+    });
     requestAnimationFrame(frame);
   }
   boot();
