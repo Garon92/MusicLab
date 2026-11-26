@@ -43,9 +43,17 @@
     if (running) App.Seq.play();
     App.Top.sync(); App.Mx.sync();
   }
+  // A launch takes the transport over from the pattern and the song, and it lasts until the transport is stopped:
+  // after that PLAY plays what the console shows again. A new session starts with nothing else running.
+  function rest() {
+    const S=App.P.performance;
+    if (S.source !== "live") return false;
+    S.source="arrangement"; App.touch(); App.Top.sync(); App.Mx.sync();
+    return true;
+  }
   function launch(tracks,p) {
     const P=App.P, S=P.performance;
-    if (S.source !== "live" && App.Seq.playing) App.Seq.stop();
+    if (S.source !== "live") { if (App.Seq.playing) App.Seq.stop(); S.active.fill(-1); }
     S.source="live";
     if (App.Seq.playing) {
       const due=App.Seq.nextGrid(quantSteps(P)).step;
@@ -57,7 +65,7 @@
     // so a long session at the launcher leaves the edit history as it was.
     App.touch();
     if (!App.Seq.playing && p >= 0) App.Seq.play();
-    App.Top.sync();
+    App.Top.sync(); App.Mx.sync();
   }
   function readTake(take,at) {
     let byTrack=memo.get(take);
@@ -213,7 +221,13 @@
     function render() {stage.replaceChildren();if(tab==="take")arrangement();else launcher();}
     node.classList.add("pf-dialog");node.append(body);render();node.showModal();
     const timer=setInterval(()=>{if(App.P!==P){node.close();return;}update();},100);
-    node.addEventListener("close",()=>clearInterval(timer),{once:true});
+    node.addEventListener("close",()=>{
+      clearInterval(timer);
+      // Leaving the launcher does not stop it: the console says so, and where to hand the transport back.
+      if(App.P===P && S.source==="live" && App.Seq.playing)App.UI.msg("LAUNCHED CLIPS PLAY UNTIL YOU STOP · THEN PLAY IS THE PATTERN AGAIN · LIVE IN THE SONG ROW = BACK NOW");
+      else if(App.P===P && S.source==="take")App.UI.msg("PLAY PLAYS THE RECORDED TAKE · CLICK TAKE IN THE SONG ROW TO PLAY PATTERNS AGAIN");
+      else if(App.P===P)rest();
+    },{once:true});
   }
-  App.Live={open,length,start,reset,launch,source,record,finish,frames,transitions,field,select,num};
+  App.Live={open,length,start,reset,launch,rest,source,record,finish,frames,transitions,field,select,num};
 })();

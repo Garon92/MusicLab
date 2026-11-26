@@ -271,6 +271,28 @@ module.exports = async function regressions(page) {
   await close();
   await state(() => App.E.closeInput());
 
+  // Clips launched in LIVE… kept the transport for good. PLAY went on playing them, or silence once they were stopped,
+  // whatever pattern was selected; with an empty song the SONG button could not hand the transport back; and nothing
+  // on the console said who had it. A session ends with the player's stop now, and the console names it while it runs.
+  const who = () => state(() => [App.P.performance.source, document.querySelector(".sgb").textContent, document.querySelector("#top .pos").textContent.split(" ")[0], App.Seq.playing]);
+  await state(() => { App.P.tracks[0].clips[1] = [{ s: 0, n: 38, l: 1, v: 0.8, p: 1 }]; App.select(0, 1); App.commit(); App.refresh(); App.Live.launch([0], 0); });
+  await page.waitForFunction(() => App.Seq.frame()?.lanes?.[0]?.p === 0);
+  assert.deepEqual(await who(), ["live", "LIVE", "LIVE", true], "the console says launched clips are playing");
+  await page.keyboard.press("Space");
+  assert.deepEqual(await who(), ["arrangement", "SONG", "B", false], "the player's stop ends the session");
+  await page.keyboard.press("Space");
+  await page.waitForFunction(() => App.Seq.frame()?.lanes?.[0]?.p === 1);
+  await state(() => App.Live.launch([0], 0));
+  await page.waitForFunction(() => App.Seq.frame()?.lanes?.[0]?.p === 0);
+  await page.locator("#mx .sgb").click();
+  await page.waitForFunction(() => App.Seq.frame()?.lanes?.[0]?.p === 1);
+  assert.deepEqual(await who(), ["arrangement", "SONG", "B", true], "and the song row hands the transport back at once, with no song to return to");
+  await page.keyboard.press("Space");
+  await state(() => { App.P.performance.source = "live"; App.commit(); App.flush(); });
+  await page.reload();
+  await page.waitForSelector("#ed canvas");
+  assert.equal(await state(() => App.P.performance.source), "arrangement", "a project never opens with the launcher holding the transport");
+
   // The first recording on a page was cut in the wrong place: the recorder's first block read frame 0 in WebKit
   // whatever the time was (a take came back half silent or "too short") and one block early in Chromium. A click
   // put on an exact frame of a context that has been running for a while has to be found on that frame.
@@ -293,5 +315,5 @@ module.exports = async function regressions(page) {
   assert.ok(placed.found && Math.abs(placed.framesOff) <= 1, "the first recording on a page knows which frame it starts on: " + JSON.stringify(placed));
 
   await reset();
-  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, first recording on its frame");
+  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, launcher hands the transport back, first recording on its frame");
 };

@@ -276,7 +276,8 @@
     if (was && App.E) { App.E.panic(); App.E.stopAutomation(); }
     if (!quiet) App.Top.sync();
   };
-  Seq.toggle = () => (Seq.playing ? Seq.stop() : Seq.play());
+  // The player's own stop also ends a launcher session; restarts the console makes for itself (Seq.stop then Seq.play) do not.
+  Seq.toggle = () => { if (Seq.playing) { Seq.stop(); return App.Live?.rest?.() ? "rested" : "stopped"; } Seq.play(); return "playing"; };
   // In pattern mode a new selection takes over at the next loop boundary.
   Seq.cue = (p) => { if (Seq.playing && App.P.performance?.source==="arrangement" && !songOn(App.P)) queued = p === pat ? null : p; };
   Seq.queued = () => queued;

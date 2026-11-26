@@ -58,6 +58,9 @@
     s.t = t; s.p = p;
     App.touch();
     if (cp) Seq.cue(p);
+    // Launched clips and a take do not follow the selection: say what plays and how to get the pattern back.
+    if (cp && Seq.playing && App.P.performance.source !== "arrangement")
+      UI.msg((App.P.performance.source === "take" ? "THE RECORDED TAKE" : "THE LAUNCHED CLIPS") + " KEEP PLAYING · CLICK " + (App.P.performance.source === "take" ? "TAKE" : "LIVE") + " IN THE SONG ROW TO PLAY PATTERN " + App.PATS[p]);
     App.Mx.sync(); App.Ed.sync(); App.Top.pos(Seq.pos);
     if (ct) { App.Dv.build(); App.Sg.source(); }
   };
@@ -445,6 +448,7 @@
     App.E?.panic(true); App.Sg.reset(); App.E?.closeInput();
     App.recArm = false; App.take = take; octave = 4;
     resetTools(); App.Ed.reset?.();
+    if (project.performance?.source === "live") project.performance.source = "arrangement"; // a launcher session ends with the transport
     App.P = project;
     App.commit(true); App.refresh(); App.Workspace.focus("");
   }
@@ -627,17 +631,17 @@
     }
   };
 
-  App.silence = () => { releaseAll(); App.recClose(); Seq.stop(); App.E?.panic(true); UI.msg("TRANSPORT STOPPED · ALL SOUND OFF"); };
+  App.silence = () => { releaseAll(); App.recClose(); Seq.stop(); App.Live.rest(); App.E?.panic(true); UI.msg("TRANSPORT STOPPED · ALL SOUND OFF"); };
   App.playToggle = () => {
     if (!Seq.playing) {
       const P = App.P, bank = Seq.songOn() ? App.songPatterns(P) : [P.sel.p];
       if (!bank.some(p => P.tracks.some(t => t.clips[p].length)) && !P.click && !App.AudioStudio.durationSteps(P) && P.performance.source === "arrangement")
         UI.msg("EMPTY " + (Seq.songOn() ? "SONG" : "PATTERN") + " · CLICK THE NOTE GRID OR ARM REC AND PLAY");
       // The launcher and a recorded take replace the song as what PLAY plays. Say so, since nothing else on the console does.
-      else if (P.performance.source !== "arrangement") UI.msg("PLAYING " + (P.performance.source === "take" ? "THE RECORDED TAKE" : "LAUNCHED CLIPS") + " · SONG RETURNS TO THE ARRANGEMENT");
+      else if (P.performance.source === "take") UI.msg("PLAYING THE RECORDED TAKE · CLICK TAKE IN THE SONG ROW TO PLAY PATTERNS AGAIN");
     }
     if (Seq.playing) App.recClose(); // stopping closes the recording pass
-    Seq.toggle();
+    if (Seq.toggle() === "rested") UI.msg("LIVE ENDED · PLAY IS " + (Seq.songOn() ? "THE SONG" : "PATTERN " + App.PATS[App.P.sel.p]) + " AGAIN");
   };
   window.addEventListener("keydown", (e) => {
     if (!e.defaultPrevented && e.target.closest?.("dialog[data-instrument-keys]") && !e.target.closest?.("input,textarea,select,[contenteditable=true]") && !(e.ctrlKey || e.metaKey || e.altKey)) {
@@ -709,6 +713,7 @@
     theme();
     const stored = App.stored();
     App.P = stored || App.newProject();
+    if (App.P.performance.source === "live") App.P.performance.source = "arrangement"; // a launcher session ends with the transport
     UI.init();
     App.Top.build(); App.Mx.build(); App.Ed.build(); App.Dv.build(); App.Fx.build(); App.Sg.build();
     App.Workspace.init();

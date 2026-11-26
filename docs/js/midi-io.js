@@ -71,7 +71,7 @@
     if (byte===0xfc) {
       const pos=App.Seq.frame();
       if (pos) resumeStep=pos.absoluteStep+1;
-      App.Seq.stop();resetClock();return;
+      App.Seq.stop();App.Live?.rest?.();resetClock();return;
     }
     if (byte===0xfa || byte===0xfb) {
       resetClock(); clockPort=port;if(byte===0xfa)resumeStep=0;App.Seq.play(0,resumeStep);return;

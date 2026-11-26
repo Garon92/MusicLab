@@ -117,7 +117,9 @@
 
     function pos(c) {
       const p = P(), BS = c?.beatSteps || App.beatSteps(p), s = c?.inside ?? 0;
-      const t = PATS[c ? c.pat : p.sel.p] + " " + String((c ? c.bar : 0) + 1).padStart(3, "0") + "." + (Math.floor(s / BS) + 1) + "." + ((s % BS) + 1);
+      // The letter is the pattern that plays. Launched clips and a recorded take play no one pattern, and say so here.
+      const src = p.performance.source, what = src === "live" ? "LIVE" : src === "take" ? "TAKE" : PATS[c ? c.pat : p.sel.p];
+      const t = what + " " + String((c ? c.bar : 0) + 1).padStart(3, "0") + "." + (Math.floor(s / BS) + 1) + "." + ((s % BS) + 1);
       if (t !== lastPos) posEl.textContent = lastPos = t;
     }
 
@@ -145,7 +147,7 @@
   App.Mx = (() => {
     const heads = [], rows = [], cells = [], slots = [], lv = new Float32Array(8), shown = new Float32Array(8), mbuf = new Float32Array(512);
     const barsDef = { k: "bars", l: "BARS", name: "PATTERN LENGTH IN BARS · NOTES PAST THE END ARE KEPT BUT NOT PLAYED", min: 1, max: 16, def: 1, int: 1, f: (v) => v + " BAR" };
-    let contextEl, grid, cv, cx, ph, songEl, songB, lenEl, phOn = false, runPat = -1, runSlot = -1;
+    let contextEl, grid, cv, cx, ph, songEl, songB, liveB, lenEl, phOn = false, runPat = -1, runSlot = -1;
 
     function build() {
       const el = $("mx");
@@ -219,11 +221,17 @@
       grid.append(cv, ph);
       cx = cv.getContext("2d");
 
-      songB = btn("SONG", "SONG MODE · ON = PLAY THE CHAIN · OFF = LOOP THE SELECTED PATTERN", () => {
-        if (!P().chain.length) { App.Song.open(); return; }
-        const live = P().performance.source !== "arrangement";
-        if (live) { P().performance.source = "arrangement"; P().song = 1; UI.msg("TRANSPORT FOLLOWS THE SONG AGAIN · LIVE… SWITCHES TO LAUNCHED CLIPS"); }
-        else P().song ^= 1;
+      // What the transport follows is always readable here: SONG (lit = the chain, unlit = the selected pattern), or
+      // LIVE / TAKE while launched clips or a recorded take have taken it over. One click gives it back.
+      songB = btn("SONG", "", () => {
+        const p = P();
+        if (p.performance.source !== "arrangement") {
+          App.Live.source("arrangement");
+          UI.msg("TRANSPORT PLAYS " + (App.Seq.songOn() ? "THE SONG" : "PATTERN " + PATS[p.sel.p]) + " AGAIN · LIVE… LAUNCHES CLIPS");
+          sync(); App.Top.sync(); return;
+        }
+        if (!p.chain.length) { App.Song.open(); return; }
+        p.song ^= 1;
         App.commit();
         if (App.Seq.playing) App.Seq.play();
         sync(); App.Top.sync();
@@ -249,7 +257,8 @@
       contextEl = h("span.ti");
       const process = btn("BATCH EDIT…", "BATCH EDIT NOTES, AUTOMATION, MIX OR INSTRUMENT SETTINGS", () => App.Operations.open());
       const phrase = btn("PHRASE…", "SET LENGTH, REPEAT, STRETCH OR COMBINE CLIPS AND PATTERNS", () => App.Phrases.open("clip"));
-      el.append(h("div.hd.matrix-head", null, h("span.tg", {text:"CLIP MATRIX"}), contextEl, h("span.sp"), btn("LIVE…","LAUNCH CLIPS AND RECORD A PERFORMANCE",() => App.Live.open()), process, phrase), grid, songEl);
+      liveB = btn("LIVE…", "", () => App.Live.open(), "tog");
+      el.append(h("div.hd.matrix-head", null, h("span.tg", {text:"CLIP MATRIX"}), contextEl, h("span.sp"), liveB, process, phrase), grid, songEl);
     }
 
     /* ── every object answers a right-click with the things that can be done to it ── */
@@ -327,9 +336,16 @@
         r.cl.forEach((c, k) => { c.classList.toggle("sel", on && k === s.p); c.classList.toggle("dg", T.clips[k].length > 0 || Object.keys(T.automation[k]).length > 0); });
       });
       // Lit only while the transport really follows the song; launched clips or a take have taken it over otherwise.
-      const arranged = p.performance.source === "arrangement";
-      songB.classList.toggle("on", !!p.song && arranged);
-      songB.dataset.tip = arranged ? "SONG MODE · ON = PLAY THE CHAIN · OFF = LOOP THE SELECTED PATTERN" : "THE TRANSPORT IS PLAYING " + (p.performance.source === "take" ? "A RECORDED TAKE" : "LAUNCHED CLIPS") + " · CLICK = BACK TO THE SONG";
+      const src = p.performance.source, arranged = src === "arrangement", other = src === "take" ? "A RECORDED TAKE" : "CLIPS LAUNCHED IN LIVE…";
+      songB.textContent = arranged ? "SONG" : src === "take" ? "TAKE" : "LIVE";
+      songB.classList.toggle("on", !arranged || (!!p.song && p.chain.length > 0));
+      songB.classList.toggle("over", !arranged);
+      songB.setAttribute("aria-label", arranged ? "Song mode" : "Transport source: " + src + ". Back to patterns");
+      songB.dataset.tip = arranged ? (p.chain.length ? "SONG MODE · ON = PLAY THE CHAIN · OFF = LOOP THE SELECTED PATTERN" : "NO SONG YET · DROP PATTERN LETTERS ON THE SLOTS · THE SELECTED PATTERN LOOPS")
+        : "THE TRANSPORT PLAYS " + other + ", NOT THE SELECTED PATTERN · CLICK = BACK TO PATTERN AND SONG";
+      liveB.classList.toggle("on", !arranged); liveB.classList.toggle("over", !arranged); liveB.setAttribute("aria-pressed", String(!arranged));
+      liveB.dataset.tip = arranged ? "LAUNCH CLIPS PER TRACK AND RECORD A PERFORMANCE · TAKES OVER THE TRANSPORT UNTIL YOU CLICK LIVE IN THE SONG ROW"
+        : "THE TRANSPORT PLAYS " + other + " · OPEN THE LAUNCHER · LIVE IN THE SONG ROW = BACK TO PATTERNS";
       songEl.classList.toggle("off", !p.song || !arranged);
       const spans=App.Conductor.layout(p,p.chain);
       slots.forEach((e, i) => {

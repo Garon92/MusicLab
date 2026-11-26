@@ -53,6 +53,8 @@ canvas { display: block; }
 .bt:hover { border-color: var(--t2); color: var(--t1); position: relative; }
 .bt.on { background: var(--t1); border-color: var(--t1); color: #000; position: relative; }
 .bt.rec.on { background: var(--rd); border-color: var(--rd); color: #000; }
+/* amber = what plays: launched clips or a take have taken the transport over from the pattern and the song */
+.bt.over.on, .mx-s .sgb.over.on { background: var(--am); border-color: var(--am); color: #000; }
 .bt:disabled { color: var(--ln2); pointer-events: none; }
 .bt.ic { width: 3.2rem; padding: 0; }
 .bt.ic svg { width: 1.1rem; height: 1.1rem; fill: currentColor; }
