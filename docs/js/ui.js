@@ -308,6 +308,7 @@
       if (UI.tipEl === el) UI.tip();
       return true;
     };
+    el.reset = () => put(d.def); // for whatever resets a whole module, strip or device at once
     el.addEventListener("focus", () => { UI.tipEl = el; UI.tip(); });
     el.dataset.tip = d.name;
     el._tip = () =>

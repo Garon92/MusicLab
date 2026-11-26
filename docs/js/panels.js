@@ -25,8 +25,37 @@
     let used = 0;
     for (const k of kids) used += span(k, "grid-column") * span(k, "grid-row");
     for (; used < cols * rows; used++) kids.push(h("div.fl"));
-    return h("div.md" + (cls ? "." + cls : ""), { style: `grid-column:span ${cols};--c:${cols}` }, h("div.md-t", null, h("span", { text: title }), extra), h("div.md-g", null, kids));
+    // A module is an object like any other: its name answers a right-click, here with a reset of everything in it.
+    const name = h("span", { text: title, tip: title + " · RIGHT-CLICK = RESET THIS MODULE'S VALUES · BRIGHT = SOMETHING IN IT IS CHANGED" });
+    const el = h("div.md" + (cls ? "." + cls : ""), { style: `grid-column:span ${cols};--c:${cols}` }, h("div.md-t", null, name, extra), h("div.md-g", null, kids));
+    name.oncontextmenu = () => {
+      const values = [...el.querySelectorAll(".pm")].filter((p) => p.reset), changed = values.filter((p) => !p.classList.contains("df")).length;
+      if (!values.length) return;
+      UI.menu(name, [{ label: changed ? "Reset " + changed + (changed === 1 ? " value" : " values") + " to default" : "Nothing changed here", value: "reset", disabled: !changed }], () => {
+        let any = false;
+        for (const p of values) if (p.reset()) any = true;
+        if (any) { App.commit(); App.refresh(); UI.msg(title + " BACK TO DEFAULT · UNDO REVERTS"); }
+      }, { label: title });
+    };
+    return el;
   };
+  // The same for a whole device and for a mixer strip. A device goes back to how a new project has it on that kind
+  // of track; what is loaded into a sampler or a pad stays, only the settings go back.
+  function resetDevice(ti) {
+    const T = P().tracks[ti], fresh = App.newProject().tracks[ti];
+    App.releaseAll(); App.E?.cutTrack(ti);
+    if (T.kind === "syn") { T.syn = App.defs(App.DEF.syn); T.arp = App.defs(App.DEF.arp); }
+    else if (T.kind === "smp") { const { id, st, en, root, markers, warpSource, warpSpec, zones, mode, slices } = T.smp; T.smp = { ...fresh.smp, ...App.defs(App.DEF.smp), id, st, en, root, markers, warpSource, warpSpec, zones, mode, slices }; }
+    else T.kit.pads = T.kit.pads.map((pad, i) => ({ ...App.newKit().pads[i], id: pad.id, src: pad.src, st: pad.st, en: pad.en, name: pad.name }));
+    App.commit(); App.E?.syncTrack(ti); App.refresh();
+    UI.msg(T.name + " DEVICE BACK TO DEFAULT · UNDO REVERTS");
+  }
+  function resetStrip(ti) {
+    const T = P().tracks[ti];
+    for (const d of Object.values(App.DEF.trk)) T[d.k] = d.def;
+    App.commit(); App.refresh();
+    UI.msg(T.name + " LEVEL, PAN, SENDS, MUTE AND SOLO BACK TO DEFAULT · UNDO REVERTS");
+  }
 
   /* ═════ TOP BAR ═════ */
   App.Top = (() => {
@@ -299,9 +328,10 @@
         "-",
         { label: "Patch…", value: "patch" }, { label: "Modulation…", value: "mod" }, { label: "Routing…", value: "mix" }, { label: "Parametric EQ…", value: "eq" },
         "-",
+        { label: "Reset device to default", value: "device" }, { label: "Reset level, pan and sends", value: "strip" },
         { label: "Clear all clips", value: "clear", disabled: !T.clips.some((_, k) => App.filled(t, k)) },
       ], { rename, syn: () => changeKind(t, "syn"), kit: () => changeKind(t, "kit"), smp: () => changeKind(t, "smp"), patch: () => App.Patches.open(), mod: () => App.Rack.modulate(),
-        mix: () => App.Rack.mixer(t), eq: () => App.ParametricEQ.open(t), clear: () => App.clearTrack(t) },
+        mix: () => App.Rack.mixer(t), eq: () => App.ParametricEQ.open(t), device: () => resetDevice(t), strip: () => resetStrip(t), clear: () => App.clearTrack(t) },
       "Track " + pad2(t + 1) + " " + T.name);
     };
     const slotMenu = (el, i) => {

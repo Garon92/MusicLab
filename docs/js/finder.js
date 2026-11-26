@@ -52,7 +52,7 @@
     add("Undo","Transport","back zpět",()=>App.doUndo(-1),"CTRL/CMD Z");
     add("Redo","Transport","again znovu",()=>App.doUndo(1),"CTRL/CMD SHIFT Z");
 
-    add("Clip launcher","Clip matrix / Live","launch scenes queue spustit klipy",()=>App.Live.open());
+    add("Clip launcher","Clip matrix / Live","launch scenes queue live session back to pattern song spustit klipy",()=>App.Live.open());
     add("Recorded launches","Clip matrix / Live","capture edit recorded live performance záznam klipů",()=>App.Live.open("take"));
     add("Batch edit & clean up","Clip matrix / Batch edit","clean reset selected tracks defaults notes batch quantize hromadně výchozí vyčistit",()=>App.Operations.open());
     add("Length, repeat, stretch","Clip matrix / Phrase","length repeat resize overlay stretch copy prodloužit zkrátit opakovat",()=>App.Phrases.open());
@@ -77,6 +77,7 @@
     add("Select notes","Edit / Select","box marquee tool výběr",()=>press("ed","SELECT"));
     add("Clip automation","Edit / Automation","curve envelope fade automatizace křivka",()=>{App.Workspace.focus("ed");App.Automation.open();});
     add("Euclidean rhythm","Edit / Euclid","spread hits evenly generator rytmus",()=>press("ed","EUCLID"));
+    add("Note values","Edit / Vel Prob Rpt Len","probability velocity repeat ratchet length note value default selected pravděpodobnost hlasitost délka noty výchozí",()=>{App.Workspace.focus("ed");document.querySelector("#ed .ed-note .pm")?.focus();});
     add("Cycle sequencer","Edit / Cycles","polymeter pitch gate accent rhythm phase generative polyrytmus",()=>App.Cycles.open());
     add("Groove & timing","Edit / Groove","microtiming clap swing timing tleskání",()=>App.Groove.open());
     add("Note rules & print pass","Edit / Rules","fill every fourth pass random seed probability conditions freeze podmínky náhoda",()=>App.Rules.open());
@@ -119,6 +120,7 @@
     note("Gestures","Fine adjustment","SHIFT","precise slow jemně");
     note("Gestures","Type a value","CLICK IT","enter exact number zadat");
     note("Gestures","Reset a value","RIGHT-CLICK","default výchozí");
+    note("Gestures","Reset a module","RIGHT-CLICK ITS NAME","default init whole module device strip výchozí modul");
     note("Gestures","Any list","CLICK · WHEEL","dropdown menu options seznam");
     note("Gestures","Object menu","RIGHT-CLICK","context menu clip pattern track slot pad nabídka");
     note("Gestures","Copy or move","DRAG THE GRIP","drag drop clip pattern slot pad track přetáhnout");
