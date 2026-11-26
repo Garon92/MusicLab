@@ -431,6 +431,7 @@
     hist.i = hist.st.length - 1;
     hist.key = key;
     App.Top?.history?.();
+    App.lamps?.();
   };
   // Save without a checkpoint (selection, view position, mid-drag values).
   App.touch = () => {

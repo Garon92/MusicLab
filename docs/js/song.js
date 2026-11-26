@@ -232,6 +232,7 @@
     }
     copies.oninput=render;
     body.append(h("h2",{text:"Song arrangement"}),summary,cv,h("p.dlg-tip",{text:"BRIGHT = NOTES · DIM = AUDIO · AMBER = AUTOMATION, CUES, TEMPO AND METER"}),h("div.arr-tabs",{role:"group","aria-label":"Arrangement view"},...tabs),center,status,h("div.dlg-buttons",null,btn("Cancel","Discard pending arrangement edits",()=>node.close()),save));
+    node.dirty=()=>dirty && "THE ARRANGEMENT EDITS · APPLY ARRANGEMENT KEEPS THEM";
     node.classList.add("arr-dialog","arr-full");node.append(body);render();node.showModal();
     resize=new ResizeObserver(()=>chart(cv,D,first,last,select,dragRange));resize.observe(cv);node.addEventListener("close",()=>resize.disconnect(),{once:true});
   }

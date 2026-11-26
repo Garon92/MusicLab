@@ -55,6 +55,10 @@ canvas { display: block; }
 .bt.rec.on { background: var(--rd); border-color: var(--rd); color: #000; }
 /* amber = what plays: launched clips or a take have taken the transport over from the pattern and the song */
 .bt.over.on, .mx-s .sgb.over.on { background: var(--am); border-color: var(--am); color: #000; }
+/* something behind this button is shaping what is heard: bright, with a bar under it like a value that was changed */
+.bt.has:not(.on) { border-color: var(--t2); color: var(--t1); box-shadow: inset 0 -2px 0 var(--t1); }
+.pm.auto .l, .pm.auto .v { color: var(--am); } .pm.auto .b i { background: var(--am); } /* a curve drives this value */
+.pm.tuned .l::after { content: " TUNED"; color: var(--am); }
 .bt:disabled { color: var(--ln2); pointer-events: none; }
 /* not available now: dim and inert, but still under the pointer so the status line can say why */
 .bt[aria-disabled=true], .bt[aria-disabled=true]:hover { border-color: #223b2b; background: transparent; color: #53745f; opacity: .75; cursor: default; }
@@ -275,6 +279,7 @@ noscript { position: fixed; inset: 0; display: grid; place-items: center; backgr
 #ed .hd .pm.en .v { min-width: 0; }
 #ed .ed-note { gap: 0.5rem; }
 #ed .ed-note .tg { min-width: 6.6em; }
+#ed .ed-past { color: var(--am); letter-spacing: 0.06em; }
 #ed .ed-count { display: inline-flex; justify-content: center; align-items: center; min-width: 2.5rem; font-variant-numeric: tabular-nums; margin-right: .4rem; color: var(--am); }
 #ed .ed-b canvas { touch-action: none; }
 #ed .ed-b canvas[data-tool="select"] { cursor: default; }

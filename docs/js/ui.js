@@ -30,6 +30,13 @@
     return cw ? w / cw : d;
   };
 
+  // Editors hand "nothing" to the browser's own append where a part is absent, and the browser would print it as the
+  // word null or false. Nothing is nothing here, as it is in h().
+  for (const proto of [Element.prototype, DocumentFragment.prototype]) for (const name of ["append", "prepend", "replaceChildren"]) {
+    const native = proto[name];
+    proto[name] = function (...kids) { return native.apply(this, kids.flat().filter((k) => k != null && k !== false)); };
+  }
+
   /* ── status line: the only place that spells things out ───────── */
   const IDLE = "CLICK GRID = NOTE · SPACE = PLAY · A-K = KEYS · RIGHT-CLICK ANYTHING = ITS MENU · DRAG A GRIP = COPY OR MOVE · CTRL/CMD K = MAP OF EVERYTHING";
   let hintEl, msgEl, sysEl, msgT = 0, fixed = null;
@@ -45,14 +52,14 @@
     // An open dialog covers the status line, so it carries its own strip: the same hint, else what the dialog is for.
     const dlg = [...document.querySelectorAll("dialog.console-dialog[open]")].pop();
     if (!dlg) return;
-    const own = (el && dlg.contains(el) && text) || [...dlg.querySelectorAll(".dlg-tip")].map(n => n.textContent.trim()).filter(Boolean).join(" · ") || "ESC = CLOSE · CTRL/CMD K = FIND";
+    const own = dlg.dataset.notice || (el && dlg.contains(el) && text) || [...dlg.querySelectorAll(".dlg-tip")].map(n => n.textContent.trim()).filter(Boolean).join(" · ") || "ESC = CLOSE · CTRL/CMD K = FIND";
     if (dlg.dataset.st !== own) dlg.dataset.st = own;
   };
   // What a control says for itself. One that cannot be used now says why first (data-why), then what it is.
   UI.off = (el) => el.getAttribute?.("aria-disabled") === "true";
   UI.tipOf = (el) => {
-    const tip = el._tip ? el._tip() : el.dataset.tip;
-    return UI.off(el) ? (el.dataset.why || "NOT AVAILABLE NOW") + (tip ? "    " + tip : "") : tip;
+    const tip = el._tip ? el._tip() : el.dataset.tip, note = el.dataset.note ? el.dataset.note + "    " : ""; // note: what a lit dialog button holds
+    return UI.off(el) ? (el.dataset.why || "NOT AVAILABLE NOW") + (tip ? "    " + tip : "") : note + (tip ?? "");
   };
   // Canvases describe what is under the cursor themselves.
   UI.hint = (t) => { fixed = t; UI.tip(); };

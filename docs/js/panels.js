@@ -16,6 +16,39 @@
     App.E?.syncTrack(ti);
     App.Dv.build(); App.Mx.sync(); App.Ed.sync();
   }
+  /* A button whose dialog holds something that shapes what is heard is lit, and its hint says what. Values a curve
+     drives are marked on the value itself. One function knows the conditions; it runs after every finished edit. */
+  const has = (key, b) => { b.dataset.has = key; return b; };
+  App.lamps = () => {
+    const p = P(), ti = p.sel.t, pi = p.sel.p, T = p.tracks[ti], strip = p.rack?.strips?.[ti], n = (k, one, many) => k + " " + (k === 1 ? one : many);
+    const busy = (c) => c.chain.length || c.split.mode !== "off" || c.key !== "off";
+    const routed = p.rack ? [...p.rack.strips.map((c, i) => (busy(c) || c.bus >= 0 ? pad2(i + 1) + " " + p.tracks[i].name : "")), ...p.rack.groups.map((g) => (busy(g) ? g.name : ""))].filter(Boolean) : [];
+    const eq = strip?.eq, follow = p.harmony.follow.map((m, i) => (m !== "off" ? pad2(i + 1) : "")).filter(Boolean), a = p.arrangement;
+    const lanes = (p.songCurves || []).reduce((k, bank) => k + Object.keys(bank).length, 0), regions = p.audio?.regions.length || 0;
+    const song = [a.tempo.length && n(a.tempo.length, "TEMPO CHANGE", "TEMPO CHANGES"), a.meters.length && n(a.meters.length, "METER CHANGE", "METER CHANGES"), lanes && n(lanes, "SONG AUTOMATION LANE", "SONG AUTOMATION LANES"), a.sections.length && n(a.sections.length, "SECTION", "SECTIONS")].filter(Boolean);
+    const curves = Object.keys(T.automation[pi]);
+    const facts = {
+      mod: strip?.routes.length ? n(strip.routes.length, "MODULATION ROUTE ACTS", "MODULATION ROUTES ACT") + " ON THIS TRACK" : "",
+      routing: routed.length ? "INSERTS, SPLITS, BUSES OR SIDECHAIN ARE ACTIVE ON " + routed.slice(0, 4).join(", ") + (routed.length > 4 ? " AND " + (routed.length - 4) + " MORE" : "") : "",
+      eq: eq && eq.on && eq.bands.some((b) => b.on && Math.abs(b.db) > 0.05) ? "THE EQ OF " + pad2(ti + 1) + " " + T.name + " IS SHAPING IT" : "",
+      scenes: p.scenes?.items.length ? n(p.scenes.items.length, "SCENE", "SCENES") + " SAVED" + (p.scenes.cues.length ? " · " + n(p.scenes.cues.length, "CUE CHANGES", "CUES CHANGE") + " SETTINGS DURING THE SONG" : "") : "",
+      chords: p.harmony.chords.length && follow.length ? "TRACKS " + follow.join(", ") + " FOLLOW THE CHORD TRACK: THEIR NOTES ARE MOVED AND THE LOOP IS AS LONG AS THE PROGRESSION" : "",
+      audio: regions ? n(regions, "AUDIO REGION PLAYS", "AUDIO REGIONS PLAY") + " ON THE TIMELINE WITH EVERY PLAY" : "",
+      arrange: song.length ? song.join(" · ") : "",
+      auto: curves.length ? "THIS CLIP HAS " + n(curves.length, "CURVE", "CURVES") + " · EACH SETS ITS VALUE WHILE THE CLIP PLAYS" : "",
+    };
+    for (const b of document.querySelectorAll("[data-has]")) { const fact = facts[b.dataset.has] || ""; b.classList.toggle("has", !!fact); b.dataset.note = fact; }
+    // A value under automation follows its curve while the clip or the song plays, whatever the control is set to.
+    const songOn = App.Seq.songOn();
+    for (const pm of document.querySelectorAll(".pm[data-midi-target]")) {
+      const t = +pm.dataset.midiTrack, k = pm.dataset.midiTarget, clip = !!p.tracks[t]?.automation[pi][k], lane = songOn && !!p.songCurves?.[t]?.[k];
+      pm.classList.toggle("auto", clip || lane);
+      pm.dataset.why = clip ? "AUTOMATED IN CLIP " + pad2(t + 1) + "/" + PATS[pi] + " · THE CURVE SETS IT WHILE THE CLIP PLAYS · EDIT › AUTOMATION" : lane ? "DRIVEN BY A SONG AUTOMATION LANE · ARRANGE… › SONG AUTOMATION" : "";
+    }
+    // A tuning other than twelve equal steps retunes every pitched note: it is marked on SCALE.
+    const tuned = !!p.tuning?.enabled, sc = document.querySelector("#top .pm.tun") || [...document.querySelectorAll("#top .pm")].find((e) => e.getAttribute("aria-label")?.startsWith("SCALE"));
+    if (sc) { sc.classList.add("tun"); sc.classList.toggle("tuned", tuned); sc.dataset.why = tuned ? "PROJECT TUNING IS ON" + (p.tuning.name ? ": " + String(p.tuning.name).toUpperCase() : "") + " · FILE › PROJECT TUNING… SWITCHES IT" : ""; }
+  };
   const dbN = (x, floor) => (x < 0.0005 ? 0 : clamp((20 * Math.log10(x) + floor) / floor, 0, 1));
   const mmss = (s) => pad2(Math.floor(s / 60)) + ":" + pad2(Math.floor(s % 60));
   const span = (e, key) => { const m = new RegExp(key + ":span (\\d+)").exec(e.getAttribute("style") || ""); return m ? +m[1] : 1; };
@@ -306,8 +339,8 @@
         if (App.Seq.playing) App.Seq.play();
         sync(); App.Top.sync();
       }, "sgb.tog");
-      const arrange = btn("ARRANGE…", "EDIT SONG ORDER, REPEAT SECTIONS OR MAKE AN INDEPENDENT VARIATION", () => App.Song.open());
-      songEl = h("div.mx-s", null, songB, arrange, btn("CHORDS…","SONG CHORD TRACK", () => App.Harmony.open()), btn("AUDIO…","AUDIO TIMELINE, TAKES AND LOOPER", () => App.AudioStudio.open()));
+      const arrange = has("arrange", btn("ARRANGE…", "SONG ORDER, SECTIONS, TEMPO AND METER MAP, SONG AUTOMATION", () => App.Song.open()));
+      songEl = h("div.mx-s", null, songB, arrange, has("chords", btn("CHORDS…","SONG CHORD TRACK · TRACKS CAN FOLLOW ITS ROOTS OR CHORDS", () => App.Harmony.open())), has("audio", btn("AUDIO…","AUDIO TIMELINE, TAKES AND LOOPER", () => App.AudioStudio.open())));
       for (let i = 0; i < 32; i++) {
         const s = h("div.sl", { tip: "SONG SLOT · CLICK = START HERE · DRAG = MOVE · DROP A PATTERN TO INSERT" });
         s.onpointerdown = (ev) => {
@@ -637,7 +670,7 @@
         btn(name.toUpperCase(), "INSTRUMENT TYPE · NOTES STAY · EACH TYPE KEEPS ITS OWN SETTINGS",
           () => changeKind(ti, k), T.kind === k ? "on" : ""));
       const patch = btn("PATCH…", "LOAD AN INSTRUMENT SOUND OR COPY THE SOUND OF ANOTHER TRACK", () => App.Patches.open());
-      el.append(h("div.hd", null, h("span.tg", {text:"DEVICE"}), h("span.ti", {text:pad2(ti+1) + " " + T.name}), h("span.grp", null, kinds), h("span.sp"), btn("MODULATION…", "ROUTE LFOS, MACROS, VELOCITY AND ENVELOPES TO THIS DEVICE AND ITS MIXER STRIP", () => App.Rack.modulate()), patch));
+      el.append(h("div.hd", null, h("span.tg", {text:"DEVICE"}), h("span.ti", {text:pad2(ti+1) + " " + T.name}), h("span.grp", null, kinds), h("span.sp"), has("mod", btn("MODULATION…", "ROUTE LFOS, MACROS, VELOCITY AND ENVELOPES TO THIS DEVICE AND ITS MIXER STRIP", () => App.Rack.modulate())), patch));
 
       const body = h("div.dv-b");
       const tp = (k) => UI.param(DEF.trk[k], T, push);
@@ -757,6 +790,7 @@
       }
       el.append(body);
       requestAnimationFrame(paint);
+      App.lamps();
     }
 
     function paint() { waves.forEach((w) => w.paint()); }
@@ -775,9 +809,9 @@
       const gr = h("div.pm.ro", { tip: "GAIN REDUCTION · HOW MUCH COMPRESSOR + LIMITER PULL THE MIX DOWN (dB)" }, h("span.l", { text: "REDUCE" }), grV, h("span.b", null, grB));
       el.append(
         h("div.hd", null, h("span.tg", { text: "MASTER" }), h("span.sp"),
-          btn("ROUTING…", "INSERT CHAINS, BUSES, PARALLEL AND BAND SPLITS, SIDECHAIN · PER TRACK AND BUS", () => App.Rack.mixer()),
-          btn("EQ…", "PARAMETRIC EQ OF THE SELECTED TRACK · FOUR BANDS OVER ITS LIVE SPECTRUM", () => App.ParametricEQ.open(P().sel.t)),
-          btn("SCENES…", "SNAPSHOTS OF MIX AND DEVICE SETTINGS · RECALL, MORPH AND SONG CUES", () => App.Scenes.open())),
+          has("routing", btn("ROUTING…", "INSERT CHAINS, BUSES, PARALLEL AND BAND SPLITS, SIDECHAIN · PER TRACK AND BUS", () => App.Rack.mixer())),
+          has("eq", btn("TRACK EQ…", "PARAMETRIC EQ OF THE SELECTED TRACK · FOUR BANDS OVER ITS LIVE SPECTRUM · THE EQ MODULE BELOW IS THE MASTER'S", () => App.ParametricEQ.open(P().sel.t))),
+          has("scenes", btn("SCENES…", "SNAPSHOTS OF MIX AND DEVICE SETTINGS · RECALL, MORPH AND SONG CUES", () => App.Scenes.open()))),
         h("div.dv-b.f5", null,
           mod("DELAY", 2, [q("dtime"), q("dfb"), q("dtone"), q("dwid")]),
           mod("REVERB", 1, [...(P().impulse?.sample ? [h("div.inst-overview",{style:"grid-row:span 2",text:App.samples.get(P().impulse.sample)?.name || "CUSTOM IR",tip:"THE REVERB IS A RECORDED IMPULSE RESPONSE · IR… CHANGES OR REMOVES IT"})] : [q("rsize"), q("rdamp")]),
@@ -785,6 +819,7 @@
           mod("EQ", 1, [q("high"), q("mid"), q("low")]),
           mod("OUTPUT", 1, [q("comp"), gr, q("vol")])),
       );
+      App.lamps();
     }
     function sync() { pms.forEach((p) => p.paint()); }
     function frame() {

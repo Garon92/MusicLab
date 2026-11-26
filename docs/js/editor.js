@@ -44,7 +44,9 @@
       if (T.kind === "kit") return T.kit.pads.map((p, i) => ({ n: 36 + i, label: p.name, pad: i }));
       if (T.kind === "smp" && T.smp.mode === 1) return Array.from({ length: T.smp.slices }, (_, i) => ({ n: 36 + i, label: "SLICE " + pad2(i + 1), slice: 1 }));
       const count = G.rows || ROWS;
-      const pitches = Array.from({ length: 128 }, (_, n) => n).filter(n => !P.fold || App.inScale(P, n));
+      // Folded to the scale, a row that holds a note stays: nothing that sounds is hidden.
+      const used = P.fold ? new Set(T.clips[P.sel.p].map((nt) => nt.n)) : null;
+      const pitches = Array.from({ length: 128 }, (_, n) => n).filter(n => !P.fold || App.inScale(P, n) || used.has(n));
       const above = pitches.findIndex(n => n >= T.lo);
       const start = clamp(above < 0 ? pitches.length : above, 0, Math.max(0, pitches.length - count));
       const out = pitches.slice(start, start + count);
@@ -68,16 +70,19 @@
       for (const k of Object.keys(NOTE)) Object.defineProperty(face, k, { get: () => { let nt; for (nt of selection); return nt ? noteVal(nt, k) : pen[k]; }, set: (v) => setValue(k, v) });
       hd.vals = Object.values(NOTE).map((d) => UI.param(d, face, () => { draw(); }, { done: () => { App.Mx.draw(); cv.focus({ preventScroll: true }); } }));
       hd.sel = h("span.tg");
+      hd.past = h("span.ed-past");
+      hd.follow = btn("FOLLOW", "", () => { followTransport = !followTransport; sync(); }, "tog");
       hd.fold = btn("FOLD", "SHOW ONLY NOTES OF THE SCALE", () => { App.P.fold ^= 1; App.touch(); sync(); }, "tog");
       hd.od = btn("-", "VIEW ONE OCTAVE DOWN · WHEEL OVER GRID = SCROLL PITCH", () => view(-12));
       hd.ou = btn("+", "VIEW ONE OCTAVE UP · WHEEL OVER GRID = SCROLL PITCH", () => view(12));
       hd.draw = btn("DRAW", "CLICK TO DRAW · SHIFT-CLICK TO SELECT NOTES", () => chooseTool("draw"));
       hd.select = btn("SELECT", "CLICK NOTES OR DRAG A BOX IN EMPTY SPACE · SHIFT ADDS TO THE SELECTION", () => chooseTool("select"));
-      hd.auto = btn("AUTOMATION", "EDIT PARAMETER AUTOMATION FOR THIS CLIP", () => {
+      hd.auto = btn("AUTOMATION", "DRAW CURVES THAT MOVE LEVEL, PAN, FILTER OR SENDS WHILE THIS CLIP PLAYS", () => {
         cancelGesture();
         App.Automation.open();
         updateSelection();
       });
+      hd.auto.dataset.has = "auto";
       hd.count = h("span.ed-count", { "aria-live": "polite" });
       hd.remove = btn("DEL", "DELETE SELECTED NOTES · DELETE OR BACKSPACE", removeSelection);
       hd.dup = btn("DUP", "DUPLICATE SELECTED NOTES AFTER THE SELECTION · CTRL/CMD D", duplicate);
@@ -96,7 +101,7 @@
       el.append(h("div.hd.ed-tools", null,
         h("span.tg", { text: "EDIT" }), hd.title,
         h("span.grp", { role: "group", "aria-label": "Editing tool" }, hd.draw, hd.select, hd.auto),
-        h("span.grp.ed-pages", {role:"group", "aria-label":"Pattern length and visible bars"}, hd.len, hd.prev, hd.bars, hd.next),
+        h("span.grp.ed-pages", {role:"group", "aria-label":"Pattern length and visible bars"}, hd.len, hd.past, hd.prev, hd.bars, hd.next, hd.follow),
         h("span.grp", null, h("span.tg", { text: "LANE" }), hd.lv, hd.lp, hd.lr),
         // What only a pitched track has comes last, so nothing else moves when it is not there.
         (hd.pitched = [h("span.grp", null, hd.chord), h("span.grp", null, h("span.tg", { text: "VIEW" }), hd.od, hd.ou, hd.fold)]),
@@ -177,9 +182,11 @@
     const rotate = (d) => edit((c) => { const n = App.Live.length(c.P,c.ti,c.pi); for (const nt of c.clip) if (nt.s < n) nt.s = (nt.s + d + n) % n; });
     const transpose = (d) => {
       const c = ctx();
-      if (!isKeys(c.T) || !c.clip.length) return;
-      if (c.clip.some((nt) => nt.n + d < 0 || nt.n + d > 127)) return;
-      edit((x) => { for (const nt of x.clip) nt.n += d; });
+      if (!c.clip.length) return;
+      if (!isKeys(c.T)) { UI.msg("PADS AND SLICES DO NOT TRANSPOSE · SELECT NOTES TO MOVE THEM BETWEEN ROWS"); return; }
+      if (c.clip.some((nt) => nt.n + d < 0 || nt.n + d > 127)) { UI.msg("NO ROOM TO MOVE THE CLIP FURTHER"); return; }
+      const steps = App.Live.length(c.P, c.ti, c.pi);
+      edit((x) => { for (const nt of x.clip) if (nt.s < steps) nt.n += d; });
       if (!c.clip.every((nt) => nt.n >= c.T.lo && nt.n < c.T.lo + ROWS)) view(d);
     };
     function range() {
@@ -192,12 +199,12 @@
     function turnPage(delta) {
       if (act) cancelGesture();
       App.Automation.cancel();
-      if (App.Seq.playing) followTransport = false;
+      if (App.Seq.playing && followTransport) { followTransport = false; UI.msg("VIEW HOLDS THIS PAGE · FOLLOW TURNS IT WITH THE PLAYHEAD AGAIN"); }
       page += delta; hov = null; rd.textContent = ""; sync();
     }
     function euclid() {
       const row = () => R.find((o) => o.n === rowNote) || R[R.length - 1];
-      const dk = (k, l, name, min, max) => App.N(k, l, name, min, max, eu[k], { int: 1 });
+      const dk = (k, l, name, min, max) => App.N(k, l, name, min, max, { k: 4, n: 16, r: 0 }[k], { int: 1 });
       const go = btn("", "WRITE THE RHYTHM · REPLACES THIS ROW", () => {
         UI.closeMenu();
         const o = row();
@@ -295,7 +302,7 @@
         if (nt.s >= end || nt.s + nt.l <= start) continue;
         const val = laneValue(nt);
         if (nt.s >= start && (!selection.size || selection.has(nt)) && !(laneV.get(nt.s) >= val)) laneV.set(nt.s, val);
-        const r = idx.get(nt.n), x = X(Math.max(start, nt.s)) + L, w = Math.max(edge + L, X(Math.min(end, nt.s + nt.l)) - x);
+        const r = idx.get(nt.n), x = X(Math.max(start, nt.s)) + L + (nt.s >= start ? Math.round((nt.off || 0) * cw) : 0), w = Math.max(edge + L, X(Math.min(end, nt.s + nt.l)) - X(Math.max(start, nt.s)) - L);
         if (r == null) { // outside the visible rows: a tick on the edge it lies beyond
           cx.fillStyle = C.am;
           cx.fillRect(x, (keys ? nt.n > top : nt.n < top) ? G.ry + L : G.ly - 3 * L, w, 2 * L);
@@ -365,6 +372,12 @@
       hd.bars.dataset.tip = "BARS IN VIEW / PATTERN LENGTH · " + total + " STEPS, " + barSteps + " PER BAR";
       hd.prev.hidden = hd.next.hidden = hd.bars.hidden = bars <= 4;
       hd.len.paint(); hd.chord.paint();
+      // Notes past the end of a shortened pattern are kept and not played: the header counts them.
+      const parked = T.clips[pi].filter((nt) => nt.s >= total).length;
+      hd.past.hidden = !parked; hd.past.textContent = "+" + parked + " PAST END";
+      hd.past.dataset.tip = parked + (parked === 1 ? " NOTE LIES" : " NOTES LIE") + " PAST THE END OF THIS PATTERN · KEPT, NOT PLAYED · LENGTHEN THE PATTERN TO GET THEM BACK";
+      hd.follow.hidden = bars <= 4; hd.follow.classList.toggle("on", followTransport); hd.follow.setAttribute("aria-pressed", String(followTransport));
+      hd.follow.dataset.tip = followTransport ? "THE VIEW TURNS ITS PAGE WITH THE PLAYHEAD · CLICK = STAY ON THIS PAGE" : "THE VIEW STAYS ON THIS PAGE · CLICK = FOLLOW THE PLAYHEAD AGAIN";
       NOTE.l.max = Math.max(1, total);
       hd.prev.disabled = start === 0; hd.prev.dataset.why = "THESE ARE THE FIRST BARS";
       hd.next.disabled = end === App.Live.length(P,P.sel.t,pi); hd.next.dataset.why = "THESE ARE THE LAST BARS";
@@ -474,7 +487,8 @@
       if (!selection.size) return;
       const c = ctx(), group = [...selection];
       const start = Math.min(...group.map(nt => nt.s)), end = Math.max(...group.map(nt => nt.s + nt.l));
-      const span = end - start, last = end + span, bars = Math.ceil(last / App.spb(c.P));
+      // Copies keep their place in the beat: the distance is the span of the selection rounded up to whole beats.
+      const beat = App.beatSteps(c.P), span = Math.max(beat, Math.ceil((end - start) / beat) * beat), last = end + span, bars = Math.ceil(last / App.spb(c.P));
       if (last > (c.P.performance.loops[c.ti][c.pi] ? App.MAX_STEPS : App.maxBars(c.P)*App.spb(c.P))) { UI.msg("NO ROOM AFTER SELECTION · MOVE NOTES EARLIER"); return; }
       const copies = group.map(nt => ({ ...nt, s: nt.s + span }));
       if (c.clip.length + copies.length > 4000) { UI.msg("CLIP LIMIT · 4,000 NOTES"); return; }
@@ -488,7 +502,7 @@
       }
       edit(({ clip, P, pi }) => {
         if(P.performance.loops[c.ti][pi])P.performance.loops[c.ti][pi]=Math.max(P.performance.loops[c.ti][pi],last);
-        else P.pats[pi].bars = Math.max(P.pats[pi].bars, bars);
+        else if (bars > P.pats[pi].bars) { P.pats[pi].bars = bars; UI.msg("PATTERN " + PATS[pi] + " IS NOW " + bars + " BARS ON EVERY TRACK · UNDO REVERTS"); }
         carve(clip, copies); clip.push(...copies);
         selection = new Set(copies);
         revealSelection();
@@ -497,7 +511,8 @@
     function pitchRows() {
       const { P, T } = ctx();
       if (!isKeys(T)) return rowList().map(row => row.n);
-      return Array.from({ length: 128 }, (_, i) => 127 - i).filter(n => !P.fold || App.inScale(P, n));
+      const used = P.fold ? new Set(ctx().clip.map((nt) => nt.n)) : null;
+      return Array.from({ length: 128 }, (_, i) => 127 - i).filter(n => !P.fold || App.inScale(P, n) || used.has(n));
     }
     const originals = group => new Map([...group].map(nt => [nt, { ...nt }]));
     function shiftGroup(before, ds, dr, octave = false) {
@@ -545,10 +560,11 @@
       let command;
       if (!act && mod && e.code === "KeyA") command = () => {
         const { clip, P, pi } = ctx();
-        const eligible = new Set(pitchRows());
-        selection = new Set(clip.filter(nt => nt.s < App.Live.length(P,P.sel.t,pi) && eligible.has(nt.n)));
+        const eligible = new Set(pitchRows()), steps = App.Live.length(P,P.sel.t,pi);
+        selection = new Set(clip.filter(nt => nt.s < steps));
         updateSelection(); draw(); // the tool stays what it was: a selection works in DRAW too
-        UI.msg(selection.size + (selection.size === 1 ? " NOTE" : " NOTES") + " SELECTED" + (selection.size < clip.length ? " · " + (clip.length - selection.size) + " LIE OUTSIDE THE ROWS OR PAST THE END" : ""));
+        const off = [...selection].filter(nt => !eligible.has(nt.n)).length, past = clip.length - selection.size;
+        UI.msg(selection.size + (selection.size === 1 ? " NOTE" : " NOTES") + " SELECTED" + (off ? " · " + off + " OF THEM OUTSIDE THE ROWS (DELETE REMOVES THEM)" : "") + (past ? " · " + past + " MORE LIE PAST THE END OF THE PATTERN" : ""));
       };
       if (!act && mod && e.code === "KeyD" && selection.size) command = duplicate;
       if (!mod && e.key === "Escape" && (act || selection.size)) command = () => {
@@ -751,7 +767,8 @@
       } else {
         const rule=clip.find(nt=>nt.n===o.n && nt.s<=s && s<nt.s+nt.l && nt.when)?.when;
         const label=rule ? "   "+(rule.every>1?"PASS "+rule.phase+"/"+rule.every:"")+(rule.fill===1?" FILL":rule.fill===-1?" NO FILL":""):"";
-        rd.textContent = where + "   " + o.label + (chordTxt ? "   " + chordTxt : "")+label;
+        const under = clip.find(nt => nt.n === o.n && nt.s <= s && s < nt.s + nt.l), late = under?.off ? "   " + (under.off > 0 ? "+" : "") + Math.round(under.off * 15000 / P.bpm) + " MS OFF THE GRID" : "";
+        rd.textContent = where + "   " + o.label + (chordTxt ? "   " + chordTxt : "")+label+late;
         UI.hint(tool === "select" ? "DRAG EMPTY SPACE = SELECT · SHIFT-CLICK = ADD / REMOVE · DRAG NOTES = MOVE · CTRL/CMD D = DUPLICATE" : "CLICK = NOTE · DRAG RIGHT = LENGTH · SHIFT-CLICK = SELECT · DRAG NOTE = MOVE · NOTE END = RESIZE · RIGHT-CLICK = DELETE");
       }
       later();
@@ -778,7 +795,6 @@
         c = lane ? {...c, pat:lane.p, step:lane.s} : null;
       }
       const { P, pi, clip } = ctx(), step = c && c.pat === pi ? c.step : -1;
-      if (!c) followTransport = true;
       if (followTransport && !act && !App.Automation.active() && step >= 0 && (step < G.start || step >= G.end)) {
         const nextPage = Math.floor(step / (4 * App.spb(P)));
         if (page !== nextPage) { page = nextPage; hov = null; sync(); }
@@ -812,12 +828,19 @@
       if (cv) sync();
     }
 
+    // A pitch that is played, recorded or captured outside the rows comes into view.
+    function reveal(n) {
+      const { T } = ctx();
+      if (!isKeys(T) || act || R.some((o) => o.n === n)) return;
+      T.lo = clamp(n - Math.floor((G.rows || ROWS) / 2), 0, 128 - (G.rows || ROWS));
+      hov = null; App.touch(); draw();
+    }
     // Where a cell of the grid is on screen (inside its left third, mid height), for tools and tests that click it.
     const cellAt = (step, row) => {
       const r = cv.getBoundingClientRect();
       return { x: r.left + ((G.gx + (step - G.start + 0.3) * G.cw) / W) * r.width, y: r.top + ((G.ry + (row + 0.5) * G.rh) / H) * r.height };
     };
-    return { build, sync, draw, frame, key, reset, range, settle: land, cellAt, keys: shortcuts, keep() { carry = true; }, selected: () => new Set(selection),
+    return { build, sync, draw, frame, key, reset, range, settle: land, cellAt, keys: shortcuts, reveal, keep() { carry = true; }, selected: () => new Set(selection),
       cancel() { cancelGesture(); App.Automation.cancel(); } };
   })();
 })();

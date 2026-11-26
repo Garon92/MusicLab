@@ -196,7 +196,11 @@
       const first=c.rec.firstTime() ?? c.connected, from=c.when+lag, length=end-from;
       if(length<.005 || raw.length<2 || raw.duration+first<from+.01) throw Error("RECORDING TOO SHORT");
       const buffer=crop(raw,from-first,c.end ? c.end-c.when : length);
-      const name=(c.mode==="take" ? "TAKE" : c.mode==="loop" ? "LAYER" : "INPUT")+" "+(App.P.audio.regions.length+1);
+      // Silence is not added: a recording of a track or of the output hears only what plays while it runs.
+      let peak=0;for(let ch=0;ch<buffer.numberOfChannels;ch++){const x=buffer.getChannelData(ch);for(let i=0;i<x.length;i+=8)if(Math.abs(x[i])>peak)peak=Math.abs(x[i]);}
+      if(peak<.0005) throw Error(c.src==="mic" ? "ONLY SILENCE CAME FROM THE INPUT · NOTHING ADDED" : "NOTHING WAS PLAYING, SO NOTHING WAS RECORDED · PRESS PLAY TRANSPORT OR PLAY THE KEYS WHILE IT RECORDS");
+      const what=c.src==="mic" ? "INPUT" : c.src==="mix" ? "MIX" : "PRINT "+App.pad2(c.track+1);
+      const name=(c.mode==="take" ? "TAKE" : c.mode==="loop" ? "LAYER" : what)+" "+(App.P.audio.regions.length+1);
       const id=App.addBuffer(name,buffer,{floating:true});
       if(c.mode==="take") {
         const r=pool().find(x=>x.id===c.regionId);
@@ -217,7 +221,7 @@
     if (capture) return;
     const E=App.audio(),r=find(); if(!E) return;
     if(mode==="take" && (!r || r.takes.length>=64)){ notice="SELECT A REGION WITH FEWER THAN 64 TAKES";render();return; }
-    const c=capture={E,mode,project:App.P,track:mode==="take"?r.track:track,
+    const c=capture={E,mode,src,project:App.P,track:mode==="take"?r.track:track,
       at:mode==="take"?r.at:cursor,regionId:r?.id,group:"",connected:0,awaitingNewInput:src==="mic" && !E.input};
     try {
       notice="ARMING INPUT";render();
@@ -268,7 +272,8 @@
           else finishCapture();
         };wait();
       }
-      notice=mode==="region"?"RECORDING · STOP TO PLACE REGION":"RECORDING ONE PASS";render();
+      const idle=src!=="mic" && !App.Seq.playing && !loopClock;
+      notice=(mode==="region"?"RECORDING · STOP TO PLACE REGION":"RECORDING ONE PASS")+(idle?" · NOTHING IS PLAYING: PRESS PLAY TRANSPORT OR PLAY THE KEYS":"");render();
     } catch(e) {
       if(capture===c){
         capture=null;
@@ -305,8 +310,9 @@
     run();render();
   }
   const field=(name,control)=>h("label.ast-field",null,h("span",{text:name}),control);
-  function number(name,v,min,max,inc,accept) {
+  function number(name,v,min,max,inc,accept,def) {
     const node=h("input",{type:"number","aria-label":name,min,max,step:inc,value:+Number(v).toFixed(4)});
+    if(def!=null)node.dataset.reset=def; // where a right-click returns it
     node.onchange=()=>{if(node.value!=="" && node.checkValidity())accept(node.valueAsNumber);else{notice="VALUE OUTSIDE RANGE";render();}};
     return field(name,node);
   }
@@ -450,7 +456,7 @@
         action("Import audio…","PLACE FILES CONSECUTIVELY AT THE CURSOR",()=>App.pickFile("audio/*",files=>importFiles(files,track,cursor)),!idle),
         sourceCtl, delayCtl, action(capture?.mode==="region"?"Stop recording":"Record region","CAPTURE AUDIO INTO THE SELECTED LANE",()=>capture?finishCapture():record("region"),!!capture && capture.mode!=="region","rec"+(capture?.mode==="region"?".on":"")),
         action("Record take","RECORD ONE ALTERNATE PASS OF THE SELECTED REGION",()=>record("take"),!idle || !r,"rec"),
-        action(App.Seq.playing?"Stop transport":"Play transport","PLAY TIMELINE WITH THE SONG OR CURRENT PATTERN",()=>{stopLoop();App.Seq.toggle();render();},!!capture)));
+        action(App.Seq.playing?"Stop transport":"Play transport","PLAY TIMELINE WITH THE SONG OR CURRENT PATTERN",()=>{stopLoop();App.Seq.toggle();render();},!!capture && capture.src==="mic")));
     } else {
       const group=layersAt(cursor,loopLength());
       body.append(h("div.ast-toolbar",null,sourceCtl,delayCtl,select("Loop bars",[[1,"1"],[2,"2"],[4,"4"],[8,"8"],[16,"16"]],loopBars,v=>{stopLoop();loopBars=+v;render();}),
@@ -468,10 +474,12 @@
     if(r) {
       const source=r.takes[r.take],end=source.offset+r.len;
       body.append(h("div.ast-toolbar.ast-params",null,number("Start · step",r.at,0,MAX,.001,v=>edit(()=>r.at=v)),
-        number("Trim in · s",source.offset,0,7200,"any",v=>edit(()=>setTrim(r,v,end))),
+        number("Trim in · s",source.offset,0,7200,"any",v=>edit(()=>setTrim(r,v,end)),0),
         number("Trim out · s",end,.001,7200,"any",v=>edit(()=>setTrim(r,source.offset,v))),
-        number("Fade in · s",r.fin,0,r.len,"any",v=>edit(()=>r.fin=v)),number("Fade out · s",r.fout,0,r.len,"any",v=>edit(()=>r.fout=v)),
-        number("Gain",r.gain,0,2,.01,v=>edit(()=>r.gain=v)),number("Repeats",r.repeats,1,128,1,v=>edit(()=>r.repeats=v))));
+        number("Fade in · s",r.fin,0,r.len,"any",v=>edit(()=>r.fin=v),0),number("Fade out · s",r.fout,0,r.len,"any",v=>edit(()=>r.fout=v),0),
+        // Level in dB, as everywhere on the console: 0 dB plays the take as it was recorded.
+        number("Gain · dB",r.gain>0?Math.max(-60,+(20*Math.log10(r.gain)).toFixed(1)):-60,-60,6,.1,v=>edit(()=>r.gain=v<=-60?0:App.clamp(10**(v/20),0,2)),0),
+        number("Repeats",r.repeats,1,128,1,v=>edit(()=>r.repeats=v),1)));
       body.append(h("div.ast-toolbar",null,select("Route",trackOptions(),r.track,v=>edit(()=>{r.track=+v;track=r.track;})),
         action("Split at cursor","SPLIT ALL TAKES AT THE CURSOR · CHOOSE A TAKE FOR EACH PIECE",()=>edit(()=>split(r,cursor))),
         action("Crossfade","FADE BETWEEN OVERLAPPING REGIONS ON THIS TRACK",()=>edit(()=>crossfade(r))),

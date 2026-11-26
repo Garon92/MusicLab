@@ -66,7 +66,8 @@
   function paint(){if(fillEl){fillEl.setAttribute("aria-pressed",String(pressed||keyHeld));fillEl.classList.toggle("on",pressed||keyHeld);}}
   function reset(){pressed=false;keyHeld=false;journal=new Map();paint();}
   function fillButton(){
-    const el=fillEl=btn("FILL","HOLD = NOTES WITH THE FILL CONDITION PLAY · BACKSLASH KEY",()=>{},"tog");
+    // Held, not switched: it has no lamp. It lights while it is down.
+    const el=fillEl=btn("FILL","HOLD IT DOWN = NOTES WITH THE FILL CONDITION PLAY · OR HOLD THE BACKSLASH KEY · SET CONDITIONS IN RULES…",()=>{});
     el.setAttribute("aria-pressed","false");el.dataset.conditionFill="1";
     el.onpointerdown=e=>{if(e.button!==0)return;pressed=true;el.setPointerCapture(e.pointerId);paint();};
     el.onlostpointercapture=el.onpointercancel=el.onpointerup=()=>{pressed=false;paint();};

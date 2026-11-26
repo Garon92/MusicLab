@@ -28,7 +28,10 @@
   function draw() {
     if (!active || !graph.clientWidth || !graph.clientHeight) return;
     const d = UI.fit(graph), ctx = graph.getContext("2d"), w = graph.clientWidth, height = graph.clientHeight;
-    const {start, end} = range(), left = Math.min(63, Math.max(43, 5.2 * App.rem)), right = w - 7, top = 10, bottom = height - 18;
+    ctx.setTransform(d,0,0,d,0,0);
+    ctx.font = Math.max(9, Math.round(App.rem)) + "px " + App.FONT;
+    // The margin holds the widest label of the axis, sign included.
+    const {start, end} = range(), left = Math.ceil(Math.max(...[0, .25, .5, .75, 1].map(v => ctx.measureText(valueText(v)).width))) + 12, right = w - 7, top = 10, bottom = height - 18;
     if (end <= start || right <= left || bottom <= top) return;
     const x = s => left + (right - left) * (s - start) / (end - start);
     const y = v => bottom - (bottom - top) * v;

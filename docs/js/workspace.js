@@ -126,7 +126,20 @@
 
   // Every dialog is framed the same way: its name on the left, the way out on the right.
   function frame(node, title) {
-    const close = btn("×", "CLOSE · ESC", () => node.close(), "dlg-x");
+    // An editor that works on a draft sets node.dirty to say what closing would lose. The first try to leave says so in
+    // the strip; a second one within a few seconds discards. Cancel and the editor's own buttons close at once.
+    const leave = () => {
+      const lost = node.dirty?.();
+      if (lost && !(node._warned && Date.now() - node._warned < 6000)) {
+        node._warned = Date.now(); node.dataset.notice = "NOT APPLIED YET: " + lost + " · CLOSE AGAIN TO DISCARD";
+        clearTimeout(node._warnT); node._warnT = setTimeout(() => { delete node.dataset.notice; App.UI.tip(); }, 6000);
+        App.UI.tip(); return;
+      }
+      node.close();
+    };
+    node.leave = leave;
+    node.addEventListener("cancel", (e) => { if (node.dirty?.()) { e.preventDefault(); leave(); } });
+    const close = btn("×", "CLOSE · ESC", leave, "dlg-x");
     close.setAttribute("aria-label", "Close");
     close.tabIndex = -1; // Esc is the keyboard's way out; opening a dialog must not put the focus on its exit
     node.head = h("header.dlg-hd", null, h("span.tg", { text: title }), h("span.sp"), close);
@@ -169,7 +182,7 @@
     // Only a click that begins and ends on the backdrop closes: a drag out of a field must not throw the draft away.
     let pressed = null;
     node.addEventListener("pointerdown", e => { pressed = e.target; });
-    node.addEventListener("click", e => { if (e.target === node && pressed === node) node.close(); pressed = null; });
+    node.addEventListener("click", e => { if (e.target === node && pressed === node) node.leave(); pressed = null; });
     document.body.append(node);
     dialog = node;
     attend(node);

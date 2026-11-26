@@ -52,15 +52,17 @@ module.exports=async function audioStudio(reference) {
     await button("Looper").click();await number("Cursor · step",16);
     await button("Overdub layer").click();await p.waitForFunction(()=>App.P.audio.regions.filter(r=>r.layer).length===1);
     await p.evaluate(()=>window.studioTestTone.stop());
+    // A pass with nothing played hears only silence at the dry instrument input, although the first layer is playing:
+    // overdubs exclude previous layers, and a recording of silence is refused instead of being added.
     await button("Play loop").click();await button("Overdub layer").click();
-    await p.waitForFunction(()=>App.P.audio.regions.filter(r=>r.layer).length===2);
+    await p.waitForFunction(()=>/NOTHING WAS PLAYING/.test(document.querySelector(".ast-status")?.textContent||""),null,{timeout:15000});
     const layerLevels=await p.evaluate(()=>App.P.audio.regions.filter(r=>r.layer).map(r=>{
       const b=App.samples.get(r.takes[0].sample).buffer,x=b.getChannelData(0);
       return {seconds:b.duration,rms:Math.sqrt(x.reduce((sum,v)=>sum+v*v,0)/x.length)};
     }));
+    assert.equal(layerLevels.length,1,"Overdubs exclude previous layers at the dry instrument input");
     assert.equal(layerLevels[0].seconds,2);assert.ok(layerLevels[0].rms>.05);
-    assert.ok(layerLevels[1].rms<.005,"Overdubs exclude previous layers at the dry instrument input");
-    await button("Stop loop").click();await button("Undo layer").click();
+    await button("Stop loop").click();
     assert.equal(await p.evaluate(()=>App.P.audio.regions.filter(r=>r.layer).length),1);
     await button("Close").click();
     await p.evaluate(()=>{const t=App.P.tracks[6];t.smp.id=App.P.audio.regions[0].takes[0].sample;App.select(6,0);App.commit();App.refresh();});

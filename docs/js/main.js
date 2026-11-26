@@ -31,6 +31,7 @@
     App.E && App.E.syncAll();
     App.Top.sync(); App.Mx.sync(); App.Ed.sync(); App.Dv.build(); App.Fx.build(); App.Sg.source();
     App.AudioStudio?.sync();
+    App.lamps?.();
     App.restoreSamples().then((n) => { if (n) { App.Dv.build(); if(App.P.impulse?.sample){ App.E?.syncFx(); App.Fx.build(); } } }); // the sample name and waveform appear once decoded
   };
   App.doUndo = d => {
@@ -88,6 +89,7 @@
       UI.msg((App.P.performance.source === "take" ? "THE RECORDED TAKE" : "THE LAUNCHED CLIPS") + " KEEP PLAYING · CLICK " + (App.P.performance.source === "take" ? "TAKE" : "LIVE") + " IN THE SONG ROW TO PLAY PATTERN " + App.PATS[p]);
     App.Mx.sync(); App.Ed.sync(); App.Top.pos(Seq.pos);
     if (ct) { App.Dv.build(); App.Sg.source(); }
+    App.lamps();
   };
 
   /* ── clips, patterns, song ── */
@@ -651,6 +653,7 @@
     if (same) { held.set(id, same); return; }
     if (T.kind === "kit" && note >= 36 && note < 44 && P.sel.pad !== note - 36) { P.sel.pad = note - 36; App.Dv.build(); App.Ed.draw(); }
     E.noteOn(ti, note, vel);
+    App.Ed.reveal(note); // what is played is seen: the grid comes to the octave of the keys
     if (App.recArm && !Seq.playing) UI.msg("REC IS ARMED BUT THE TRANSPORT IS STOPPED · PRESS PLAY TO RECORD WHAT YOU PLAY");
     if (!id.startsWith("m:")) App.MidiIO.live(ti,note,vel);
     App.Ed.key(note, true);

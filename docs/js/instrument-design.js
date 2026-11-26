@@ -16,7 +16,9 @@
     return el;
   };
   const slider=(label,value,change,done)=>{
-    const el=h("input",{type:"range","aria-label":label,value,min:0,max:1,step:.001});
+    // Limits before the value: a range rounds a value it is given first to its default whole steps, and opened at 0.
+    const el=h("input",{type:"range","aria-label":label,min:0,max:1,step:.001,value});
+    el.value=value;
     el.oninput=()=>change(+el.value);el.onchange=()=>done?.();
     return el;
   };

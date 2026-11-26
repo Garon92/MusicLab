@@ -105,7 +105,12 @@
     body.append(h("h2",{text:"Chord timeline"}),h("div.pf-line",null,h("b",{text:"PROGRESSION"}),total),list,
       h("div.pf-line",null,field("Root",root),field("Quality",type),field("Bars",bars),btn("Insert","Insert a chord after the selected chord",()=>edit(true)),btn("Update","Change the selected chord",()=>edit(false))),
       h("div.pf-line",null,btn("Earlier","Move chord earlier",()=>shift(-1)),btn("Later","Move chord later",()=>shift(1)),btn("Remove","Remove the selected chord",()=>{const i=list.selectedIndex;if(i>=0){chords.splice(i,1);draw(i);}})),
-      h("b",{text:"TRACK FOLLOW"}),tracks,status,h("div.dlg-buttons",null,btn("Cancel","Discard changes",()=>node.close()),btn("Apply harmony","Apply timeline and track assignments",()=>{P.harmony={chords,follow};App.commit();node.close();},"confirm-action")));
+      h("b",{text:"TRACK FOLLOW"}),tracks,status,h("div.dlg-buttons",null,btn("Cancel","Discard changes",()=>node.close()),btn("Apply harmony","Apply timeline and track assignments",()=>{
+        P.harmony={chords,follow};App.commit();node.dirty=null;node.close();
+        const n=follow.filter(m=>m!=="off").length;
+        App.UI.msg(chords.length ? "CHORD TRACK APPLIED · "+chords.length+" CHORDS · "+(n ? n+(n===1?" TRACK FOLLOWS":" TRACKS FOLLOW")+" IT, AND THE LOOP IS AS LONG AS THE PROGRESSION" : "NO TRACK FOLLOWS IT YET") : "CHORD TRACK CLEARED");
+      },"confirm-action")));
+    node.dirty=()=>JSON.stringify({chords,follow})!==JSON.stringify({chords:P.harmony.chords,follow:P.harmony.follow}) && "THE CHORDS AND TRACK ASSIGNMENTS · APPLY HARMONY KEEPS THEM";
     node.classList.add("pf-dialog");node.append(body);draw(0);node.showModal();
   }
   App.Harmony={pitches,duration,open,state};

@@ -115,7 +115,7 @@
   }
   function record() {
     if (capture) { finish(); return; }
-    if (App.P.performance.source !== "live") source("live");
+    if (App.P.performance.source !== "live") { App.P.performance.active.fill(-1); source("live"); }
     capture={from:null,events:[]};
     if (!App.Seq.playing) App.Seq.play();
   }
@@ -124,7 +124,9 @@
     const c=capture; capture=null;
     if (c.from==null) return;
     const at=end ?? ((App.Seq.frame()?.absoluteStep ?? c.from)+1);
-    const steps=int(at-c.from,1,limit,1);
+    // A take ends on the launch grid, so it loops in time: the stop is rounded up to the next bar, beat or step.
+    const unit=App.P.performance.quant==="bar"?App.spb(App.P):App.P.performance.quant==="beat"?App.beatSteps(App.P):1;
+    const steps=int(Math.ceil((at-c.from)/unit)*unit,1,limit,1);
     App.P.performance.take={steps,origin:c.from,events:normalize(c.events.filter(e=>e.at<steps),steps)};
     App.commit(); App.UI.msg("PERFORMANCE RECORDED · "+steps+" STEPS");
   }
@@ -168,7 +170,12 @@
       loop.onchange=()=>{S.loops[focusT][focusP]=int(loop.valueAsNumber,0,256,0);loop.value=S.loops[focusT][focusP];App.commit();App.Ed.sync();App.Mx.sync();};
       const bars=num("Live export bars",1,64,S.bars);
       bars.onchange=()=>{S.bars=int(bars.valueAsNumber,1,64,4);bars.value=S.bars;App.commit();};
-      const rec=btn("Record take","Record track launches, stops and loop phase into the performance arrangement",()=>{record();sync();});
+      const rec=btn("Record take","Record track launches, stops and loop phase into the performance arrangement",()=>{
+        const was=!!capture;record();sync();
+        if(was && !capture)said.textContent="TAKE RECORDED · "+S.take.steps+" STEPS · TRANSPORT › PERFORMANCE TAKE PLAYS IT · VIEW › EDIT RECORDED TAKE CHANGES IT";
+      });
+      const said=h("output",{role:"status"});
+      const halt=btn("Stop all","Stop the transport and end this launcher session · PLAY is the pattern or the song again",()=>{if(App.Seq.playing)App.playToggle();sync();});
       function sync() {
         const frame=App.Seq.frame();
         if(mode.value!==S.source)mode.value=S.source;
@@ -183,7 +190,7 @@
         rec.classList.toggle("pf-record",!!capture);
       }
       stage.append(grid,h("div.pf-line",null,field("Launch on",quant),target,field("Loop steps · 0 = pattern",loop)),
-        h("div.pf-line",null,rec,field("Live export bars",bars)));
+        h("div.pf-line",null,rec,halt,field("Live export bars",bars),said));
       update=sync;sync();
     }
     function arrangement() {
@@ -211,14 +218,15 @@
         if (!steps.reportValidity()) return;
         if (draft.some(e=>e.at>=+steps.value)) {status.textContent="Move or remove events past the end first";return;}
         if (App.Seq.playing) App.Seq.stop();
-        S.take={steps:+steps.value,origin:S.take.origin,events:normalize(draft,+steps.value)};S.source="take";App.commit();App.Top.sync();App.Mx.sync();mode.value="take";status.textContent="Saved";
+        S.take={steps:+steps.value,origin:S.take.origin,events:normalize(draft,+steps.value)};S.source="take";App.commit();App.Top.sync();App.Mx.sync();mode.value="take";status.textContent="Saved · PLAY now plays this take · TAKE in the song row goes back to patterns";
       },"confirm-action");
       stage.append(list,h("div.pf-line",null,field("At step",at),field("Track",track),field("Launch",clip),field("Offset",offset)),
         h("div.pf-line",null,btn("Add","Insert a launch or stop",()=>put(false)),btn("Update","Replace selected event",()=>put(true)),
           btn("Remove","Remove selected event",()=>{const i=list.selectedIndex;if(i>=0){draft.splice(i,1);draw(i);status.textContent="Edited";}})),
         h("div.pf-line",null,field("Take length · steps",steps),apply,status));draw();update=()=>{};
+      node.dirty=()=>tab==="take" && JSON.stringify(normalize(draft,+steps.value||1))!==JSON.stringify(S.take.events) && "THE EDITED TAKE · APPLY TAKE KEEPS IT";
     }
-    function render() {stage.replaceChildren();if(tab==="take")arrangement();else launcher();}
+    function render() {stage.replaceChildren();node.dirty=null;if(tab==="take")arrangement();else launcher();}
     node.classList.add("pf-dialog");node.append(body);render();node.showModal();
     const timer=setInterval(()=>{if(App.P!==P){node.close();return;}update();},100);
     node.addEventListener("close",()=>{
