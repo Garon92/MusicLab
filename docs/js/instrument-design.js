@@ -233,7 +233,7 @@
         try{const scale=L.parseScala([scaleName.value||"Custom",rows.length,...rows].join("\n"));Object.assign(t,scale,{enabled:true});ui.status.textContent="";update();draw();}
         catch(e){ui.status.textContent=e.message;}
       });
-      ui.content.replaceChildren(row(field("Listen with",mode),listen),
+      ui.content.replaceChildren(row(field("Project plays in",mode),listen),
         row(field("Preset",preset),action("Import Scala…",()=>file.click()),file),
         row(field("Degree zero",select("Scale root note",names,t.root,v=>{t.root=+v;update();})),
           field("Reference key",select("Reference MIDI note",names,t.reference,v=>{t.reference=+v;update();})),field("Reference · Hz",ref)),

@@ -47,6 +47,7 @@
 
     add("Play / stop","Transport","start transport přehrát zastavit",()=>App.playToggle(),"SPACE");
     add("Stop, all sound off","Transport","panic all notes off ticho",()=>App.silence(),"ESC");
+    add("Tap tempo","Transport / Tap","tap bpm tempo by hand vyťukat",()=>press("top","TAP"));
     add("Record notes","Transport / Rec","arm overdub nahrávat noty",()=>{App.recArm=!App.recArm;App.Top.sync();});
     add("Tape the output","Transport / Tape","record master bounce live nahrát zvuk",()=>App.tape());
     add("Capture recent notes","Transport / Capture","retrospective recover playing zapomenuté nahrávání zpětně",()=>App.Retrospective.open());
@@ -115,6 +116,10 @@
     note("Keys","Play notes","A–K · W E T Y U","keyboard piano notes hrát klávesy");
     note("Keys","Octave down / up","Z · X","transpose keyboard oktáva");
     note("Keys","Select track","1–8 · UP DOWN","stopa");
+    note("Keys","Select all notes","CTRL/CMD A","select all vybrat vše");
+    note("Keys","Move selected notes","ARROWS","nudge shift posun not");
+    note("Keys","Duplicate notes","CTRL/CMD D","copy duplikovat");
+    note("Keys","Delete notes","DELETE","remove smazat");
     note("Keys","Select pattern","LEFT RIGHT","pattern");
     note("Keys","Fill notes while held","\\","conditional fill");
     note("Keys","This map","CTRL/CMD K","find search command hledat");
@@ -128,7 +133,9 @@
     note("Gestures","Object menu","RIGHT-CLICK","context menu clip pattern track slot pad nabídka");
     note("Gestures","Copy or move","DRAG THE GRIP","drag drop clip pattern slot pad track přetáhnout");
     note("Gestures","Rename","DOUBLE-CLICK","name track pad přejmenovat");
-    note("Gestures","Mute / solo alone","ALT-CLICK","exclusive only sólo");
+    note("Gestures","Mute / solo alone","ALT-CLICK","exclusive only sólo mute solo ztlumit");
+    note("Gestures","Pattern length","DRAG ITS BAR VALUE","bars length délka patternu takty");
+    note("Gestures","Copy a device","DRAG THE TRACK NAME","instrument copy sound zkopírovat nástroj");
     note("Gestures","Load audio","DROP A FILE","sample import wav přetáhnout soubor");
 
     P.tracks.forEach((t,i)=>add(t.name,"Tracks / Track "+(i+1),"track stopa select "+(i+1),()=>App.select(i),String(i+1)));
@@ -207,9 +214,12 @@
     function highlight(){
       order.forEach((o,i)=>o.el.setAttribute("aria-selected",String(i===index)));
       if(order.length)input.setAttribute("aria-activedescendant","find-option-"+index);else input.removeAttribute("aria-activedescendant");
-      count.textContent=order.length?(index+1)+" / "+order.length:"NO MATCH";
+      // Keys and gestures are answers too: with nowhere to go, the map still counts and names what it found.
+      const known=[...map.querySelectorAll(".find-option.info")];
+      count.textContent=order.length?(index+1)+" / "+order.length:known.length?known.length+(known.length===1?" HINT":" HINTS"):"NO MATCH";
       const r=order[index]?.r;
-      tip.textContent=r?(r.label+" · "+r.group+(r.where?" › "+r.where:"")+(r.key?" · "+r.key:"")+" · ENTER = GO").toUpperCase():"NOTHING MATCHES · TRY ANOTHER WORD";
+      tip.textContent=r?(r.label+" · "+r.group+(r.where?" › "+r.where:"")+(r.key?" · "+r.key:"")+" · ENTER = GO").toUpperCase()
+        :known.length?(known[0].querySelector("strong").textContent+" = "+known[0].querySelector("small").textContent+" · A KEY OR GESTURE, NOT A PLACE").toUpperCase():"NOTHING MATCHES · TRY ANOTHER WORD";
       App.UI.tip();
     }
     function go(i){

@@ -187,6 +187,7 @@
       if (!App.taping) tapeB.textContent = "TAPE";
       clickB.classList.toggle("on", !!P().click);
       sampEl.hidden = !App.recTo; sampTick();
+      $("top").classList.toggle("busy", !!(App.take || App.taping || App.recTo)); // recordings in the bar: at laptop sizes the output bar makes room
       takeEl.hidden = !App.take;
       if (App.take) takeEl.textContent = "TAKE " + mmss(App.take.duration);
       midiB.classList.toggle("on", App.midiN > 0);

@@ -251,7 +251,13 @@
       } catch (e) { UI.msg("CANNOT DECODE " + f.name.toUpperCase()); }
       if (tg.pad == null && n) break;
     }
-    if (n) landed(last);
+    if (n) {
+      landed(last);
+      // Every drop says where it landed: on a drum track that is a pad, and it replaced what the pad had.
+      const T = App.P.tracks[last.ti], name = App.samples.get(last.pad != null ? T.kit.pads[last.pad].id : T.smp.id)?.name || "AUDIO";
+      UI.msg(n > 1 ? n + " FILES LOADED ONTO PADS " + (tg.pad + 1) + " TO " + (tg.pad + n) + " OF " + pad2(last.ti + 1) + " " + T.name + " · UNDO REVERTS"
+        : name + " LOADED " + (last.pad != null ? "ONTO PAD " + (last.pad + 1) + " OF " : "INTO ") + pad2(last.ti + 1) + " " + T.name + " · UNDO REVERTS");
+    }
   };
 
   /* ── tape: the output as audio ── */
@@ -730,8 +736,11 @@
     if (/^Digit[1-8]$/.test(e.code)) { App.select(+e.code[5] - 1); return; }
     if (e.repeat) return;
     if (e.code === "KeyZ" || e.code === "KeyX") {
+      const T = App.P.tracks[App.P.sel.t];
+      // Pads and slices sit on fixed keys: there is no octave to move, and saying so beats a number that changes nothing.
+      if (T.kind === "kit" || (T.kind === "smp" && T.smp.mode === 1)) { UI.msg("A S D F G H J K PLAY THE " + (T.kind === "kit" ? "PADS" : "SLICES") + " · Z AND X MOVE THE OCTAVE ON PITCHED TRACKS"); return; }
       octave = clamp(octave + (e.code === "KeyX" ? 1 : -1), 0, 8);
-      UI.msg("KEYS START AT C" + octave);
+      UI.msg("KEYS START AT C" + octave + " · THE GRID COMES TO THE NOTES YOU PLAY");
       return;
     }
     const n = noteFor(e.code);

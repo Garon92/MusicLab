@@ -120,9 +120,9 @@
       });
       const settings = h("div.rack-row",null,
         field("Instrument",select("Modulation track",trackOptions(),ti,v => { ti=+v; draw(); })),
-        field("LFO shape",select("LFO shape",waves.map(w => [w,w]),s.lfoWave,v => { s.lfoWave=v; change(); })),
-        field("LFO clock",select("LFO clock",divisions,s.lfoBeats,v => {s.lfoBeats=+v; change(); draw();})),
-        !s.lfoBeats && field("Rate · Hz",number("LFO rate",s.lfoRate,.02,30,.01,v => { s.lfoRate=v; change(); },1)));
+        field("Mod LFO shape",select("LFO shape",waves.map(w => [w,w]),s.lfoWave,v => { s.lfoWave=v; change(); })),
+        field("Mod LFO clock",select("LFO clock",divisions,s.lfoBeats,v => {s.lfoBeats=+v; change(); draw();})),
+        !s.lfoBeats && field("Mod LFO rate · Hz",number("LFO rate",s.lfoRate,.02,30,.01,v => { s.lfoRate=v; change(); },1)));
       const list = h("div.rack-list");
       const src = [...macroIds.map((id,j) => [id,macroLabel(ti,j)]),["lfo","LFO"],["velocity","Last velocity"],...sourceOptions()];
       const heading = h("div.rack-route.rack-labels",null,...["Source","Destination","Start %","End %",""].map(text => h("span",{text})));

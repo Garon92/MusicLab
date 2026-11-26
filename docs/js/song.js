@@ -146,10 +146,13 @@
     // so each later change goes back onto the bar number it was on; left where it was, it would cut a bar short.
     const laterMeters=from=>A.meters.filter(m=>m.at>from).map(m=>({sig:m.sig,bar:C.position(D,m.at).bar}));
     function setMeters(head,bar,later) {
-      const before=A.meters;A.meters=head;
+      // Tempo points are stored in steps too: each goes back onto its bar (and its place inside it) once the bars moved.
+      const before=A.meters, tempoBefore=A.tempo, anchored=A.tempo.map(t=>({...t,...(p=>({bar:p.bar,inside:p.inside}))(C.position(D,t.at))}));
+      A.meters=head;
       for(const m of later){bar=Math.max(m.bar,bar+1);A.meters=[...A.meters,{at:C.barStart(D,bar),sig:m.sig}];}
+      A.tempo=anchored.map(({bar,inside,...t})=>({...t,at:Math.min(65536,C.barStart(D,bar)+inside)})).sort((a,b)=>a.at-b.at);
       if(A.meters.every(m=>m.at<=65536))return true;
-      A.meters=before;status.textContent="Change exceeds the conductor timeline.";return false;
+      A.meters=before;A.tempo=tempoBefore;status.textContent="Change exceeds the conductor timeline.";return false;
     }
     function setCue(type) {
       if(!at.reportValidity() || type==="tempo"&&!tempo.reportValidity())return;
@@ -168,7 +171,7 @@
     }
     function listCues(type,sel){
       const before=sel.value;
-      sel.replaceChildren(...A[type].map(e=>h("option",{value:e.at,text:"Bar "+(C.position(D,e.at).bar+1)+"  ·  "+(type==="tempo"?+e.bpm.toFixed(2)+" BPM  "+(e.ramp?"↗ next":"hold"):App.SIGS[e.sig].join("/"))})));
+      sel.replaceChildren(...A[type].map(e=>h("option",{value:e.at,text:"Bar "+(C.position(D,e.at).bar+1)+"  ·  "+(type==="tempo"?+e.bpm.toFixed(2)+" BPM  "+(e.ramp?"ramp to next":"hold"):App.SIGS[e.sig].join("/"))})));
       if([...sel.options].some(e=>e.value===before))sel.value=before;
     }
     function loadCue(type,sel){const e=A[type].find(c=>c.at===+sel.value);if(!e)return;at.value=C.position(D,e.at).bar+1;if(type==="tempo"){tempo.value=e.bpm;shape.value=e.ramp?"ramp":"hold";}else signature.value=e.sig;}

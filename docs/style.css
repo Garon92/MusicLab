@@ -280,6 +280,7 @@ noscript { position: fixed; inset: 0; display: grid; place-items: center; backgr
 #ed .ed-note { gap: 0.5rem; }
 #ed .ed-note .tg { min-width: 6.6em; }
 #ed .ed-past { color: var(--am); letter-spacing: 0.06em; }
+#ed .ed-tools > .ti { min-width: 4.6em; overflow: hidden; text-overflow: ellipsis; } #ed .ed-tools > .rd { min-width: 0; overflow: hidden; }
 #ed .ed-count { display: inline-flex; justify-content: center; align-items: center; min-width: 2.5rem; font-variant-numeric: tabular-nums; margin-right: .4rem; color: var(--am); }
 #ed .ed-b canvas { touch-action: none; }
 #ed .ed-b canvas[data-tool="select"] { cursor: default; }

@@ -65,6 +65,10 @@
       // The pattern's length where the pattern is edited: the same value as on its letter in the matrix.
       const lenFace = { get bars() { const P = App.P; return Math.min(P.pats[P.sel.p].bars, App.maxBars(P)); }, set bars(v) { App.P.pats[App.P.sel.p].bars = v; } };
       hd.len = UI.param(App.Mx.barsDef, lenFace, () => { App.Mx.sync(); sync(); }, { label: "LENGTH" });
+      // A clip may loop on its own length, against the pattern. The launcher sets that too; here it is seen and reset.
+      const loopFace = { get loop() { const P = App.P; return P.performance.loops[P.sel.t][P.sel.p]; }, set loop(v) { const P = App.P; P.performance.loops[P.sel.t][P.sel.p] = v; } };
+      hd.loop = UI.param({ k: "loop", l: "LOOP", name: "THIS CLIP'S OWN LOOP IN STEPS · PATTERN = AS LONG AS THE PATTERN · ANOTHER LENGTH TURNS IT AGAINST THE OTHER TRACKS", min: 0, max: 256, def: 0, int: 1, f: (v) => (v ? v + " ST" : "PATTERN") },
+        loopFace, () => { sync(); App.Mx.sync(); });
       hd.chord = UI.param(CHORD, pen, () => cv.focus({ preventScroll: true }));
       const face = {};
       for (const k of Object.keys(NOTE)) Object.defineProperty(face, k, { get: () => { let nt; for (nt of selection); return nt ? noteVal(nt, k) : pen[k]; }, set: (v) => setValue(k, v) });
@@ -101,7 +105,7 @@
       el.append(h("div.hd.ed-tools", null,
         h("span.tg", { text: "EDIT" }), hd.title,
         h("span.grp", { role: "group", "aria-label": "Editing tool" }, hd.draw, hd.select, hd.auto),
-        h("span.grp.ed-pages", {role:"group", "aria-label":"Pattern length and visible bars"}, hd.len, hd.past, hd.prev, hd.bars, hd.next, hd.follow),
+        h("span.grp.ed-pages", {role:"group", "aria-label":"Pattern length and visible bars"}, hd.len, hd.loop, hd.past, hd.prev, hd.bars, hd.next, hd.follow),
         h("span.grp", null, h("span.tg", { text: "LANE" }), hd.lv, hd.lp, hd.lr),
         // What only a pitched track has comes last, so nothing else moves when it is not there.
         (hd.pitched = [h("span.grp", null, hd.chord), h("span.grp", null, h("span.tg", { text: "VIEW" }), hd.od, hd.ou, hd.fold)]),
@@ -371,13 +375,15 @@
       hd.bars.textContent = (1 + start / barSteps) + "–" + Math.ceil(end / barSteps) + "/" + bars;
       hd.bars.dataset.tip = "BARS IN VIEW / PATTERN LENGTH · " + total + " STEPS, " + barSteps + " PER BAR";
       hd.prev.hidden = hd.next.hidden = hd.bars.hidden = bars <= 4;
-      hd.len.paint(); hd.chord.paint();
+      hd.len.paint(); hd.chord.paint(); hd.loop.paint();
+      hd.loop.hidden = !P.performance.loops[ti][pi]; // shown while the clip has a loop of its own: LIVE… sets one, a right-click here removes it
       // Notes past the end of a shortened pattern are kept and not played: the header counts them.
       const parked = T.clips[pi].filter((nt) => nt.s >= total).length;
-      hd.past.hidden = !parked; hd.past.textContent = "+" + parked + " PAST END";
+      hd.past.hidden = !parked; hd.past.textContent = "+" + parked + " PAST";
       hd.past.dataset.tip = parked + (parked === 1 ? " NOTE LIES" : " NOTES LIE") + " PAST THE END OF THIS PATTERN · KEPT, NOT PLAYED · LENGTHEN THE PATTERN TO GET THEM BACK";
-      hd.follow.hidden = bars <= 4; hd.follow.classList.toggle("on", followTransport); hd.follow.setAttribute("aria-pressed", String(followTransport));
-      hd.follow.dataset.tip = followTransport ? "THE VIEW TURNS ITS PAGE WITH THE PLAYHEAD · CLICK = STAY ON THIS PAGE" : "THE VIEW STAYS ON THIS PAGE · CLICK = FOLLOW THE PLAYHEAD AGAIN";
+      // Following the playhead is the rule; the switch appears while the view is held on a page, to give it back.
+      hd.follow.hidden = bars <= 4 || followTransport; hd.follow.classList.toggle("on", followTransport); hd.follow.setAttribute("aria-pressed", String(followTransport));
+      hd.follow.dataset.tip = "THE VIEW IS HELD ON THIS PAGE · CLICK = FOLLOW THE PLAYHEAD AGAIN";
       NOTE.l.max = Math.max(1, total);
       hd.prev.disabled = start === 0; hd.prev.dataset.why = "THESE ARE THE FIRST BARS";
       hd.next.disabled = end === App.Live.length(P,P.sel.t,pi); hd.next.dataset.why = "THESE ARE THE LAST BARS";

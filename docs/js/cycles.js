@@ -53,8 +53,8 @@
     };
     for(const key of lanes){
       const line=config[key],title={pitch:"Pitch",accent:"Accent",gate:"Gate"}[key];
-      const input=h("input",{type:"text","aria-label":title+" steps",value:line.values.map(v=>v===-1?"-":v).join(" "),
-        placeholder:key==="pitch"?(kit?"36  –  38":"C3  E3  G3  -"):"80  55  90",maxlength:200});
+      const input=h("input",{type:"text","aria-label":title+" steps",value:line.values.map(v=>v===-1?"-":key==="pitch"&&!kit?App.noteName(v):v).join(" "),maxlength:200,
+        tip:key==="pitch"?(kit?"PAD NOTES 36 TO 43, SPACE BETWEEN, - FOR A REST · FOR EXAMPLE 36 - 38":"NOTE NAMES OR NUMBERS, SPACE BETWEEN, - FOR A REST · FOR EXAMPLE C3 E3 G3 -"):"PERCENT PER STEP, SPACE BETWEEN · FOR EXAMPLE 80 55 90"});
       const clock=option(title+" clock",Object.keys(periods),line.clock),dir=option(title+" direction",directions,line.dir),phase=number(title+" phase",line.phase,0,31);
       const strip=h("div.cycle-cells",{"aria-label":title+" cycle position"});
       const paint=()=>strip.replaceChildren(...line.values.map(v=>h("span",{text:key==="pitch"?(v<0?"–":kit?String(v):App.noteName(v)):v+"%"})));
@@ -116,7 +116,9 @@
       play.textContent="Stop audition";play.setAttribute("aria-pressed","true");timer=setInterval(tick,25);tick();
     });
     function print(last){
+      status.textContent="";
       if(!valid() || !dest.options.length)return;
+      if(!config.pitch.values.some(n=>n>=0)){status.textContent="Enter pitches in the Pitch sequence.";return;}
       const length=+len.value,start=last?Math.floor(playhead)-length:+from.value;
       if(last && start<first){status.textContent="Audition a full capture length first.";return;}
       const ev=last?history:events(config,start,start+length);

@@ -56,7 +56,9 @@
         data[0]=1-v; reverb.normalize=false; reverb.buffer=ir;
         return reverb;
       }
-      if (fx.type === "saturate") return shape(curve(x => Math.tanh((1 + 18 * v) * x) / Math.tanh(1 + 18 * v)));
+      // Drive without a jump in level: a signal at -12 dBFS leaves at the level it came in, whatever the amount. Without
+      // this the insert at its default was 15 dB louder than bypassed, since quiet signals sit on the steep part.
+      if (fx.type === "saturate") { const k = 1 + 18 * v, ref = 0.25, unit = Math.tanh(k), g = ref / (Math.tanh(k * ref) / unit); return shape(curve(x => g * Math.tanh(k * x) / unit)); }
       if (fx.type === "compress") {
         const n = ctx.createDynamicsCompressor(); n.threshold.value = -48 * v;
         n.ratio.value = 1 + 15 * v; n.attack.value = .005; n.release.value = .12; return n;

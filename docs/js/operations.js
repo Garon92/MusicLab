@@ -15,7 +15,7 @@
   const mixGroups = { levels:["vol","pan"], switches:["mute","solo"], sends:["dly","rev","drive"] };
   const operations = {
     quantize: { group:"Notes", label:"Quantize starts", hint:"Move attacks towards the chosen grid within each pattern.", fields:() => [
-      list("grid","Grid", [["2","1/8 note"],["4","1/4 note"],["8","1/2 note"],["beat","Beat"],["bar","Bar"]]), percent("strength","Strength",100)
+      list("grid","Grid", [["1","1/16 note"],["2","1/8 note"],["4","1/4 note"],["8","1/2 note"],["beat","Beat"],["bar","Bar"]]), percent("strength","Strength",100)
     ] },
     scale: { group:"Notes", label:"Snap pitch to scale", hint:"Snap melodic instruments to the project key and scale.", fields:() => [
       list("tie","Equal distance", [["down","Lower note"],["up","Higher note"]])

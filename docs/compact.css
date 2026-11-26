@@ -1,6 +1,9 @@
 /* Keep the complete rack usable at laptop resolutions. Canvas rems and the
    panel dimensions are independent so smaller windows do not shrink every label. */
 @media (min-width: 1040px) and (max-width: 1450px) {
+  /* the editor header carries the most at once: pattern length, a clip loop, parked notes, paging, lanes, chord and view */
+  #ed .ed-pages .ed-page { display: none; } /* the ruler under it numbers the bars in view */
+  #ed .ed-tools { gap: .3rem; } #ed .ed-tools .pm { padding: 0 .4rem; gap: .4rem; } #ed .ed-tools .pm .v { min-width: 0; } #ed .ed-tools .tg { margin-right: 0; }
   html { font-size: clamp(9px, .72vw, 10px); }
   :root { --fs: clamp(10px, .78vw, 11px); --fm: clamp(10px, .85vw, 12px); }
   body { letter-spacing: .015em; }
@@ -13,6 +16,9 @@
   #app[data-focus] > section > .hd { min-height: 32px; }
 
   #top .tc { gap: 3px; padding-inline: 5px; }
+  /* With a take, a running tape or a sampler recording in the bar, the output keeps its number and gives up its bar. */
+  #top.busy .om .l, #top.busy .omb, #top.busy .logo { display: none; } #top.busy .omv { min-width: 0; }
+  #top .pm.in { flex: none; } #top .bt.samp { flex: none; margin-right: 4px; }
   #top .logo { font-size: 12px; letter-spacing: .12em; }
   #top .nm { min-width: 48px; max-width: 74px; flex-shrink: 1; }
   #top .pos { min-width: 78px; font-size: clamp(13px, 1.15vw, 16px); letter-spacing: 0; }
