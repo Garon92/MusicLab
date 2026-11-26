@@ -74,13 +74,17 @@
 
     /* ── sends: ping-pong delay, convolution reverb ── */
     const dIn = G(), rIn = G(), pL = ctx.createStereoPanner(), pR = ctx.createStereoPanner();
-    let dL, dR, dTone, dFb, conv;
+    let dL, dR, dOut, dTone, dFb, conv;
     pL.connect(returns); pR.connect(returns);
     const buildReturns = () => {
-      dL = ctx.createDelay(2.5); dR = ctx.createDelay(2.5);
+      dL = ctx.createDelay(2.5); dR = ctx.createDelay(2.5); dOut = ctx.createDelay(2.5);
       dTone = BQ("lowpass", 4500, -3); dFb = G(0.4);
       dIn.connect(dL).connect(dR).connect(dTone).connect(dFb).connect(dL);
-      dL.connect(pL); dR.connect(pR);
+      // The loop is entered from outside at one node only. Chromium and WebKit break a cycle at whichever of its
+      // nodes they reach first and feed that one a block late; with a tap on each delay the first reached changed
+      // from one context to the next, and two renders of one project differed by 128 frames in every other echo.
+      // The right echo is taken from a copy of the second delay that stands outside the loop.
+      dL.connect(pL); dL.connect(dOut).connect(pR);
       conv = ctx.createConvolver(); rIn.connect(conv).connect(returns);
     };
     buildReturns();
@@ -257,7 +261,7 @@
 
     E.syncFx = () => {
       const P = getP(), f = P.fx, dt = clamp((DELAY_BEATS[f.dtime] * 60) / P.bpm, 0.01, 2.4);
-      set(dL.delayTime, dt, 0.06); set(dR.delayTime, dt, 0.06);
+      for (const d of [dL, dR, dOut]) set(d.delayTime, dt, 0.06);
       set(dFb.gain, f.dfb); set(dTone.frequency, f.dtone);
       set(pL.pan, -f.dwid); set(pR.pan, f.dwid);
       const ir = App.SignalWorkshop?.impulse(P,sr);
@@ -276,7 +280,7 @@
     E.stopTempo=()=>{
       const P=getP(),time=ctx.currentTime;
       if(!P.arrangement?.tempo.length && !P.arrangement?.meters.length)return;
-      dL.delayTime.cancelScheduledValues(time);dR.delayTime.cancelScheduledValues(time);
+      for(const d of [dL,dR,dOut])d.delayTime.cancelScheduledValues(time);
       for(const x of tr)if(x.lfo)x.lfo.frequency.cancelScheduledValues(time);
       E.tempo(P.bpm,App.spb(P),time);
     };
@@ -284,7 +288,7 @@
       const P=getP();
       if(!P.arrangement?.tempo.length && !P.arrangement?.meters.length)return;
       const dt=clamp(DELAY_BEATS[P.fx.dtime]*60/bpm,.01,2.4);
-      dL.delayTime.setTargetAtTime(dt,time,.015);dR.delayTime.setTargetAtTime(dt,time,.015);
+      for(const d of [dL,dR,dOut])d.delayTime.setTargetAtTime(dt,time,.015);
       tr.forEach((t,i)=>{
         const d=devOf(P.tracks[i]);
         if(t.lfo && d?.lsync){
@@ -683,11 +687,11 @@
       if (clearReturns) {
         E.stopAutomation();
         const impulse = conv.buffer;
-        for (const node of [dIn, dL, dR, dTone, dFb, rIn, conv]) node.disconnect();
+        for (const node of [dIn, dL, dR, dOut, dTone, dFb, rIn, conv]) node.disconnect();
         buildReturns();
         conv.buffer = impulse;
         const fx = getP().fx;
-        dL.delayTime.value = dR.delayTime.value = clamp(DELAY_BEATS[fx.dtime] * 60 / getP().bpm, 0.01, 2.4);
+        dL.delayTime.value = dR.delayTime.value = dOut.delayTime.value = clamp(DELAY_BEATS[fx.dtime] * 60 / getP().bpm, 0.01, 2.4);
         dFb.gain.value = fx.dfb; dTone.frequency.value = fx.dtone;
         tr.forEach(t => { t.lastHz = 0; });
       }

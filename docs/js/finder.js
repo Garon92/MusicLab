@@ -103,7 +103,7 @@
 
     add("Signal bench","Signal / Bench","measurement frequency response harmonics distortion delay transfer sweep měření",()=>App.SignalBench.open());
 
-    for(const [label,cmd,aliases,key] of [["Open project","open","load JSON otevřít projekt"],["Save project","save","download portable uložit projekt","CTRL/CMD S"],["Import MIDI","import-midi","MIDI file import načíst"],["Export MIDI","mid","download SMF export not"],["Export audio","wav","render WAV bounce export zvuk"],["Export stems","stems","tracks WAV ZIP export stopy"],["Reset project","new","new clear project reset smazat celý projekt nový"],["Restore last reset","restore","backup recovery obnovit záloha"]]){
+    for(const [label,cmd,aliases,key] of [["Open project","open","load JSON otevřít projekt"],["Save project","save","download portable uložit projekt","CTRL/CMD S"],["Import MIDI","import-midi","MIDI file import načíst"],["Export MIDI","mid","download SMF export not"],["Export audio","wav","render WAV bounce export zvuk"],["Export loop","loop","exact length seamless WAV loop sample smyčka přesná délka"],["Export stems","stems","tracks WAV ZIP export stopy"],["Reset project","new","new clear project reset smazat celý projekt nový"],["Restore last reset","restore","backup recovery obnovit záloha"]]){
       if(cmd!=="restore" || App.hasRecovery())add(label,"File",aliases,()=>App.file(cmd),key);
     }
     add("Material library","File","library save phrase audition break knihovna",()=>App.Library.open());
@@ -135,6 +135,7 @@
     note("Gestures","Rename","DOUBLE-CLICK","name track pad přejmenovat");
     note("Gestures","Mute / solo alone","ALT-CLICK","exclusive only sólo mute solo ztlumit");
     note("Gestures","Pattern length","DRAG ITS BAR VALUE","bars length délka patternu takty");
+    note("Gestures","Turn the page","HOLD NOTE AT EDGE","drag long note length turn page next bars otočit stránku dlouhá nota");
     note("Gestures","Copy a device","DRAG THE TRACK NAME","instrument copy sound zkopírovat nástroj");
     note("Gestures","Load audio","DROP A FILE","sample import wav přetáhnout soubor");
 

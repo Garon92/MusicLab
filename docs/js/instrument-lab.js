@@ -38,6 +38,12 @@
     }
     return true;
   };
+  // Modules a cable path joins to OUTPUT. Anything outside this set has no effect, and a patch with none of them is silent.
+  const heard = graph => {
+    const seen=new Set(["out"]);
+    for(let grew=true;grew;){grew=false;for(const c of graph.cables)if(seen.has(c.to) && !seen.has(c.from)){seen.add(c.from);grew=true;}}
+    seen.delete("out");return seen;
+  };
   function graphOf(raw) {
     if(!Array.isArray(raw?.nodes))return {nodes:[moduleOf("osc","osc1")],cables:[{from:"osc1",to:"out",port:"audio",amount:.7}]};
     const g={nodes:[],cables:[]};
@@ -236,6 +242,6 @@
       osc.connect(gain).connect(head);osc.start(time);v.src.push(osc);v.nodes.push(osc,gain);
     });
   }
-  App.InstrumentLab={moduleTypes,inputs,moduleOf,validCable,graphOf,framesOf,frameOf,frameFromSample,
+  App.InstrumentLab={moduleTypes,inputs,moduleOf,validCable,heard,graphOf,framesOf,frameOf,frameFromSample,
     tuningOf,parseScala,parsePitch,equal,just,standardHz,frequency,nearest,PARTIALS,modularVoice,wavetableVoice};
 })();

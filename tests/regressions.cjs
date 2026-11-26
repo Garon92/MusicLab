@@ -74,7 +74,7 @@ module.exports = async function regressions(page) {
     await pick("Cable source", from); await pick("Cable destination", to); await pick("Cable input", port); await press("Connect");
   }
   await press("Select module osc2");
-  await pick("wave", "sawtooth");
+  await pick("Waveform", "sawtooth");
   await dialog.getByRole("spinbutton", { name: "Pitch ratio", exact: true }).fill("2");
   await page.keyboard.press("Tab");
   await close();
@@ -417,6 +417,178 @@ module.exports = async function regressions(page) {
   await fresh.close();
   assert.ok(placed.found && Math.abs(placed.framesOff) <= 1, "the first recording on a page knows which frame it starts on: " + JSON.stringify(placed));
 
+  // ── What four walkthroughs of the console as a first-time user found (2026-11-26). ──
   await reset();
-  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, note values, launcher hands the transport back, lists in popups, wheel grid, console number fields, long audio in a sampler, first recording on its frame");
+  const hintNow = () => state(() => document.querySelector(".st-h").textContent), saidNow = () => state(() => document.querySelector(".st-m").textContent);
+  const stripNow = () => state(() => [...document.querySelectorAll("dialog[open]")].pop()?.dataset.st || "");
+  const kickSteps = () => state(() => App.P.tracks[0].clips[0].map(n => n.s).join(","));
+
+  // SPACE after closing a dialog opened it again: the button that had opened it kept the focus and took the key.
+  await page.getByRole("button", { name: "GROOVE…", exact: true }).click();
+  await page.locator("dialog[open]").waitFor();
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => !document.querySelector("dialog[open]"));
+  await page.keyboard.press("Space");
+  await page.waitForFunction(() => App.Seq.playing);
+  assert.equal(await state(() => document.querySelectorAll("dialog[open]").length), 0, "SPACE is the transport, not the last button pressed");
+  await page.keyboard.press("Space");
+  await page.waitForFunction(() => !App.Seq.playing);
+
+  // Delete and Ctrl/Cmd A reached the notes shown as selected only while the focus was inside the editor.
+  await state(() => { App.P.tracks[0].clips[0] = [0, 4, 8].map(s => ({ s, n: 36, l: 1, v: 0.8, p: 1 })); App.select(0, 0); App.commit(); App.refresh(); });
+  const midKick = await cell(4, 0);
+  await page.mouse.click(midKick.x, midKick.y);
+  await state(() => document.activeElement.blur());
+  await page.keyboard.press("Delete");
+  assert.equal(await kickSteps(), "0,8", "Delete takes the selected note wherever the focus is");
+  await page.keyboard.press("Control+a");
+  assert.equal(await state(() => App.Ed.selected().size), 2, "and so does select all");
+  await page.keyboard.press("Escape");
+
+  // A button that could not be used was dead to the pointer and gave no reason.
+  const redoB = page.getByRole("button", { name: "REDO", exact: true });
+  assert.equal(await redoB.getAttribute("aria-disabled"), "true");
+  await redoB.hover();
+  assert.match(await hintNow(), /^NOTHING TO REDO/, "a button that cannot be used says why under the pointer");
+  const redoAt = await redoB.boundingBox();
+  await page.mouse.click(redoAt.x + redoAt.width / 2, redoAt.y + redoAt.height / 2); // the real pointer: a locator waits for it to be enabled
+  assert.match(await saidNow(), /NOTHING TO REDO/, "and when it is pressed");
+
+  // A typed time was read as milliseconds while the display showed seconds: 3 typed over 2.20S gave 3 ms.
+  await page.locator('#fx .pm[aria-label="REVERB DECAY TIME"]').click();
+  await page.locator("input.ed").waitFor();
+  await page.keyboard.type("3");
+  await page.keyboard.press("Enter");
+  assert.equal(await state(() => App.P.fx.rsize), 3, "a bare number is read in the unit the value is shown in");
+
+  // Controls with no effect in the present state looked live; a dialog that shaped the sound lit nothing.
+  await state(() => App.select(1, 0));
+  const lfoRateEl = page.locator('#dv .pm[aria-label="LFO RATE"]');
+  assert.ok(await lfoRateEl.evaluate(e => e.classList.contains("idle")), "the LFO is dim while it has no destination");
+  await lfoRateEl.hover();
+  assert.match(await hintNow(), /^NO EFFECT WHILE DEST IS OFF/);
+  await state(() => { App.P.tracks[1].syn.ldest = 2; App.P.rack.strips[1].eq.bands[0].db = 4; App.commit(); App.refresh(); });
+  assert.ok(!(await lfoRateEl.evaluate(e => e.classList.contains("idle"))), "and live once it has one");
+  const eqLampEl = page.locator('[data-has="eq"]');
+  assert.ok(await eqLampEl.evaluate(b => b.classList.contains("has") && /EQ OF 02/.test(b.dataset.note)), "TRACK EQ… is lit while the EQ shapes the track, and says so");
+  await state(() => { App.P.rack.strips[1].eq.bands[0].db = 0; App.commit(); App.refresh(); });
+  assert.ok(!(await eqLampEl.evaluate(b => b.classList.contains("has"))));
+
+  // Undo while playing restarted the loopFile even for a level change.
+  await state(() => { App.P.pats[0].bars = 4; App.select(0, 0); App.commit(); App.refresh(); App.P.tracks[0].vol = 0.5; App.commit(); App.refresh(); document.activeElement.blur(); });
+  await page.keyboard.press("Space");
+  await page.waitForFunction(() => App.Seq.playing && App.Seq.pos && App.Seq.pos.runStep >= 6);
+  await page.keyboard.press("Control+z");
+  const stillGoing = await state(() => ({ playing: App.Seq.playing, step: App.Seq.now()?.runStep ?? App.Seq.pos?.runStep, vol: App.P.tracks[0].vol }));
+  assert.ok(stillGoing.playing && stillGoing.step >= 6 && stillGoing.vol !== 0.5, "a step that leaves the song's shape alone does not interrupt it: " + JSON.stringify(stillGoing));
+  assert.match(await saidNow(), /^UNDONE · /, "and undo says what it took back");
+  await page.keyboard.press("Space");
+  await page.waitForFunction(() => !App.Seq.playing);
+
+  // Esc on CHORDS… or ARRANGE… dropped an unapplied draft without a word.
+  await page.getByRole("button", { name: "CHORDS…", exact: true }).click();
+  await page.locator("dialog[open]").last().getByRole("combobox", { name: "Harmony for BASS", exact: true }).selectOption("root");
+  await page.keyboard.press("Escape");
+  assert.match(await stripNow(), /^NOT APPLIED YET/, "the first Esc says what closing would lose");
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => !document.querySelector("dialog[open]"));
+  assert.equal(await state(() => App.P.harmony.follow[1]), "off");
+
+  // Duplicate put the copy one selection-span later: off the beat for a shortNote note.
+  await state(() => { App.P.tracks[0].clips[0] = [{ s: 1, n: 36, l: 1, v: 0.8, p: 1 }]; App.select(0, 0); App.commit(); App.refresh(); });
+  const shortNote = await cell(1, 0);
+  await page.mouse.click(shortNote.x, shortNote.y);
+  await page.keyboard.press("Control+d");
+  assert.equal(await kickSteps(), "1,5", "a duplicate lands a whole beat later");
+
+  // With FOLD on, notes outside the scale lost their rows: they could not be selected or deleted.
+  await state(() => { const P = App.P, lo = P.tracks[1].lo; P.fold = 1; P.tracks[1].clips[0] = [1, 2, 3].map(k => ({ s: k, n: lo + k, l: 1, v: 0.8, p: 1 })); App.select(1, 0); App.commit(); App.refresh(); });
+  await page.keyboard.press("Control+a");
+  assert.equal(await state(() => App.Ed.selected().size), 3, "a folded view keeps the rows that hold notes");
+  await page.keyboard.press("Delete");
+  assert.equal(await state(() => App.P.tracks[1].clips[0].length), 0);
+  await state(() => { App.P.fold = 0; App.commit(); App.refresh(); });
+
+  // The slot the song starts from moved when a pattern was inserted before it.
+  await state(() => { const P = App.P; P.chain = [0, 1, 2]; P.song = 1; App.commit(); App.refresh(); App.Seq.startAt(2); App.Song.insert(0, 3); });
+  assert.deepEqual(await state(() => [App.P.chain.join(""), App.P.chain[App.Seq.start()]]), ["3012", 2], "the start stays on its pattern");
+  await state(() => { App.P.chain = []; App.P.song = 0; App.commit(); App.refresh(); App.Seq.startAt(0); });
+
+  // WIRE…: hints repeated the labels, nothing warned when no cable reached OUTPUT, and Ctrl/Cmd Z did nothing inside.
+  await state(() => { App.select(1, 0); App.InstrumentLab.open("graph"); });
+  const wireDlg = () => page.locator("dialog[open]").last(), cableCount = () => state(() => App.P.tracks[1].syn.graph.cables.length);
+  await wireDlg().getByRole("button", { name: "Add module", exact: true }).hover();
+  assert.match(await stripNow(), /UNTIL A CABLE JOINS IT/, "a control says what it does, not its own name");
+  await wireDlg().locator(".il-cables button").click();
+  assert.match(await wireDlg().locator(".il-status").textContent(), /^NOTHING REACHES OUTPUT/);
+  assert.match(await page.locator("#dv .inst-overview").textContent(), /^SILENT/, "the console says so too");
+  await wireDlg().getByRole("button", { name: "Connect", exact: true }).click();
+  assert.deepEqual([await cableCount(), await wireDlg().locator(".il-status").textContent()], [1, ""]);
+  await wireDlg().getByRole("button", { name: "Connect", exact: true }).click();
+  assert.match(await wireDlg().locator(".il-status").textContent(), /ALREADY THERE/, "a refused cable says why");
+  await page.keyboard.press("Control+z");
+  await page.waitForFunction(() => App.P.tracks[1].syn.graph.cables.length === 0 && document.querySelectorAll("dialog[open]").length === 1);
+  assert.match(await stripNow(), /^UNDONE/, "Ctrl/Cmd Z steps back and the editor stays open");
+  await wireDlg().locator(".il-board .bt").first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Connect to output", exact: true }).click();
+  assert.equal(await cableCount(), 1, "a module answers a right-click");
+  await close();
+  await page.getByRole("button", { name: "GROOVE…", exact: true }).click();
+  await page.keyboard.press("Control+z");
+  assert.match(await stripNow(), /^UNDO WORKS ON THE CONSOLE/, "a dialog that cannot step back says where undo is");
+  // Whether recorded notes snap to the step was set in here and shown nowhere on the console.
+  await page.locator("dialog[open]").last().getByRole("combobox", { name: "Live recording timing", exact: true }).selectOption("off");
+  await close();
+  assert.equal(await page.locator("#top .bt", { hasText: /^REC/ }).first().textContent(), "REC FREE");
+  await reset();
+
+  // Audio export always ran on into the tail: there was no file of exactly the loop's length. Export loopFile is that
+  // longNote to the frame, with what rings on laid back over the start.
+  const loopFile = await state(async () => {
+    const P = App.P, T = P.tracks[1]; // the bass patch has nothing random in it, so two renders agree to the sample
+    T.clips[0] = [{ s: 0, n: 48, l: 2, v: 0.9, p: 1 }, { s: 12, n: 55, l: 2, v: 0.9, p: 1 }]; T.rev = 0; T.dly = 0.5; App.select(1, 0); App.commit();
+    const plain = await App.Seq.bounce(), L = await App.Seq.bounceLoop();
+    const file = await new OfflineAudioContext(2, 1, plain.sampleRate).decodeAudioData(await L.blob.arrayBuffer());
+    const n = file.length, a = plain.getChannelData(0), b = file.getChannelData(0), k = 10 ** (L.trim / 20);
+    let worst = 0, peak = 0, finite = true;
+    for (let i = 0; i < n; i++) {
+      let want = 0; for (let j = i; j < a.length; j += n) want += a[j];
+      worst = Math.max(worst, Math.abs(want * k - b[i])); peak = Math.max(peak, Math.abs(b[i])); finite = finite && Number.isFinite(b[i]);
+    }
+    return { frames: n, want: Math.round(App.Conductor.time(P, 16) * plain.sampleRate), plain: plain.length, worst, peak, finite };
+  });
+  assert.ok(loopFile.frames === loopFile.want && loopFile.plain > loopFile.frames && loopFile.finite && loopFile.peak > 0.01 && loopFile.peak <= 1 && loopFile.worst < 1e-3, "a loop file is exactly as long as the loop and holds its own tail: " + JSON.stringify(loopFile));
+
+  // A note could not be stretched past the page in view. Held at the edge, the page turns under it.
+  await state(() => { const P = App.P; P.pats[0].bars = 8; P.tracks[1].clips[0] = [{ s: 60, n: P.tracks[1].lo + 6, l: 2, v: 0.8, p: 1 }]; App.select(1, 0); App.commit(); App.refresh(); });
+  const longNote = () => state(() => App.P.tracks[1].clips[0].map(n => n.s + "+" + n.l).join(","));
+  const noteRow = await state(() => { // the row that holds the note: where the grid answers with it
+    const box = document.querySelector("#ed canvas").getBoundingClientRect();
+    for (let r = 0; r < 40; r++) { const c = App.Ed.cellAt(60, r); if (c.y > box.bottom) break; document.querySelector("#ed canvas").dispatchEvent(new PointerEvent("pointermove", { clientX: c.x, clientY: c.y, bubbles: true })); if (document.querySelector("#ed .rd").textContent.includes(App.noteName(App.P.tracks[1].lo + 6))) return r; }
+    return -1;
+  });
+  assert.ok(noteRow >= 0, "the note's row is in view");
+  const noteTail = await cell(61, noteRow), cellAfter = await cell(62, noteRow), edCanvas = await page.locator("#ed canvas").boundingBox();
+  await page.mouse.move(cellAfter.x - (cellAfter.x - noteTail.x) * 0.45, noteTail.y);
+  await page.mouse.down();
+  await page.mouse.move(edCanvas.x + edCanvas.width - 1, noteTail.y, { steps: 4 });
+  assert.equal(await longNote(), "60+4", "the note reaches the end of the page");
+  await page.waitForFunction(() => /^5/.test(document.querySelector(".ed-page").textContent), null, { timeout: 4000 });
+  const cellOnNext = await cell(72, noteRow);
+  await page.mouse.move(cellOnNext.x, cellOnNext.y, { steps: 4 });
+  await page.mouse.up();
+  assert.equal(await longNote(), "60+13", "and goes on to where it is dropped on the next page");
+  await page.keyboard.press("Control+z");
+  assert.equal(await longNote(), "60+2", "as one undo step");
+
+  // A pad's row in the editor had no menu, though the pad on the device had one.
+  await state(() => App.select(0, 0));
+  const padRowAt = await cell(0, 2), edFrame = await page.locator("#ed canvas").boundingBox();
+  await page.mouse.click(edFrame.x + 20, padRowAt.y, { button: "right" });
+  assert.deepEqual(await state(() => [document.querySelector(".mn").getAttribute("aria-label"), ...[...document.querySelectorAll(".mn .mn-i")].map(b => b.textContent)]), ["Pad 3 CLAP", "Rename", "Load audio…", "Back to init sound"]);
+  await page.keyboard.press("Escape");
+
+
+  await reset();
+  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, note values, launcher hands the transport back, lists in popups, wheel grid, console number fields, long audio in a sampler, first recording on its frame, transport after a dialog, editor keys from anywhere, reasons on unavailable buttons, typed time unit, idle and lit controls, undo while playing, draft guard, duplicate on the beat, folded rows, song start slot, module wiring, loop export, page turn on drag, pad row menu");
 };

@@ -157,7 +157,7 @@
           { label: "Open project…", value: "open", key: ".JSON" }, { label: "Save project", value: "save", key: "CTRL/CMD S" },
           "-",
           { label: "Import MIDI…", value: "import-midi", key: ".MID" }, { label: "Export MIDI", value: "mid", key: ".MID" },
-          { label: "Export audio", value: "wav", key: "24-BIT WAV" }, { label:"Export stems…", value:"stems", key:"WAV / ZIP" }, "-", {label:"Material library…",value:"library"}, "-",
+          { label: "Export audio", value: "wav", key: "WAV + TAIL" }, { label: "Export loop", value: "loop", key: "WAV EXACT" }, { label:"Export stems…", value:"stems", key:"WAV / ZIP" }, "-", {label:"Material library…",value:"library"}, "-",
           { label: "Project tuning…", value: "tuning", key:"SCALA" }, { label: "Reset project…", value: "new" }, { label: "Restore last reset…", value: "restore", disabled: !App.hasRecovery() }
         ], v => v === "tuning" ? App.InstrumentLab.tuning() : App.file(v)), "mnu");
       fileB.setAttribute("aria-label", "File"); fileB.setAttribute("aria-haspopup", "menu");
@@ -184,6 +184,10 @@
       for (const [b,on] of [[recB, App.recArm],[tapeB, App.taping],[clickB, P().click]]) b.setAttribute("aria-pressed", String(!!on));
       playB.classList.toggle("on", App.Seq.playing);
       recB.classList.toggle("on", !!App.recArm);
+      // Notes are written on the step, or where they were played: the mode (set in GROOVE…) shows on the button.
+      const free = P().groove && P().groove.quantize === false;
+      recB.textContent = free ? "REC FREE" : "REC";
+      recB.dataset.tip = "RECORD NOTES AND MAPPED CONTROLLERS INTO PLAYING CLIPS · " + (free ? "NOTES KEEP THE TIMING THEY WERE PLAYED WITH" : "NOTES SNAP TO THE NEAREST STEP") + " · GROOVE… › LIVE RECORDING CHANGES THAT";
       tapeB.classList.toggle("on", !!App.taping);
       if (!App.taping) tapeB.textContent = "TAPE";
       clickB.classList.toggle("on", !!P().click);
@@ -675,7 +679,10 @@
         btn(name.toUpperCase(), "INSTRUMENT TYPE · NOTES STAY · EACH TYPE KEEPS ITS OWN SETTINGS",
           () => changeKind(ti, k), T.kind === k ? "on" : ""));
       const patch = btn("PATCH…", "LOAD AN INSTRUMENT SOUND OR COPY THE SOUND OF ANOTHER TRACK", () => App.Patches.open());
-      el.append(h("div.hd", null, h("span.tg", {text:"DEVICE"}), h("span.ti", {text:pad2(ti+1) + " " + T.name}), h("span.grp", null, kinds), h("span.sp"), has("mod", btn("MODULATION…", "ROUTE LFOS, MACROS, VELOCITY AND ENVELOPES TO THIS DEVICE AND ITS MIXER STRIP", () => App.Rack.modulate())), patch));
+      // The synth's engine stands beside the instrument type: both decide what the panel below is. In a one-column
+      // module its longest name was cut at laptop sizes and lost its list mark.
+      const engine = T.kind === "syn" ? UI.param(DEF.syn.design, T.syn, push, { done: build }) : null;
+      el.append(h("div.hd", null, h("span.tg", {text:"DEVICE"}), h("span.ti", {text:pad2(ti+1) + " " + T.name}), h("span.grp", null, kinds), engine, h("span.sp"), has("mod", btn("MODULATION…", "ROUTE LFOS, MACROS, VELOCITY AND ENVELOPES TO THIS DEVICE AND ITS MIXER STRIP", () => App.Rack.modulate())), patch));
 
       const body = h("div.dv-b");
       const tp = (k) => UI.param(DEF.trk[k], T, push);
@@ -705,13 +712,12 @@
             mod("OSC 2", 2, [q("w2"), q("lv2"), q("semi2"), q("fine2")]),
             mod("MIX", 1, [q("sub"), q("noise"), q("fm")])
           ] : [mod(d.design === 1 ? "PATCH GRAPH" : "WAVETABLE", 4,
-            [h("div.inst-overview",{style:"grid-column:span 4;grid-row:span 2",text:d.design === 1 ? d.graph.nodes.length+" MODULES / "+d.graph.cables.length+" CABLES" : d.frames.length+" FRAMES / "+App.InstrumentLab.PARTIALS+" PARTIALS"}),
+            [h("div.inst-overview",{style:"grid-column:span 4;grid-row:span 2",text:d.design === 1 ? (App.InstrumentLab.heard(d.graph).size ? d.graph.nodes.length+" MODULE"+(d.graph.nodes.length===1?"":"S")+" / "+d.graph.cables.length+" CABLE"+(d.graph.cables.length===1?"":"S") : "SILENT: NOTHING REACHES OUTPUT") : d.frames.length+" FRAMES / "+App.InstrumentLab.PARTIALS+" PARTIALS"}),
               ...(d.design===2?[q("scan")]:[])],
             [btn(d.design===1?"WIRE…":"EDIT…",d.design===1?"WIRE AND EDIT THE SYNTH MODULES":"BUILD FRAMES FROM HARMONICS OR AUDIO",()=>App.InstrumentLab.open(d.design===1?"graph":"table",ti))])]),
           ...shared(d, DEF.syn),
-          mod("VOICE", 1, [q("mode"), q("glide")]),
-          mod("ARP", 2, [a("mode"), a("rate"), a("oct"), a("gate")]),
-          mod("SOURCE", 1, [q("design",{done:build, cls:"sm"})]), outMod(),
+          mod("VOICE", 2, [q("mode"), q("glide")]),
+          mod("ARP", 2, [a("mode"), a("rate"), a("oct"), a("gate")]), outMod(),
         );
       } else if (T.kind === "smp") {
         const d = T.smp, tg = { ti };
@@ -762,11 +768,7 @@
             UI.drag(ev, { type: "pad", data: i, label: "PAD " + (i + 1) + " " + x.name, hint: "DROP ON ANOTHER PAD = COPY THIS SOUND THERE · HOLD ALT = SWAP THE TWO" });
             if (p.sel.pad !== i) { p.sel.pad = i; App.touch(); build(); App.Ed.draw(); }
           };
-          e.oncontextmenu = () => UI.menu(e, [{ label: "Rename", value: "rename" }, { label: "Load audio…", value: "load" }, { label: "Back to init sound", value: "reset" }], (v) => {
-            if (v === "rename") UI.edit(e, x.name, (s) => { x.name = s.toUpperCase().slice(0, 8); App.commit(); build(); App.Ed.sync(); }, 8);
-            else if (v === "load") App.pickFile("audio/*", (f) => App.dropFiles(f, { ti, pad: i }));
-            else App.resetPad(ti, i);
-          }, { label: "Pad " + (i + 1) + " " + x.name });
+          e.oncontextmenu = () => padMenu(e, ti, i, () => UI.edit(e, x.name, (s) => { x.name = s.toUpperCase().slice(0, 8); App.commit(); build(); App.Ed.sync(); }, 8));
           UI.drop(e, { file: (f) => App.dropFiles(f, { ti, pad: i }), take: () => App.dropTake({ ti, pad: i }), pad: (src, ev) => App.copyPad(ti, src, i, ev.altKey) });
           return e;
         });
@@ -799,7 +801,13 @@
     }
 
     function paint() { waves.forEach((w) => w.paint()); }
-    return { build, paint, hit };
+    // What can be done to a pad, wherever the pad is shown: here and on its row in the editor.
+    const padMenu = (anchor, ti, i, rename) => UI.menu(anchor, [{ label: "Rename", value: "rename" }, { label: "Load audio…", value: "load" }, { label: "Back to init sound", value: "reset" }], (v) => {
+      if (v === "rename") rename();
+      else if (v === "load") App.pickFile("audio/*", (f) => App.dropFiles(f, { ti, pad: i }));
+      else App.resetPad(ti, i);
+    }, { label: "Pad " + (i + 1) + " " + P().tracks[ti].kit.pads[i].name });
+    return { build, paint, hit, padMenu };
   })();
 
   /* ═════ MASTER: send effects + output chain ═════ */

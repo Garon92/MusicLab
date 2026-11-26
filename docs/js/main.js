@@ -613,14 +613,20 @@
       if (v === "open") App.pickFile(".json,application/json", f=>openFile(f[0],false),false);
       else if (v === "import-midi") App.pickFile(".mid,.midi,audio/midi", f=>openFile(f[0],true),false);
       else if (v === "save") await saveProject();
-      else if (v === "mid" || v === "wav") {
+      else if (v === "mid" || v === "wav" || v === "loop") {
         // An export says what it took: the song, one pattern, launched clips or a take. An empty source is not exported.
         const P = App.P, src = P.performance.source, song = Seq.songOn(), bank = song ? App.songPatterns(P) : [P.sel.p];
         const what = src === "live" ? "LAUNCHED CLIPS · " + P.performance.bars + " BARS" : src === "take" ? "RECORDED TAKE" : song ? "SONG · " + P.chain.length + " SLOTS" : "PATTERN " + App.PATS[P.sel.p];
-        const empty = src === "arrangement" && !bank.some(p => P.tracks.some(t => t.clips[p].length)) && !(v === "wav" && App.AudioStudio.durationSteps(P));
+        const empty = src === "arrangement" && !bank.some(p => P.tracks.some(t => t.clips[p].length)) && !(v !== "mid" && App.AudioStudio.durationSteps(P));
         if (empty) { UI.msg("NOTHING TO EXPORT · " + (song ? "THE SONG'S PATTERNS ARE" : "PATTERN " + App.PATS[P.sel.p] + " IS") + " EMPTY"); return; }
         if (v === "mid") { download(Seq.midi(),name + ".mid"); UI.msg("MIDI EXPORTED · " + what); return; }
         UI.msg("RENDERING " + what);
+        if (v === "loop") {
+          const L = await Seq.bounceLoop();
+          download(L.blob, name + " loop.wav");
+          UI.msg("LOOP EXPORTED · " + what + " · " + L.duration.toFixed(3) + " S EXACT" + (L.folded > 0.05 ? " · " + L.folded.toFixed(1) + " S OF TAIL LAID OVER THE START" : "") + (L.trim < -0.05 ? " · LEVEL " + L.trim.toFixed(1) + " DB TO FIT" : "") + " · 24 BIT " + L.sampleRate/1000 + " KHZ");
+          return;
+        }
         const {blob,duration,sampleRate} = await Seq.bounceWav();
         const music = src === "live" ? 0 : App.Conductor.time(P, Seq.rangeSteps());
         download(blob,name + ".wav");

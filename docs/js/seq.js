@@ -387,6 +387,24 @@
     return {blob:App.wav(full,cut), duration:(full.length - cut) / full.sampleRate, sampleRate:full.sampleRate};
   };
 
+  // A loop file is exactly as long as the music. What rings on after the end is laid back over the start, where it
+  // would be on the second time round, so the file repeats without a gap or a cut tail. The sum can pass full
+  // scale, and is then turned down to fit.
+  Seq.bounceLoop = async () => {
+    const {full,cut} = await renderSong(), P = App.P, sr = full.sampleRate;
+    const n = Math.max(1, Math.round(seconds(P, plan(P).total) * sr)), rest = Math.max(0, full.length - cut - n);
+    const out = new AudioBuffer({ length: n, sampleRate: sr, numberOfChannels: 2 });
+    let peak = 0;
+    for (let c = 0; c < 2; c++) {
+      const src = full.getChannelData(c).subarray(cut), dst = out.getChannelData(c);
+      for (let i = 0; i < src.length; i++) dst[i % n] += src[i];
+      for (let i = 0; i < n; i++) { const a = Math.abs(dst[i]); if (a > peak) peak = a; }
+    }
+    const gain = peak > 1 ? 0.999 / peak : 1;
+    if (gain < 1) for (let c = 0; c < 2; c++) { const d = out.getChannelData(c); for (let i = 0; i < n; i++) d[i] *= gain; }
+    return { blob: App.wav(out, 0), duration: n / sr, frames: n, sampleRate: sr, folded: rest / sr, trim: 20 * Math.log10(gain) };
+  };
+
   /* ── standard MIDI file, format 1, one track per console track ── */
   Seq.midi = () => {
     const P=App.P, layout=plan(P), list=layout.source==="arrangement" ? layout.list : Array.from({length:8},(_,i)=>i), TPS = 240, sd = 15 / P.bpm, GM = [36, 38, 39, 42, 46, 45, 37, 56];

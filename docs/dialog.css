@@ -324,6 +324,8 @@ dialog.console-dialog .cycle-lanes > :first-child { margin-top: 0; padding-top: 
 .il-board path.control { stroke: var(--am); stroke-dasharray: 3 3; }
 dialog.console-dialog .il-board .bt { position: absolute; width: 10.1%; padding: 0; overflow: hidden; background: var(--pn); touch-action: none; cursor: grab; }
 dialog.console-dialog .il-board .bt:is(:disabled, [aria-disabled=true]) { opacity: 0.8; }
+dialog.console-dialog .il-board .bt.idle:not(.on) { border-style: dashed; color: var(--t3); } /* no cable path to OUTPUT */
+dialog.console-dialog .il-board .bt.idle.on { border-style: dashed; }
 .il-inspect { padding-bottom: 0.6em; border-bottom: 1px solid var(--ln2); }
 .il-inspect b { align-self: center; margin-right: auto; }
 .il-cables { display: grid; gap: 0.3em; max-height: 10em; }

@@ -37,9 +37,13 @@
     if(d.design!==design){d.design=design;App.commit();App.Dv.build();App.E?.syncTrack(ti);}
     const ui=shell(type==="graph"?"Modular instrument":"Wavetable instrument");
     function commit(){if(P!==App.P)return;App.commit();App.E?.syncTrack(ti);App.Dv.build();}
-    ui.body.append(h("div.dlg-buttons",null,action("Audition C4",()=>App.audio()?.play(ti,60,.85,0,1,true))));
+    ui.body.append(h("div.dlg-buttons",null,action("Audition C4",()=>App.audio()?.play(ti,60,.85,0,1,true),"PLAY C4 THROUGH THIS INSTRUMENT · THE A-K KEYS PLAY IT TOO")));
     ui.dlg.addEventListener("close",()=>App.releaseAll(),{once:true});
-    if(type==="graph")graphEditor(d.graph,ui,commit);else tableEditor(d,ui,commit,ti);
+    // Every edit here is committed at once, so Ctrl/Cmd Z steps back and opens the editor on what came back,
+    // unless the step undone is the one that made this track that kind of instrument.
+    ui.dlg.again=()=>{const now=App.P.tracks[ti];return now?.kind==="syn" && now.syn.design===design ? open(type,ti) : null;};
+    if(type==="graph")graphEditor(d.graph,ui,commit,ti);else tableEditor(d,ui,commit,ti);
+    return ui.dlg;
   }
   const specs={
     ratio:["Pitch ratio",.0625,32,.0001],hz:["Cutoff · Hz",20,20000,1],q:["Resonance",.1,90,.1],
@@ -47,15 +51,48 @@
     attack:["Attack · s",.001,4,.001],decay:["Decay · s",.005,6,.001],
     sustain:["Sustain",0,1,.001],release:["Release · s",.005,6,.001]
   };
-  function graphEditor(g,ui,commit){
+  // What each setting of a module does, for the strip.
+  const says={
+    wave:"SHAPE OF THE WAVE", mode:"WHAT THE FILTER LETS THROUGH",
+    ratio:"FREQUENCY AS A MULTIPLE OF THE NOTE PLAYED · 1 = THE NOTE · 2 = AN OCTAVE UP · 0.5 = AN OCTAVE DOWN",
+    hz:"CUTOFF AT REST · A CABLE INTO PITCH MOVES IT", q:"HOW NARROW AND RINGING THE FILTER IS",
+    level:"GAIN AT REST · A CABLE INTO GAIN ADDS TO IT · SET 0 TO LET AN ENVELOPE OPEN IT", rate:"CYCLES A SECOND · A CABLE INTO RATE MOVES IT",
+    attack:"TIME TO RISE WHEN A NOTE STARTS", decay:"TIME TO FALL TO THE SUSTAIN LEVEL", sustain:"LEVEL HELD WHILE THE NOTE IS HELD", release:"TIME TO FALL AFTER THE NOTE ENDS"
+  };
+  const does={
+    osc:"PITCHED TONE", noise:"NOISE", impulse:"ONE CLICK AT THE START OF A NOTE", lfo:"SLOW WAVE TO MOVE A PITCH, GAIN OR RATE",
+    env:"RISES AND FALLS WITH EACH NOTE · CABLE IT INTO A GAIN OR PITCH", amp:"PASSES AUDIO AT ITS GAIN", filter:"SHAPES THE AUDIO PASSING THROUGH", reson:"RINGS AT THE NOTE WHEN AUDIO HITS IT"
+  };
+  function graphEditor(g,ui,commit,ti){
     const board=h("div.il-board",{"aria-label":"Module patch graph"}), inspector=h("div.il-inspect"),
       wiring=h("div.il-wiring"), routes=h("div.il-cables");
     const types=select("Module type",Object.entries(L.moduleTypes),"osc");
-    let selected=g.nodes[0]?.id,source=selected,target="out",port="audio",amount=1;
+    types.dataset.tip="KIND OF MODULE TO ADD · 16 AT MOST";
+    let selected=g.nodes[0]?.id,source=selected,target="out",port="audio",amount=1,fault="";
     const label=id=>id==="out"?"Output":(L.moduleTypes[g.nodes.find(n=>n.id===id)?.type] || "")+" "+id;
+    // The strip under the cables reads the patch: a fault of the last try, else whether anything is heard at all.
+    const report=()=>{
+      ui.status.textContent=fault || (!g.nodes.length ? "NO MODULES: THE INSTRUMENT IS SILENT · ADD ONE AND CABLE IT TO OUTPUT"
+        : !L.heard(g).size ? "NOTHING REACHES OUTPUT: THE INSTRUMENT IS SILENT · CONNECT A MODULE TO OUTPUT" : "");
+    };
+    const change=()=>{fault="";commit();report();};
+    const remove=n=>{
+      g.nodes=g.nodes.filter(v=>v!==n);g.cables=g.cables.filter(c=>c.from!==n.id && c.to!==n.id);
+      selected=g.nodes[0]?.id;if(source===n.id)source=selected;if(target===n.id)target="out";change();draw();
+    };
+    // Why a cable cannot be added, or nothing when it can.
+    const refusal=c=>g.cables.length>=48 ? "ALL 48 CABLES ARE IN USE · DISCONNECT ONE FIRST"
+      : c.from===c.to ? "A MODULE CANNOT FEED ITSELF"
+      : g.cables.some(x=>x.from===c.from && x.to===c.to && x.port===c.port) ? "THAT CABLE IS ALREADY THERE · SET ITS AMOUNT IN THE LIST BELOW"
+      : !L.validCable(g,c) ? "THAT CABLE WOULD CLOSE A LOOP: "+c.to.toUpperCase()+" ALREADY FEEDS "+c.from.toUpperCase() : "";
+    const connect=c=>{
+      fault=refusal(c);if(fault){report();return;}
+      g.cables.push(c);change();draw();
+    };
     const graphPos=n=>n.id==="out"?{x:.86,y:.56}:n;
     const all=()=>[...g.nodes,{id:"out",type:"out"}];
     function drawBoard() {
+      const live=L.heard(g);
       board.replaceChildren();
       const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
       svg.setAttribute("viewBox","0 0 1000 230");svg.setAttribute("preserveAspectRatio","none");
@@ -75,9 +112,21 @@
         }
       }
       for(const n of all()){
-        const b=action(n.id==="out"?"OUTPUT":n.id,()=>{if(n.id!=="out" && selected!==n.id){selected=n.id;draw();}},label(n.id));
+        const b=action(n.id==="out"?"OUTPUT":n.id,()=>{if(n.id!=="out" && selected!==n.id){selected=n.id;draw();}},
+          n.id==="out" ? "WHAT ARRIVES HERE IS THE SOUND OF THE INSTRUMENT"
+            : (live.has(n.id) ? "" : "NO CABLE PATH TO OUTPUT: NO EFFECT YET · ")+L.moduleTypes[n.type].toUpperCase()+" = "+does[n.type]+" · CLICK = EDIT BELOW · DRAG = MOVE · RIGHT-CLICK = CABLE OR REMOVE");
         if(n.id!=="out"){
-          b.setAttribute("aria-label","Select module "+n.id);b.classList.toggle("on",selected===n.id);
+          b.setAttribute("aria-label","Select module "+n.id);b.classList.toggle("on",selected===n.id);b.classList.toggle("idle",!live.has(n.id));
+          b.oncontextmenu=e=>{
+            e.preventDefault();
+            const direct={from:n.id,to:"out",port:"audio",amount:1},no=refusal(direct);
+            App.UI.menu(b,[{label:"Cable from here",value:"from"},...(L.inputs[n.type].length?[{label:"Cable to here",value:"to"}]:[]),
+              {label:"Connect to output",value:"out",disabled:!!no,why:no},"-",{label:"Remove module",value:"remove"}],v=>{
+              if(v==="remove")remove(n);
+              else if(v==="out")connect(direct);
+              else{if(v==="from")source=n.id;else target=n.id;fault="";drawWire();report();}
+            },{label:label(n.id)});
+          };
           b.onpointerdown=e=>{
             if(e.button!==0)return;
             const r=board.getBoundingClientRect(), sx=e.clientX,sy=e.clientY, ox=n.x,oy=n.y;
@@ -85,9 +134,9 @@
             b.onpointermove=ev=>{if(Math.abs(ev.clientX-sx)+Math.abs(ev.clientY-sy)>3){
               n.x=clamp(ox+(ev.clientX-sx)/r.width,0,.83);n.y=clamp(oy+(ev.clientY-sy)/r.height,0,.78);position();
             }};
-            b.onpointerup=b.onpointercancel=()=>{b.onpointermove=b.onpointerup=b.onpointercancel=null;if(ox!==n.x || oy!==n.y)commit();};
+            b.onpointerup=b.onpointercancel=()=>{b.onpointermove=b.onpointerup=b.onpointercancel=null;if(ox!==n.x || oy!==n.y)change();};
           };
-        } else b.disabled=true;
+        } else {b.disabled=true;b.dataset.why="CABLES END HERE · PICK OUTPUT AS THE DESTINATION BELOW";}
         buttons.set(n.id,b);board.append(b);
       }
       position();
@@ -97,20 +146,18 @@
       inspector.replaceChildren();if(!n)return;
       inspector.append(h("b",{text:L.moduleTypes[n.type]+" · "+n.id}));
       for(const key of ["wave","mode",...Object.keys(specs)])if(key in n){
-        const update=v=>{n[key]=v;commit();};
+        const update=v=>{n[key]=v;change();};
         if(key==="wave" || key==="mode"){
           const opts=key==="wave"?["sine","triangle","sawtooth","square"]:["lowpass","highpass","bandpass","notch"];
-          inspector.append(field(key==="wave"?"Waveform":"Filter type",select(key,opts.map(x=>[x,x]),n[key],update)));
+          const list=select(key==="wave"?"Waveform":"Filter type",opts.map(x=>[x,x]),n[key],update);
+          list.dataset.tip=says[key];inspector.append(field(key==="wave"?"Waveform":"Filter type",list));
         }else{
           const [name,min,max,step]=specs[key],input=numeric(name,n[key],min,max,step,update);
           input.dataset.reset=L.moduleOf(n.type,"x")[key]; // a right-click returns to what a new module of this type has
-          inspector.append(field(name,input));
+          input.dataset.tip=says[key];inspector.append(field(name,input));
         }
       }
-      inspector.append(action("Remove module",()=>{
-        g.nodes=g.nodes.filter(v=>v!==n);g.cables=g.cables.filter(c=>c.from!==n.id && c.to!==n.id);
-        selected=g.nodes[0]?.id;if(source===n.id)source=selected;if(target===n.id)target="out";commit();draw();
-      }));
+      inspector.append(action("Remove module",()=>remove(n),"REMOVE "+n.id.toUpperCase()+" AND ITS CABLES"));
     }
     function drawWire(){
       wiring.replaceChildren();if(!g.nodes.length)return;
@@ -118,27 +165,31 @@
       source=sourceOpts.some(([id])=>id===source)?source:sourceOpts[0][0];
       target=destOpts.some(([id])=>id===target)?target:"out";
       const ports=L.inputs[all().find(n=>n.id===target).type];if(!ports.includes(port))port=ports[0];
-      wiring.append(field("Source",select("Cable source",sourceOpts,source,v=>{source=v;})),
-        field("Destination",select("Cable destination",destOpts,target,v=>{target=v;drawWire();})),
-        field("Input",select("Cable input",ports.map(p=>[p,p]),port,v=>{port=v;})),
-        field("Amount",numeric("Cable amount",amount,-2,2,.01,v=>{amount=v;})),
-        action("Connect",()=>{
-          const c={from:source,to:target,port,amount};
-          if(g.cables.length>=48 || !L.validCable(g,c)){ui.status.textContent="Choose a new connection without a feedback loop.";return;}
-          g.cables.push(c);ui.status.textContent="";commit();draw();
-        }));
+      const tipped=(el,tip,reset)=>{el.dataset.tip=tip;if(reset!=null)el.dataset.reset=reset;return el;};
+      const clear=()=>{if(fault){fault="";report();}};
+      wiring.append(field("Source",tipped(select("Cable source",sourceOpts,source,v=>{source=v;clear();}),"MODULE THE NEW CABLE LEAVES")),
+        field("Destination",tipped(select("Cable destination",destOpts,target,v=>{target=v;fault="";drawWire();report();}),"MODULE THE NEW CABLE ENTERS · OUTPUT IS WHAT IS HEARD")),
+        field("Input",tipped(select("Cable input",ports.map(p=>[p,p]),port,v=>{port=v;clear();}),"AUDIO = SOUND PASSES THROUGH · PITCH, GAIN AND RATE = THE CABLE MOVES THAT SETTING")),
+        field("Amount",tipped(numeric("Cable amount",amount,-2,2,.01,v=>{amount=v;}),"HOW MUCH PASSES · BELOW 0 = TURNED UPSIDE DOWN",1)),
+        action("Connect",()=>connect({from:source,to:target,port,amount}),"ADD THIS CABLE"));
     }
     function draw(){
       drawBoard();drawInspector();drawWire();routes.replaceChildren();
-      g.cables.forEach((c,i)=>routes.append(h("div",null,h("span",{text:c.from+" › "+c.to+" / "+c.port}),
-        numeric("Gain for cable "+(i+1),c.amount,-2,2,.01,v=>{c.amount=v;commit();}),
-        action("×",()=>{g.cables.splice(i,1);commit();draw();},"Disconnect "+c.from+" from "+c.to))));
+      g.cables.forEach((c,i)=>{
+        const gain=numeric("Gain for cable "+(i+1),c.amount,-2,2,.01,v=>{c.amount=v;change();});
+        gain.dataset.tip="HOW MUCH OF "+c.from.toUpperCase()+" ENTERS "+c.to.toUpperCase()+" / "+c.port.toUpperCase()+" · BELOW 0 = TURNED UPSIDE DOWN";gain.dataset.reset=1;
+        routes.append(h("div",null,h("span",{text:c.from+" › "+c.to+" / "+c.port}),gain,
+          action("×",()=>{g.cables.splice(i,1);change();draw();},"DISCONNECT "+c.from.toUpperCase()+" FROM "+c.to.toUpperCase())));
+      });
+      report();
     }
-    ui.content.append(row(field("Module",types),action("Add module",()=>{
-      if(g.nodes.length>=16){ui.status.textContent="All 16 module slots are in use.";return;}
+    ui.content.append(h("p.dlg-tip",{text:"ONLY WHAT A CABLE PATH JOINS TO OUTPUT IS HEARD · DRAG MODULES TO ARRANGE"}),row(field("Module",types),action("Add module",()=>{
+      if(g.nodes.length>=16){fault="ALL 16 MODULE SLOTS ARE IN USE · REMOVE ONE FIRST";report();return;}
       const type=types.value;let i=1;while(g.nodes.some(n=>n.id===type+i))i++;
-      selected=type+i;source=selected;g.nodes.push(L.moduleOf(type,selected,g.nodes.length));commit();draw();
-    })),board,inspector,wiring,routes);draw();
+      selected=type+i;source=selected;g.nodes.push(L.moduleOf(type,selected,g.nodes.length));change();draw();
+    },"ADD A MODULE OF THIS KIND · IT DOES NOTHING UNTIL A CABLE JOINS IT TOWARDS OUTPUT")),board,inspector,wiring,routes);draw();
+    // Closing on a patch nothing can be heard from says so where the track is.
+    ui.dlg.addEventListener("close",()=>{if(!L.heard(g).size && App.P.tracks[ti]?.syn?.graph===g)App.UI.msg("TRACK "+String(ti+1).padStart(2,"0")+" IS SILENT: NOTHING REACHES OUTPUT IN ITS MODULES · WIRE…");},{once:true});
   }
 
   function plot(canvas,fn){

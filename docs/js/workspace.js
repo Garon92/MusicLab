@@ -144,6 +144,24 @@
     close.tabIndex = -1; // Esc is the keyboard's way out; opening a dialog must not put the focus on its exit
     node.head = h("header.dlg-hd", null, h("span.tg", { text: title }), h("span.sp"), close);
     node.append(node.head);
+    // Ctrl/Cmd Z inside a dialog. An editor whose every edit is committed at once sets node.again, which opens it
+    // afresh on the project that came back: it steps back and stays. Any other says where undo is.
+    node.addEventListener("keydown", (e) => {
+      const k = e.key.toLowerCase();
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || (k !== "z" && k !== "y") || e.defaultPrevented) return;
+      if (e.target.matches?.("textarea, input:not([type=checkbox], [type=range], [type=radio])")) return; // text being typed has its own undo
+      e.preventDefault();
+      const note = (dlg, text) => {
+        dlg.dataset.notice = text; clearTimeout(dlg._warnT);
+        dlg._warnT = setTimeout(() => { delete dlg.dataset.notice; App.UI.tip(); }, 6000); App.UI.tip();
+      };
+      const back = k === "z" && !e.shiftKey, again = node.again;
+      if (!again) return note(node, "UNDO WORKS ON THE CONSOLE · CLOSE THIS FIRST, THEN CTRL/CMD Z");
+      if (!(back ? App.canUndo() : App.canRedo())) return note(node, back ? "NOTHING TO UNDO" : "NOTHING TO REDO");
+      node.close(); App.doUndo(back ? -1 : 1);
+      const next = again(), said = document.querySelector(".st-m")?.textContent;
+      if (next && said) note(next, said);
+    });
     // The action a dialog exists for has the thick frame. Enter runs it unless the focus is in a field or on another
     // button, which have their own use for the key; with Ctrl or Cmd it runs from anywhere.
     node.addEventListener("keydown", (e) => {

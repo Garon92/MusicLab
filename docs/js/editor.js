@@ -641,7 +641,7 @@
       land();
       const a = act;
       if (!a) return;
-      act = null;
+      act = null; edgeStop();
       if (a.mode === "key") { App.E?.noteOff(a.ti, a.n); key(a.n, false); }
       if (a.created) for (const nt of a.grp) { const i = a.clip.indexOf(nt); if (i >= 0) a.clip.splice(i, 1); }
       if (a.erased) for (const nt of a.erased) if (!a.clip.includes(nt)) a.clip.push(nt);
@@ -687,6 +687,12 @@
       }
       const o = R[m.row];
       if (m.zone === "gut") {
+        if (e.button === 2 && o.pad != null) { // a pad's row is the pad: the same menu as on the device
+          const r = cv.getBoundingClientRect(), box = { left: r.left, top: r.top + (G.ry + m.row * G.rh) * r.height / H, width: G.gx * r.width / W, height: G.rh * r.height / H };
+          pickPad(o); draw();
+          App.Dv.padMenu({ ...box, right: box.left + box.width, bottom: box.top + box.height }, ti, o.pad, () => rename(e));
+          return;
+        }
         if (e.button === 0) {
           pickPad(o); begin(e, "key", { n: o.n, ti }); App.audio()?.noteOn(ti, o.n, 0.85); key(o.n, true); draw();
         }
@@ -721,11 +727,28 @@
       }
       updateSelection(); draw();
     }
+    // A note held against the side of the page turns the page under it, so it can be stretched or carried past what
+    // is in view. The drag goes on from the pointer, which now stands on the new page.
+    let edgeT = 0, edgeDir = 0, edgeAt = null;
+    const edgeStop = () => { clearInterval(edgeT); edgeDir = 0; edgeAt = null; };
+    function edge(e, m) {
+      const drag = act && (act.mode === "size" || act.mode === "move");
+      const dir = !drag ? 0 : m.x >= G.gx + (G.end - G.start) * G.cw - 2 * G.L && G.end < G.steps ? 1 : m.x <= G.gx + 2 * G.L && G.start > 0 ? -1 : 0;
+      edgeAt = dir ? e : null;
+      if (dir === edgeDir) return;
+      clearInterval(edgeT); edgeDir = dir;
+      if (dir) edgeT = setInterval(() => {
+        if (!act || !edgeAt) { edgeStop(); return; }
+        if (App.Seq.playing && followTransport) followTransport = false;
+        page += edgeDir; hov = null; sync(); move(edgeAt);
+      }, 600);
+    }
     function move(e) {
       const m = at(e);
       if (!act) { hover(m); return; }
       if (act.id !== e.pointerId) return;
       if (act.clip !== ctx().clip) { cancelGesture(); return; }
+      edge(e, m);
       if (act.mode === "lane") { if (m.zone === "lane") setLane(m); }
       else if (act.mode === "box") box(m);
       else if (act.mode === "erase") { erase(m); updateSelection(); }
@@ -745,6 +768,7 @@
     }
     function up(e) {
       if (!act || act.id !== e.pointerId) return;
+      edgeStop();
       const a = act;
       if (a.clip !== ctx().clip) { cancelGesture(); return; }
       act = null;
@@ -767,7 +791,7 @@
       const where = Math.floor(s / SPB) + 1 + "." + (Math.floor((s % SPB) / BS) + 1) + "." + ((s % SPB) % BS + 1);
       const sounding = clip.filter((nt) => nt.s <= s && s < nt.s + nt.l).map((nt) => nt.n);
       const chordTxt = o.pad == null && !o.slice ? App.chordName(sounding) : "";
-      if (m.zone === "gut") { rd.textContent = o.label; UI.hint(o.label + "    CLICK = PLAY" + (o.pad != null ? " + SELECT PAD · DOUBLE-CLICK = RENAME · DROP AUDIO FILE = LOAD" : "")); }
+      if (m.zone === "gut") { rd.textContent = o.label; UI.hint(o.label + "    CLICK = PLAY" + (o.pad != null ? " + SELECT PAD · DOUBLE-CLICK = RENAME · RIGHT-CLICK = PAD MENU · DROP AUDIO FILE = LOAD" : "")); }
       else if (m.zone === "lane") {
         readLane(m);
         UI.hint(laneTitle() + " AT STEP " + where + "    DRAG = SET · RIGHT-CLICK = BACK TO " + laneText(NOTE[lane].def) + " · WHEEL = NUDGE · SHIFT = FINE" + (selection.size ? " · SHIFT-DRAG = THE WHOLE SELECTION" : " · SELECT A NOTE TO TYPE ITS VALUES ABOVE"));

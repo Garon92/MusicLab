@@ -84,7 +84,6 @@ canvas { display: block; }
 .pm.map .l::after { content: " MAP"; color: var(--am); } /* a tempo or meter map takes over after bar 1 */
 .pm.in { flex-direction: row; align-items: center; gap: 0.8rem; padding: 0 1rem; border-right: 1px solid var(--ln2); }
 .pm.in .v { font-size: 1.4rem; }
-.pm.sm .v { font-size: var(--fm); letter-spacing: 0; } /* a long list value in a one-column module keeps its list mark */
 .pm.c { padding: 0 0.6rem; } .pm.c .l { display: none; } .pm.c .v { font-size: var(--fm); }
 
 /* ── top bar ── */
@@ -273,10 +272,10 @@ noscript { position: fixed; inset: 0; display: grid; place-items: center; backgr
 #ed .ed-actions { flex-basis: 2.25rem; background: var(--pn2); }
 #ed .ed-actions .bt { height: 1.65rem; }
 /* values in the editor's two header rows: a note's own numbers, the pattern's length, what a click draws */
-#ed .hd .pm { flex: none; flex-direction: row; align-items: center; gap: 0.7rem; height: 1.65rem; padding: 0 0.7rem; border: 1px solid var(--ln2); }
-#ed .hd .pm .l { color: var(--t2); }
-#ed .hd .pm .v { min-width: 2.6em; font-size: var(--fm); text-align: right; font-variant-numeric: tabular-nums; }
-#ed .hd .pm.en .v { min-width: 0; }
+:is(#ed, #dv) .hd .pm { flex: none; flex-direction: row; align-items: center; gap: 0.7rem; height: 1.65rem; padding: 0 0.7rem; border: 1px solid var(--ln2); }
+:is(#ed, #dv) .hd .pm .l { color: var(--t2); }
+:is(#ed, #dv) .hd .pm .v { min-width: 2.6em; font-size: var(--fm); text-align: right; font-variant-numeric: tabular-nums; }
+:is(#ed, #dv) .hd .pm.en .v { min-width: 0; }
 #ed .ed-note { gap: 0.5rem; }
 #ed .ed-note .tg { min-width: 6.6em; }
 #ed .ed-past { color: var(--am); letter-spacing: 0.06em; }

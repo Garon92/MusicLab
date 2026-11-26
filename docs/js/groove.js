@@ -103,7 +103,7 @@
   function open() {
     const P=App.P,{t,p}=P.sel,clip=P.tracks[t].clips[p],selected=App.Ed.selected(),G=P.groove,node=App.Workspace.begin("Groove and note timing");
     const {field,select,num}=App.Live,body=h("div.dlg-body.pf-body"),status=h("output");
-    const quant=select("Live recording timing",[["on","Snap to step"],["off","Keep played timing"]],G.quantize?"on":"off",v=>{G.quantize=v==="on";App.commit();});
+    const quant=select("Live recording timing",[["on","Snap to step"],["off","Keep played timing"]],G.quantize?"on":"off",v=>{G.quantize=v==="on";App.commit();App.Top.sync();});
     const scope=select("Timing target",[["notes","Selected notes ("+selected.size+")"],["clip","This clip"],["pattern","All tracks in "+App.PATS[p]]],selected.size?"notes":"clip");
     const length=select("Groove cycle",[[App.beatSteps(P),"1 beat"],[App.spb(P),"1 bar"],[Math.min(32,App.spb(P)*2),"2 bars · max 32 steps"]],App.spb(P));
     const strength=h("input",{type:"range","aria-label":"Groove strength",min:0,max:100,value:100}),amt=h("b",{text:"100%"});strength.oninput=()=>amt.textContent=strength.value+"%";
