@@ -201,7 +201,7 @@
       const button = btn(action.label, action.tip || action.label, () => node.close(action.id), action.primary ? "confirm-action" : "");
       buttons.append(button);
     });
-    content.append(list, buttons);
+    content.append(list, buttons, h("p.dlg-tip", { text: "CHECK WHAT WILL CHANGE · THE THICK BUTTON GOES AHEAD · CANCEL OR ESC LEAVES IT AS IT IS" }));
     node.append(content);
     const result = new Promise(resolve => node.addEventListener("close", () => resolve(node.returnValue || null), { once: true }));
     node.showModal();

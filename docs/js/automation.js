@@ -250,7 +250,18 @@
     deleteButton = btn("Delete point","DELETE THE SELECTED POINT · BATCH EDIT › CLEAN UP CLEARS WHOLE CURVES", () => {
       if (selected >= 0) removePoint(selected);
     });
-    readout = h("span.auto-readout");
+    readout = h("span.auto-readout", { tip: "THE SELECTED POINT · CLICK = TYPE ITS VALUE IN THE UNIT SHOWN · ARROWS NUDGE IT · [ AND ] CHOOSE ANOTHER POINT" });
+    readout.onclick = () => {
+      const pt = lane()?.points.find((p) => p.s === selected);
+      if (!pt) { UI.msg("CLICK A POINT OF THE CURVE FIRST · THEN ITS VALUE CAN BE TYPED HERE"); return; }
+      UI.edit(readout, valueText(pt.v), (text) => {
+        const s = String(text).trim().toUpperCase().replace(",", "."), x = parseFloat(s), hz = /K/.test(s) ? x * 1000 : x;
+        const v = key === "vol" ? (/INF/.test(s) ? 0 : 10 ** (x / 40)) : key === "cutoff" ? App.toN(App.DEF.syn.cut, hz)
+          : key === "filter" ? (/OPEN/.test(s) ? 1 : Math.log(hz / 20) / Math.log((App.E?.ctx.sampleRate || 48000) / 40)) : key === "pan" ? (App.parse(App.DEF.trk.pan, s) + 1) / 2 : x / 100;
+        if (!Number.isFinite(v)) { UI.msg("NOT A VALUE FOR " + nameOf(key).toUpperCase()); return; }
+        pt.v = clamp(Math.round(v * 1000) / 1000, 0, 1); delete pt.in; commit();
+      }, 12);
+    };
     graph = h("canvas", {id:"auto-graph",tabindex:0,role:"application","aria-label":"Automation points. Click to add, drag to move, right-click to delete. Brackets select a point, arrows adjust it."});
     playhead = h("div.auto-playhead", {hidden:true});
     panel = h("div.auto-panel",null,h("div.hd.auto-toolbar",null,h("span.tg",{text:"Target"}),target,modeButton,generate,deleteButton,h("span.sp"),readout),

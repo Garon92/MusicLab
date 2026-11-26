@@ -125,7 +125,7 @@
   function open() {
     const P=App.P,{t,p}=P.sel,notes=P.tracks[t].clips[p],selected=App.Ed.selected(),node=App.Workspace.begin("Note rules"),body=h("div.dlg-body");
     node.classList.add("tool-dialog","prod-dialog");
-    const scope=select("Rule target",[["selected","Selected notes ("+selected.size+")"],["clip","Whole clip ("+notes.length+")"]],selected.size?"selected":"clip");
+    const scope=select("Rule target",[["selected",selected.size+" selected"],["clip","All "+notes.length+" in clip"]],selected.size?"selected":"clip");
     const list=()=>scope.value==="selected"?notes.filter(n=>selected.has(n)):notes;
     const first=list()[0]?.when || {},choices=n=>Array.from({length:n},(_,i)=>[i+1,String(i+1)]);
     const every=select("Repeat period",choices(32),first.every||1),phase=select("Play on pass",choices(+every.value),first.phase||1);
@@ -147,8 +147,10 @@
     function update(){
       const available=complete(t,p), val=available.map(x=>x.boundaries[0]).join("/");
       if(sig!==val){const old=passes.value;shown=available;passes.replaceChildren(...shown.map(c=>h("option",{value:c.boundaries[0],text:"Pass "+c.pass+" · "+c.hits.length+" notes"})));if(shown.some(c=>String(c.boundaries[0])===old))passes.value=old;sig=val;}
-      if(!passes.options.length)passes.replaceChildren(h("option",{value:"",text:"Play a full clip cycle"}));
+      if(!passes.options.length)passes.replaceChildren(h("option",{value:"",text:"None heard yet"}));
       print.disabled=!available.length || !dest.options.length;
+      // Nothing can be played from inside this dialog: it says how a pass gets here.
+      print.dataset.why=passes.dataset.tip=available.length?(dest.options.length?"":"EVERY CLIP OF THIS TRACK HOLDS NOTES · CLEAR ONE TO PRINT INTO IT"):"NO PASS HEARD YET · CLOSE THIS, PLAY THE CLIP ONCE ALL THE WAY ROUND, STOP, AND OPEN RULES… AGAIN";
     }
     body.append(h("h2",{text:"Note rules · "+P.tracks[t].name+" / "+App.PATS[p]}),h("div.tool-fields",null,field("Target",scope),field("Every N passes",every),field("Play on pass",phase),field("Fill",condition),apply),
       h("p.dlg-tip",{text:"HOLD FILL OR \\ WHILE PLAYING TO TRIGGER FILL NOTES"}),h("h3",{text:"Repeatable chance"}),h("div.tool-fields",null,field("Project seed",seed),btn("New seed","Choose another sequence of chance and arpeggio decisions",()=>setSeed(crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff))),

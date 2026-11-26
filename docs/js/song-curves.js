@@ -103,7 +103,7 @@
     const canvas=h("canvas.song-curve-plot",{tabindex:0,role:"application","aria-label":"Song envelope. Click to add, drag a point, right-click to delete."});
     const view=num("Visible steps",span,1,maxTime), pos=num("Point step",0,0,maxTime),level=num("Point value percent",50,0,100,.1), bend=num("Outgoing bend",0,-100,100);
     const mode=h("select",{"aria-label":"Outgoing interpolation"},[h("option",{value:"curve",text:"Ramp"}),h("option",{value:"hold",text:"Hold"})]);
-    const start=num("Range start step",0,0,maxTime),stop=num("Range end step",Math.min(App.spb(D),span),1,maxTime),repeat=num("Total repetitions",2,1,32),scaled=num("Stretched length in steps",stop.value,1,maxTime);
+    const start=num("Range start step",0,0,maxTime),stop=num("Range end step",Math.min(App.spb(D),span),1,maxTime),repeat=num("Additional copies",1,1,31),scaled=num("Stretched length in steps",stop.value,1,maxTime);
     const status=h("output.arr-status",{role:"status"}), read=h("output.arr-status");
     const points=()=>D.songCurves[ti][key]||[];
     const set=ps=>{if(ps.length)D.songCurves[ti][key]=ps;else delete D.songCurves[ti][key];changed();};
@@ -120,7 +120,8 @@
       for(let bar=0;bar<n;bar+=stride){const s=App.Conductor.barStart(D,bar);g.fillStyle=App.C.ln2;g.fillRect(x(s),4,1,ht-20);g.fillStyle=App.C.t2;if(x(s)<w-24)g.fillText("B"+(bar+1),x(s)+3,ht-4);}
       if(ps.length){g.strokeStyle=App.C.t1;g.lineWidth=2;g.beginPath();for(let px=0;px<=w-18;px++){const yy=y(value(ps,span*px/(w-18)));if(px)g.lineTo(9+px,yy);else g.moveTo(9,yy);}g.stroke();}
       for(const p of ps){if(p.s>span)break;g.fillStyle=p.s===picked?App.C.am:App.C.t1;g.fillRect(x(p.s)-3,y(p.v)-3,7,7);}
-      read.textContent=ps.length+" points · "+(active?"step "+active.s+" · "+(active.v*100).toFixed(1)+"%":"click to add a point");
+      const at=s=>{const m=App.Conductor.position(D,s);return "bar "+(m.bar+1)+"."+(Math.floor(m.inside/m.beatSteps)+1)+"."+(m.inside%m.beatSteps+1);};
+      read.textContent=ps.length+" points · "+(active?at(active.s)+" (step "+active.s+") · "+(active.v*100).toFixed(1)+"%":"click to add a point");
     }
     function focusPoint(p){picked=p?.s??null;if(p){pos.value=p.s;level.value=tidy(p.v*100);bend.value=tidy(p.bend*100);mode.value=p.hold?"hold":"curve";}draw();}
     function put(p,old=picked){
@@ -153,18 +154,24 @@
       if(["ArrowLeft","ArrowRight"].includes(e.key)){e.preventDefault();const ps=points(),i=ps.findIndex(p=>p.s===picked);focusPoint(ps[clamp(i+(e.key==="ArrowLeft"?-1:1),0,ps.length-1)]);}
     };
     const selectLane=()=>{ti=+track.value;key=target.value;focusPoint(points()[0]);status.textContent="";};
+    // Value, shape and bend of the selected point act like a drag on the plot: a change is applied when it is made.
+    // A step typed here names another place: that is a new point, and Set point adds it.
+    for(const el of [level,bend,mode])el.addEventListener("change",()=>{
+      if(picked===null || +pos.value!==picked || ![level,bend].every(f=>f.checkValidity()))return;
+      put(parsePoint(),picked);
+    });
     track.value=ti;track.onchange=target.onchange=selectLane;
     view.onchange=()=>{if(view.reportValidity()){span=+view.value;draw();}};
     function range(isRepeat){
       const inputs=[start,stop,isRepeat?repeat:scaled];if(!inputs.every(el=>el.reportValidity()))return;
       if(!points().length){status.textContent="Add points to this lane first.";return;}
       try{const a=+start.value,b=+stop.value,scale=isRepeat?1:+scaled.value/(b-a);
-        const result=editRange(points(),a,b,isRepeat?+repeat.value:1,scale);set(result);span=Math.max(span,result.at(-1).s);view.value=span;focusPoint(null);status.textContent="Range updated.";
+        const result=editRange(points(),a,b,isRepeat?+repeat.value+1:1,scale);set(result);span=Math.max(span,result.at(-1).s);view.value=span;focusPoint(null);status.textContent="Range updated.";
       }catch(e){status.textContent=e.message;}
     }
     host.append(row(field("Track",track),field("Target",target),field("Visible steps",view),read),canvas,
       row(field("Step",pos),field("Value %",level),field("Shape",mode),field("Bend %",bend),
-        btn("Set point","Add or update this point at its musical position",()=>{if([pos,level,bend].every(el=>el.reportValidity())){const p=parsePoint();span=Math.max(span,p.s);view.value=span;put(p,p.s);}}),btn("Delete point","Remove selected point",del)),
+        btn("Set point","Add a point at this step, or move the selected one there · value, shape and bend of a selected point apply as they change",()=>{if([pos,level,bend].every(el=>el.reportValidity())){const p=parsePoint();span=Math.max(span,p.s);view.value=span;put(p,p.s);}}),btn("Delete point","Remove selected point",del)),
       row(field("Range from",start),field("To step",stop),field("Copies",repeat),btn("Repeat range","Repeat the range and shift later points",()=>range(true)),
         field("Length",scaled),btn("Stretch range","Fit range to this many steps and shift later points",()=>range(false))),
       h("p.dlg-tip",{text:"SONG LANES RUN ACROSS PATTERNS · A SONG LANE OVERRIDES CLIP AUTOMATION FOR ITS TARGET"}),status);

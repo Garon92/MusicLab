@@ -218,7 +218,9 @@
     };
     const intervals=h("textarea",{"aria-label":"Scale intervals",rows:5,spellcheck:false});
     function draw(){
-      preset.value="custom";
+      // The list shows the preset the scale is, when it is one: it used to snap back to Custom after a choice.
+      const same=(a,b)=>a.length===b.length && a.every((c,i)=>Math.abs(c-b[i])<1e-6);
+      preset.value=same(t.cents,L.equal)?"equal":same(t.cents,L.just)?"just":"custom";
       intervals.value=t.cents.map(c=>Number(c.toFixed(5)).toFixed(5).replace(/0+$/,"").replace(/\.$/,".0")).join("  ");
       const mode=select("Active temperament",[["off","Standard 12-TET · A4 440"],["on","Project scale"]],t.enabled?"on":"off",v=>{t.enabled=v==="on";update();});
       const ref=numeric("Reference frequency",t.hz,10,20000,.01,v=>{t.hz=v;update();});

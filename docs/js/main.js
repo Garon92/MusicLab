@@ -211,10 +211,17 @@
     else {
       if (T.kind !== "smp") { T.kind = "smp"; UI.msg("TRACK " + pad2(tg.ti + 1) + " IS NOW A SAMPLER · UNDO REVERTS"); }
       Object.assign(T.smp, { id, st:0, en:1, markers:[], warpSource:"", warpSpec:{from:App.P.bpm,to:App.P.bpm,anchors:[]} });
+      // A hit plays to its end whatever the note's length (1-SHOT). A long recording must not: one click would play
+      // the whole of it and every pass of a loop would lay another copy on top. It plays for as long as its note lasts.
+      T.smp.shot = S.buffer.duration > LONG ? 0 : 1;
+      if (S.buffer.duration > LONG) T.smp.loop = 0;
     }
   };
+  const LONG = 6; // seconds: beyond this a sample is a recording, not a hit
+  const mmss = (sec) => Math.floor(sec / 60) + ":" + String(Math.floor(sec % 60)).padStart(2, "0");
   const landed = (tg) => {
     App.commit();
+    App.E?.cutTrack(tg.ti); // what the track was sounding with the audio it had stops here
     App.E && App.E.syncTrack(tg.ti);
     if (tg.pad != null && tg.ti === App.P.sel.t) App.P.sel.pad = tg.pad;
     App.Mx.sync(); App.Ed.sync(); App.Dv.build();
@@ -255,7 +262,9 @@
       landed(last);
       // Every drop says where it landed: on a drum track that is a pad, and it replaced what the pad had.
       const T = App.P.tracks[last.ti], name = App.samples.get(last.pad != null ? T.kit.pads[last.pad].id : T.smp.id)?.name || "AUDIO";
+      const S = App.samples.get(last.pad != null ? T.kit.pads[last.pad].id : T.smp.id), long = last.pad == null && S && S.buffer.duration > LONG;
       UI.msg(n > 1 ? n + " FILES LOADED ONTO PADS " + (tg.pad + 1) + " TO " + (tg.pad + n) + " OF " + pad2(last.ti + 1) + " " + T.name + " · UNDO REVERTS"
+        : long ? name + " · " + mmss(S.buffer.duration) + " OF AUDIO IN SAMPLER " + pad2(last.ti + 1) + " · A NOTE PLAYS IT FROM START FOR AS LONG AS THE NOTE · AS A BACKING TRACK: AUDIO… › DROP IT ON A LANE"
         : name + " LOADED " + (last.pad != null ? "ONTO PAD " + (last.pad + 1) + " OF " : "INTO ") + pad2(last.ti + 1) + " " + T.name + " · UNDO REVERTS");
     }
   };

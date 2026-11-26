@@ -640,6 +640,8 @@
     };
     // One track falls silent (its device is being replaced); everything else keeps playing.
     E.cutTrack = (i) => { const t = ctx.currentTime; for (const v of E.voices.slice()) if (v.ti === i) cut(v, t, 0.008); };
+    // A note that is deleted stops sounding: a one-shot does not ring on after the thing that started it is gone.
+    E.cutNote = (i, note) => { const t = ctx.currentTime; for (const v of E.voices.slice()) if (v.ti === i && v.note === note && v.t0 <= t + 0.02) cut(v, t, 0.012); };
     E.releaseClip = (i,time) => {
       for(const voice of E.voices) if(voice.ti===i && voice.sequenced)cut(voice,time,.004);
     };

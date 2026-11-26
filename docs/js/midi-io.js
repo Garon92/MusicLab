@@ -12,7 +12,7 @@
       bindings:(Array.isArray(src.bindings) ? src.bindings : []).filter(b => b && index(b.ti,7) && Object.hasOwn(labels,b.key) && index(b.ch,15) && index(b.cc,119)).slice(0,128).map(({ti,key,ch,cc,port}) => ({ti,key,ch,cc,port:String(port || "").slice(0,200)}))
     };
   }});
-  let access, connecting, inputId="*", outputId="", clockMode="internal", learn=null, draw, timer, phaseAt=0, lastPulse=0, pulses=0, clockPort="", resumeStep=0;
+  let access, connecting, inputId="*", outputId="", clockMode=(()=>{try{const m=localStorage.getItem("musiclab.midi-clock");return ["send","follow"].includes(m)?m:"internal";}catch{return "internal";}})(), learn=null, draw, timer, phaseAt=0, lastPulse=0, pulses=0, clockPort="", resumeStep=0;
   let intervals=[];
   const output = () => access?.outputs.get(outputId);
   const connected = port => port?.state !== "disconnected";
@@ -165,12 +165,12 @@
       body.append(message,h("div.tool-fields",null,
         select("Input",[["*","All inputs"],["","Off"],...ports(access?.inputs)],inputId,v=>{inputId=v;resetClock();if(access)hook();}),
         select("Output",[["","Off"],...ports(access?.outputs)],outputId,v=>{stop(); outputId=v;}),
-        select("Clock",[["internal","Internal"],["send","Send clock"],["follow","Follow input clock"]],clockMode,v=>{stop();clockMode=v;resetClock();})),
+        select("Clock",[["internal","Internal"],["send","Send clock"],["follow","Follow input clock"]],clockMode,v=>{stop();clockMode=v;resetClock();try{localStorage.setItem("musiclab.midi-clock",v);}catch{}App.Top.sync();})),
         h("h3",{text:"Track routing & controller learn"}),h("div.tool-fields",null,
         select("Track",App.P.tracks.map((t,i)=>[i,(i+1)+" · "+t.name]),ti,v=>{ti=+v;if(target==="cutoff" && App.P.tracks[ti].kind==="kit")target="vol";redraw();}),
         select("Output channel",[[0,"Off"],...Array.from({length:16},(_,i)=>[i+1,String(i+1)])],cfg.channels[ti],v=>{stop();cfg.channels[ti]=+v;App.commit();}),
         select("Controller target",Object.keys(labels).filter(k=>k!=="cutoff" || App.P.tracks[ti].kind!=="kit").map(k=>[k,label(ti,k)]),target,v=>{target=v;})));
-      const learnButton=(caption,viaClick)=>btn(caption,"Assign the next incoming MIDI CC",async()=>{
+      const learnButton=(caption,viaClick)=>btn(caption,viaClick?"CLOSES THIS DIALOG · CLICK A VALUE ON THE CONSOLE, THEN MOVE THE HARDWARE CONTROL THAT SHOULD DRIVE IT":"MOVE A KNOB OR FADER ON THE CONTROLLER · IT WILL DRIVE THE TRACK AND TARGET CHOSEN ABOVE",async()=>{
         if(!await connect()){status="Connect an available MIDI input first."; redraw();return;}
         if (!App.midiN) {status="Select or connect a MIDI input first.";redraw();return;}
         if(viaClick) { picking=true;node.close(); }
@@ -188,7 +188,7 @@
     draw=(message="")=>{status=message;redraw();}; redraw();
     node.addEventListener("close",()=>{draw=null;if(!picking)cancelLearn();},{once:true}); node.showModal();
   }
-  App.MidiIO={open,connect,record,note,live,phase,stop,
+  App.MidiIO={mode:()=>clockMode,open,connect,record,note,live,phase,stop,
     cut(ti,time){const ch=App.P.midiIO.channels[ti];if(ch && App.E)send([0xb0+ch-1,123,0],stamp(App.E.ctx,time));},
     start(ctx,t){if(clockMode==="send")send([0xfa],stamp(ctx,t));},
     clock(ctx,t,sd){if(clockMode==="send" && outputId)for(let i=0;i<6;i++)send([0xf8],stamp(ctx,t+i*sd/6));},

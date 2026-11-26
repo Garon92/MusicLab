@@ -99,6 +99,7 @@
     const initialSpan=Math.min(total,stepTime(P,at+App.MAX_STEPS)-stepTime(P,at));
     const dlg=App.Workspace.begin("Transcribe melody"),body=h("div.dlg-body.ast-body");
     dlg.classList.add("ast-dialog","transcription-dialog");
+    const about=h("p.dlg-tip",{text:"FINDS THE NOTES IN A RECORDING · CHECK THEM IN THE LIST · PRINT WRITES A CLIP"});
     let from=0,to=initialSpan,notes=[],status="",dirty=true,busy=false,job=0,original=null,selected=-1;
     const pitched=t=>t.kind==="syn" || (t.kind==="smp" && t.smp.mode!==1);
     const tracks=P.tracks.map((t,i)=>({t,i})).filter(({t})=>pitched(t));
@@ -189,7 +190,7 @@
       h("div.transcript-scroll",null,table),
       h("div.ast-toolbar",null,choice("Destination track",tracks.map(({i,t})=>[i,(i+1)+" · "+t.name]),ti,v=>{ti=v;sync();}),
         choice("Destination pattern",[...App.PATS].map((p,i)=>[i,p]),pi,v=>{pi=v;sync();}),print),details);
-    dlg.append(body);dlg.showModal();sync();scanRange();
+    body.append(about);dlg.append(body);dlg.showModal();sync();scanRange();
     dlg.addEventListener("close",()=>{job++;try{original?.stop();}catch{}},{once:true});
   }
   App.Transcription={analyze,open,toNotes};

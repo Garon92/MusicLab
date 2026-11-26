@@ -310,6 +310,7 @@
     run();render();
   }
   const field=(name,control)=>h("label.ast-field",null,h("span",{text:name}),control);
+  const tipped=(tip,label)=>{label.querySelector("input,select").dataset.tip=tip;return label;};
   function number(name,v,min,max,inc,accept,def) {
     const node=h("input",{type:"number","aria-label":name,min,max,step:inc,value:+Number(v).toFixed(4)});
     if(def!=null)node.dataset.reset=def; // where a right-click returns it
@@ -438,7 +439,8 @@
     const old=document.activeElement, tag=old?.tagName, label=old?.getAttribute("aria-label") || old?.textContent;
     const body=h("div.dlg-body.ast-body"),r=find();
     const tabs=["timeline","looper"].map(v=>action(v==="timeline"?"Timeline":"Looper",v==="timeline"?"AUDIO REGIONS AND ALTERNATE TAKES":"RECORD AND OVERDUB LOOP LAYERS",()=>{if(capture)return;stopLoop();view=v;render();},!!capture,view===v?"on":""));
-    body.append(h("div.ast-head",null,h("h2",{text:"Audio studio"}),...tabs,h("span.sp")));
+    body.append(h("div.ast-head",null,h("h2",{text:"Audio studio"}),...tabs,h("span.sp")),
+      h("p.dlg-tip",{text:view==="timeline"?"AUDIO ON THE SONG'S TIMELINE · DROP FILES, RECORD, SPLIT, TRIM, CHOOSE TAKES":"RECORD LAYERS OVER ONE LOOP · EVERY PASS IS KEPT · UNDO LAYER DROPS THE LAST"}));
     const zoomCtl=select("View",[[0,"FIT"],[2,"2 BARS"],[4,"4 BARS"],[8,"8 BARS"],[16,"16 BARS"],[32,"32 BARS"]],zoom,v=>{zoom=+v;viewportStart=zoom?Math.floor(cursor/(zoom*App.spb(App.P)))*zoom*App.spb(App.P):0;render();});
     body.append(h("div.ast-toolbar",null,select("Track",trackOptions(),track,v=>{track=+v;App.select(track,App.P.sel.p);selected="";render();}),
       number("Cursor · step",cursor,0,MAX,.001,v=>{if(loopClock)stopLoop();cursor=v;render();}),select("Snap",[[0,"FREE"],[1,"1/16"],[2,"1/8"],[4,"1/4"],[App.spb(App.P),"BAR"]],snap,v=>{snap=+v;render();}),zoomCtl,
@@ -478,8 +480,8 @@
         number("Trim out · s",end,.001,7200,"any",v=>edit(()=>setTrim(r,source.offset,v))),
         number("Fade in · s",r.fin,0,r.len,"any",v=>edit(()=>r.fin=v),0),number("Fade out · s",r.fout,0,r.len,"any",v=>edit(()=>r.fout=v),0),
         // Level in dB, as everywhere on the console: 0 dB plays the take as it was recorded.
-        number("Gain · dB",r.gain>0?Math.max(-60,+(20*Math.log10(r.gain)).toFixed(1)):-60,-60,6,.1,v=>edit(()=>r.gain=v<=-60?0:App.clamp(10**(v/20),0,2)),0),
-        number("Repeats",r.repeats,1,128,1,v=>edit(()=>r.repeats=v),1)));
+        tipped("LEVEL OF THIS REGION · 0 DB = AS IT WAS RECORDED",number("Gain · dB",r.gain>0?Math.max(-60,+(20*Math.log10(r.gain)).toFixed(1)):-60,-60,6,.1,v=>edit(()=>r.gain=v<=-60?0:App.clamp(10**(v/20),0,2)),0)),
+        tipped("THE REGION PLAYS THIS MANY TIMES IN A ROW",number("Repeats",r.repeats,1,128,1,v=>edit(()=>r.repeats=v),1))));
       body.append(h("div.ast-toolbar",null,select("Route",trackOptions(),r.track,v=>edit(()=>{r.track=+v;track=r.track;})),
         action("Split at cursor","SPLIT ALL TAKES AT THE CURSOR · CHOOSE A TAKE FOR EACH PIECE",()=>edit(()=>split(r,cursor))),
         action("Crossfade","FADE BETWEEN OVERLAPPING REGIONS ON THIS TRACK",()=>edit(()=>crossfade(r))),

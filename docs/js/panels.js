@@ -46,7 +46,8 @@
       pm.dataset.why = clip ? "AUTOMATED IN CLIP " + pad2(t + 1) + "/" + PATS[pi] + " · THE CURVE SETS IT WHILE THE CLIP PLAYS · EDIT › AUTOMATION" : lane ? "DRIVEN BY A SONG AUTOMATION LANE · ARRANGE… › SONG AUTOMATION" : "";
     }
     // A tuning other than twelve equal steps retunes every pitched note: it is marked on SCALE.
-    const tuned = !!p.tuning?.enabled, sc = document.querySelector("#top .pm.tun") || [...document.querySelectorAll("#top .pm")].find((e) => e.getAttribute("aria-label")?.startsWith("SCALE"));
+    const std = App.InstrumentLab?.equal, t = p.tuning, plain = t && std && t.cents.length === std.length && t.cents.every((c, i) => Math.abs(c - std[i]) < 1e-6) && t.reference === 69 && Math.abs(t.hz - 440) < 1e-6;
+    const tuned = !!t?.enabled && !plain, sc = document.querySelector("#top .pm.tun") || [...document.querySelectorAll("#top .pm")].find((e) => e.getAttribute("aria-label")?.startsWith("SCALE"));
     if (sc) { sc.classList.add("tun"); sc.classList.toggle("tuned", tuned); sc.dataset.why = tuned ? "PROJECT TUNING IS ON" + (p.tuning.name ? ": " + String(p.tuning.name).toUpperCase() : "") + " · FILE › PROJECT TUNING… SWITCHES IT" : ""; }
   };
   const dbN = (x, floor) => (x < 0.0005 ? 0 : clamp((20 * Math.log10(x) + floor) / floor, 0, 1));
@@ -191,7 +192,10 @@
       takeEl.hidden = !App.take;
       if (App.take) takeEl.textContent = "TAKE " + mmss(App.take.duration);
       midiB.classList.toggle("on", App.midiN > 0);
-      midiB.textContent = (App.midiN > 0 ? "MIDI " + App.midiN : "MIDI") + "…";
+      // A clock that is not the console's own decides when things play: it is named on the button.
+      const clock = App.MidiIO?.mode?.() || "internal";
+      midiB.textContent = (App.midiN > 0 ? "MIDI " + App.midiN : "MIDI") + (clock === "follow" ? " EXT" : clock === "send" ? " SEND" : "") + "…";
+      midiB.dataset.note = clock === "follow" ? "THE TRANSPORT FOLLOWS INCOMING MIDI CLOCK WHEN ONE ARRIVES" : clock === "send" ? "MIDI CLOCK IS SENT TO THE OUTPUT WHILE PLAYING" : "";
       midiB.setAttribute("aria-label", App.midiN > 0 ? "MIDI " + App.midiN : "MIDI");
       pms.forEach((p) => p.paint());
       // A map that takes over after bar 1 is marked on the value it overrides, with where to find it.
@@ -633,7 +637,7 @@
           if (v === "load") App.pickFile("audio/*", (f) => App.dropFiles(f, o.tg));
           else if (v === "edit") o.edit();
           else if (v === "span") { obj.st = 0; obj.en = 1; App.commit(); o.change(); paint(); App.E?.syncTrack(o.tg.ti); }
-          else if (v === "remove") { o.remove(); App.commit(); App.E?.syncTrack(o.tg.ti); build(); App.Ed.sync(); UI.msg("AUDIO REMOVED · UNDO REVERTS"); }
+          else if (v === "remove") { o.remove(); App.commit(); App.E?.cutTrack(o.tg.ti); App.E?.syncTrack(o.tg.ti); build(); App.Ed.sync(); UI.msg("AUDIO REMOVED · UNDO REVERTS"); }
         }, { label: "Sample" });
       };
       UI.drop(wrap, { file: (f) => App.dropFiles(f, o.tg), take: () => App.dropTake(o.tg) });

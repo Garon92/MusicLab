@@ -663,11 +663,19 @@
     range: "DRAG / WHEEL = ADJUST · SHIFT = FINE · RIGHT-CLICK = RESET",
     check: "CLICK = TOGGLE", rows: "CLICK = SELECT · WHEEL = STEP", text: "TYPE · ENTER = APPLY",
   };
+  const barOf = (step) => { const m = App.Conductor.position(App.P, Math.floor(step)); return "BAR " + (m.bar + 1) + "." + (Math.floor(m.inside / m.beatSteps) + 1) + "." + ((m.inside % m.beatSteps) + 1); };
+  UI.barOf = barOf;
   const fieldTip = (el) => {
     const k = kindOf(el);
     const name = el.dataset.tip || el.closest("[data-tip]")?.dataset.tip || el.getAttribute("aria-label") || el.labels?.[0]?.textContent.trim() || el.placeholder || "";
     const value = k === "list" ? el.options[el.selectedIndex]?.textContent ?? "" : k === "check" ? (el.checked ? "ON" : "OFF") : k === "num" || k === "range" ? el.value : "";
-    return name + (value !== "" ? "  " + value : "") + "    " + (el._bad ? el._bad + " · " : "") + LEGEND[k];
+    // One way to read a place or a pitch, whatever the field counts in: a step field also says its bar.beat.step as the
+    // console counts them, and a key field its note name (data-reads = "step", "step1" for fields that count from 1, "note").
+    const said = ((el.getAttribute("aria-label") || "") + " | " + (el.labels?.[0]?.textContent || "")).toLowerCase();
+    const reads = el.dataset.reads || (k !== "num" ? "" : /\bstep\b/.test(said) && !/offset|loop/.test(said) ? (/event step/.test(said) ? "step1" : "step") : /root note|low key|high key|\bpitch\b/.test(said) && !/ratio|sequence/.test(said) ? "note" : "");
+    const n = parseFloat(el.value);
+    const also = !reads || !isFinite(n) ? "" : reads === "note" ? " = " + App.noteName(clamp(Math.round(n), 0, 127)) : " = " + barOf(Math.max(0, n - (reads === "step1" ? 1 : 0)));
+    return name + (value !== "" ? "  " + value : "") + also + "    " + (el._bad ? el._bad + " · " : "") + LEGEND[k];
   };
   // An editor that checks a field before acting gets its answer, but the browser's own bubble never appears:
   // the field turns red and the strip says, in the console's words, what it needs.

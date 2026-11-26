@@ -143,7 +143,8 @@
     let tab=initial==="take"?"take":"launcher",focusT=P.sel.t,focusP=P.sel.p,update=()=>{};
     const mode=select("Transport source",[["arrangement","Pattern / song"],["live","Live clips"],["take","Performance take"]],S.source,source);
     const tabs=select("Performance view",[["launcher","Clip launcher"],["take","Edit recorded take"]],tab,v=>{tab=v;render();});
-    body.append(h("div.pf-line",null,field("Transport",mode),field("View",tabs)),stage);
+    const about=h("p.dlg-tip");
+    body.append(h("div.pf-line",null,field("Transport",mode),field("View",tabs)),stage,about);
     function launcher() {
       const grid=h("div.pf-grid",{"aria-label":"Live clip launcher"}),cells=[];
       grid.append(h("span",{text:"SCENE"}));
@@ -166,9 +167,11 @@
       }
       const quant=select("Launch quantization",[["step","1 step"],["beat","1 beat"],["bar","1 bar"]],S.quant,v=>{S.quant=v;App.commit();});
       const loop=num("Clip loop steps",0,256,S.loops[focusT][focusP]);
-      const target=h("b",{text:App.pad2(focusT+1)+" / "+App.PATS[focusP]});
+      loop.dataset.tip="THIS CLIP TURNS ROUND AFTER SO MANY STEPS · 0 = AS LONG AS ITS PATTERN · ALSO SHOWN IN THE EDITOR'S HEADER";loop.dataset.reset=0;
+      const target=h("b",{text:App.pad2(focusT+1)+" / "+App.PATS[focusP],tip:"THE CLIP THE LOOP FIELD SETS · SHIFT-CLICK A CLIP IN THE GRID TO CHOOSE IT WITHOUT LAUNCHING IT"});
       loop.onchange=()=>{S.loops[focusT][focusP]=int(loop.valueAsNumber,0,256,0);loop.value=S.loops[focusT][focusP];App.commit();App.Ed.sync();App.Mx.sync();};
       const bars=num("Live export bars",1,64,S.bars);
+      bars.dataset.tip="HOW MANY BARS OF THE LAUNCHED CLIPS FILE › EXPORT AUDIO RENDERS WHILE A SESSION RUNS";bars.dataset.reset=4;
       bars.onchange=()=>{S.bars=int(bars.valueAsNumber,1,64,4);bars.value=S.bars;App.commit();};
       const rec=btn("Record take","Record track launches, stops and loop phase into the performance arrangement",()=>{
         const was=!!capture;record();sync();
@@ -196,6 +199,7 @@
     function arrangement() {
       const draft=S.take.events.map(e=>({...e})),steps=num("Performance length in steps",1,limit,S.take.steps);
       const list=h("select.pf-take-list",{size:7,"aria-label":"Launch events"}),at=num("Event step",1,limit,1),offset=num("Clip start offset",0,255,0);
+      at.dataset.tip="WHEN THE LAUNCH HAPPENS, IN STEPS FROM THE START OF THE TAKE";offset.dataset.tip="WHERE INSIDE THE CLIP THE LAUNCH STARTS, IN STEPS · 0 = ITS BEGINNING";offset.dataset.reset=0;
       const track=select("Event track",P.tracks.map((t,i)=>[i,App.pad2(i+1)+" "+t.name]),0);
       const clip=select("Event clip",[[-1,"Stop track"],...Array.from(App.PATS,(p,i)=>[i,"Clip "+p])],0);
       const status=h("output",{text:""});
@@ -226,7 +230,10 @@
         h("div.pf-line",null,field("Take length · steps",steps),apply,status));draw();update=()=>{};
       node.dirty=()=>tab==="take" && JSON.stringify(normalize(draft,+steps.value||1))!==JSON.stringify(S.take.events) && "THE EDITED TAKE · APPLY TAKE KEEPS IT";
     }
-    function render() {stage.replaceChildren();node.dirty=null;if(tab==="take")arrangement();else launcher();}
+    function render() {
+      stage.replaceChildren();node.dirty=null;if(tab==="take")arrangement();else launcher();
+      about.textContent=tab==="take"?"THE RECORDED LAUNCHES AS A LIST · APPLY TAKE MAKES IT WHAT PLAY PLAYS":"CLICK A CLIP = LAUNCH IT ON ITS TRACK · A TOP-ROW LETTER = THE WHOLE COLUMN";
+    }
     node.classList.add("pf-dialog");node.append(body);render();node.showModal();
     const timer=setInterval(()=>{if(App.P!==P){node.close();return;}update();},100);
     node.addEventListener("close",()=>{

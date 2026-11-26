@@ -367,6 +367,35 @@ module.exports = async function regressions(page) {
   await close();
   await reset();
 
+  // Reported from use: an mp3 dropped into a sampler was treated as a hit. One click on a note played the whole of it,
+  // deleting the note or the audio did not stop it, and a loop laid copy over copy. A long recording now plays for
+  // as long as its note; a deleted note and removed audio stop sounding.
+  await page.mouse.click(5, 5);
+  await state(async () => {
+    const sr = 22050, b = new AudioBuffer({ length: sr * 12, sampleRate: sr }), d = b.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.sin(i * 0.05) * 0.4;
+    App.select(6, 0);
+    await App.dropFiles([new File([await App.wav(b).arrayBuffer()], "song.wav", { type: "audio/wav" })], { ti: 6 });
+  });
+  assert.equal(await state(() => App.P.tracks[6].smp.shot), 0, "a long recording is not a one-shot");
+  assert.match(await state(() => document.querySelector(".st-m").textContent), /0:12 OF AUDIO .* AUDIO…/, "and the console says what it is for");
+  const sounding = () => state(() => App.E.voices.filter(v => v.ti === 6 && !v.dead).length);
+  const spot = await cell(2, 10);
+  await page.mouse.click(spot.x, spot.y);
+  await page.waitForFunction(() => App.E.voices.filter(v => v.ti === 6).length === 0, null, { timeout: 4000 });
+  await state(() => { App.P.tracks[6].smp.shot = 1; App.commit(); App.E.syncTrack(6); }); // chosen by hand: it plays on
+  await page.mouse.click(spot.x + 90, spot.y);
+  await page.waitForTimeout(500);
+  assert.ok(await sounding() > 0, "a one-shot plays on after the click");
+  await page.mouse.click(spot.x + 90, spot.y, { button: "right" });
+  await page.waitForFunction(() => App.E.voices.filter(v => v.ti === 6).length === 0, null, { timeout: 3000 });
+  await page.mouse.click(spot.x + 180, spot.y);
+  await page.waitForTimeout(300);
+  await page.locator("#dv .wv").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Remove audio" }).click();
+  await page.waitForFunction(() => App.E.voices.filter(v => v.ti === 6).length === 0, null, { timeout: 3000 });
+  await reset();
+
   // The first recording on a page was cut in the wrong place: the recorder's first block read frame 0 in WebKit
   // whatever the time was (a take came back half silent or "too short") and one block early in Chromium. A click
   // put on an exact frame of a context that has been running for a while has to be found on that frame.
@@ -389,5 +418,5 @@ module.exports = async function regressions(page) {
   assert.ok(placed.found && Math.abs(placed.framesOff) <= 1, "the first recording on a page knows which frame it starts on: " + JSON.stringify(placed));
 
   await reset();
-  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, note values, launcher hands the transport back, lists in popups, wheel grid, console number fields, first recording on its frame");
+  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, note values, launcher hands the transport back, lists in popups, wheel grid, console number fields, long audio in a sampler, first recording on its frame");
 };

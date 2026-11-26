@@ -32,7 +32,9 @@
   function dialog(title){
     const dlg=App.Workspace.begin(title);dlg.classList.add("ast-dialog","sw-dialog");
     const body=h("div.dlg-body.ast-body"), status=h("output.ast-status",{role:"status"});
-    dlg.append(body);dlg.showModal();return {dlg,body,status};
+    // What each of these editors is for, for its status strip (the impulse editor writes its own).
+    const about={"Resample range":"RENDER A TRACK OR A BUS OVER A RANGE OF STEPS INTO A REGION OR A SAMPLER","Spectral editor":"DRAG A BOX IN THE SPECTROGRAM · CHANGE ONLY WHAT IS INSIDE IT OR ONLY THE REST"}[title];
+    dlg.append(body);if(about)dlg.append(h("p.dlg-tip",{text:about}));dlg.showModal();return {dlg,body,status};
   }
   function field(label,node){
     node.setAttribute("aria-label",label);

@@ -477,8 +477,8 @@
     }
     function removeSelection() {
       if (!selection.size) return;
-      edit(({ clip }) => {
-        for (let i = clip.length - 1; i >= 0; i--) if (selection.has(clip[i])) clip.splice(i, 1);
+      edit(({ clip, ti }) => {
+        for (let i = clip.length - 1; i >= 0; i--) if (selection.has(clip[i])) { App.E?.cutNote(ti, clip[i].n); clip.splice(i, 1); }
         selection.clear();
       });
     }
@@ -660,6 +660,7 @@
       const nt = find(act.clip, R[m.row].n, m.step);
       if (!nt) return;
       act.clip.splice(act.clip.indexOf(nt), 1); act.erased.add(nt);
+      App.E?.cutNote(App.P.sel.t, nt.n); // what it was sounding stops with it
       selection.delete(nt); act.ch = true;
     }
     function box(m) {

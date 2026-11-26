@@ -340,7 +340,7 @@ noscript { position: fixed; inset: 0; display: grid; place-items: center; backgr
 #ed.automation-mode .ed-tools > .grp:not([aria-label]), #ed.automation-mode .ed-tools > .rd {display:none;}
 .auto-panel {display:flex; flex-direction:column; flex:1; min-height:0;}
 .auto-toolbar {background:var(--pn2);}
-.auto-toolbar .auto-readout {color:var(--t1);font-size:var(--fs);white-space:nowrap;}
+.auto-toolbar .auto-readout {color:var(--t1);font-size:var(--fs);white-space:nowrap;padding:0 .6rem;line-height:1.65rem;box-shadow:inset 0 -2px 0 var(--ln2);cursor:text;}
 .auto-plot {position:relative;flex:1;min-height:0;background:var(--pn);}
 .auto-plot canvas {position:absolute;width:100%;height:100%;inset:0;touch-action:none;cursor:crosshair;}
 .auto-playhead {position:absolute;width:1px;top:9px;bottom:17px;background:var(--am);pointer-events:none;}
