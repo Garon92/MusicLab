@@ -44,12 +44,12 @@ module.exports=async function kidsSound(reference) {
         const out=[];
         for(const el of [root,root.querySelector(".ks-shell")])
           if(el.scrollWidth>el.clientWidth+1 || el.scrollHeight>el.clientHeight+1)out.push("Overflow");
-        for(const el of root.querySelectorAll("[data-sound]")){
+        for(const el of root.querySelectorAll("[data-sound],.kv-history button")){
           if(!el.getClientRects().length)continue;
           const b=el.getBoundingClientRect(),hit=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);
           if(b.width<63.9 || b.height<63.9 || b.x<0 || b.y<0 || b.right>innerWidth+.5 || b.bottom>innerHeight+.5 ||
             (!el.disabled && !el.contains(hit)))out.push(el.getAttribute("aria-label"));
-          const caption=el.querySelector(".ks-key-name"),icon=el.querySelector(":scope > svg");
+          const caption=el.querySelector(".ks-key-name,.kv-caption"),icon=el.querySelector(":scope > svg");
           if(caption){
             const range=document.createRange();range.selectNodeContents(caption);
             const text=range.getBoundingClientRect();
@@ -247,8 +247,9 @@ module.exports=async function kidsSound(reference) {
     const cleared=await automation();
     assert.ok(!cleared.macro3 && !cleared.macro4);
     assert.deepEqual(cleared.dly,complete.dly);
-    await key("undo").click();
-    assert.deepEqual(await automation(),mirrored);
+    await room.locator('[data-k="undo"]').click();assert.deepEqual(await automation(),mirrored);
+    await room.locator('[data-k="redo"]').click();assert.deepEqual(await automation(),cleared);
+    await page.keyboard.press("Control+z");assert.deepEqual(await automation(),mirrored);
     await key("back").click();
     await band("shelf").click();
     await band("save").click();

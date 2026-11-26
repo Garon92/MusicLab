@@ -480,13 +480,13 @@
   const noView = function (k, v) { return ((k === "sel" || k === "fold") && this.tracks) || (k === "lo" && this.clips) ? undefined : v; };
   const content = (P) => JSON.stringify(P, noView);
   // Checkpoint: one undo step per finished gesture.
-  App.commit = (projectChange = false, shelfEdit = null) => {
-    const s = JSON.stringify(App.P), key = content(App.P), slot = hist.store?.slot();
+  App.commit = (projectChange = false) => {
+    const s = JSON.stringify(App.P), key = content(App.P), destination = hist.store?.destination();
     clearTimeout(saveT); saveT = 0;
     const durable = save(s);
-    if (key === hist.key && slot === hist.st[hist.i]?.slot && !shelfEdit) return durable;
+    if (key === hist.key && destination === hist.st[hist.i]?.destination) return durable;
     hist.st.length = hist.i + 1;
-    hist.st.push({ data: s, projectChange, slot, shelfEdit });
+    hist.st.push({ data: s, projectChange, destination });
     if (hist.st.length > 160) hist.st.shift();
     hist.i = hist.st.length - 1;
     hist.key = key;
@@ -507,7 +507,7 @@
     const boundary = hist.st[d < 0 ? hist.i : i], crossesProject = boundary.projectChange;
     const project = JSON.parse(hist.st[i].data);
     if (!crossesProject) { project.sel = sel; project.fold = fold; project.tracks.forEach((t, k) => (t.lo = lows[k])); }
-    if (hist.store && !hist.store.restore(JSON.stringify(project), hist.st[i].slot, boundary.shelfEdit, d)) return false;
+    if (hist.store && !hist.store.restore(JSON.stringify(project), hist.st[i].destination)) return false;
     App.historyCrossedProject=!!crossesProject;
     hist.i = i;
     App.P = project;

@@ -114,6 +114,18 @@
     if(strip.textContent!==text)strip.textContent=text;
     return el;
   }
+  function historyPair(parent){
+    const pair=element("div","kv-history",parent);pair.setAttribute("role","group");label(pair,"Historie úprav písničky");
+    const step=(action,name,hint,shortcuts)=>{
+      const b=caption(button(pair,hint,action,icon("undo"),()=>call(action)),name);
+      b.setAttribute("aria-keyshortcuts",shortcuts);
+      return b;
+    };
+    const undo=step("undo","Zpět","Zpět o jednu úpravu","Control+Z Meta+Z");
+    const redo=step("redo","Vpřed","Vpřed o jednu úpravu","Control+Shift+Z Meta+Shift+Z Control+Y");
+    const sync=()=>{undo.disabled=!model?.canUndo;redo.disabled=!model?.canRedo;};
+    sync();return sync;
+  }
   function pressed(el,on){el.setAttribute("aria-pressed",String(!!on));}
   function ring(b){
     const el=element("span","kv-hold",b);
@@ -207,10 +219,13 @@
         replaceAt=-1;replaceTarget=null;pageKind="replace";renderPanel();modal.querySelector('[data-k="slot"]')?.focus();
       },"kv-save");
       songAction(actions,"Nová písnička","new","newSong",()=>{if(call("new"))closePanel();});
-      if(model.lastRemoval>=0)songAction(actions,"Vrátit smazání","restoreSlot","undo",()=>{
+      if(model.lastRemoval>=0){
         const index=model.lastRemoval;
-        if(call("undo"))modal.querySelector('[data-k="slot"][data-index="'+index+'"]')?.focus();
-      },"kv-restore-song");
+        const restore=songAction(actions,"Vrátit smazání","restoreSlot","undo",()=>{
+          if(call("restoreRemoval",index))modal.querySelector('[data-k="slot"][data-index="'+index+'"]')?.focus();
+        },"kv-restore-song");
+        label(restore,"Vrátit smazání písničky "+(index+1));
+      }
     }
     const count=element("span","kv-saved-count",modal.querySelector(".kv-sheet-title"));
     count.textContent=shelf.filter(Boolean).length+" / 8";
@@ -243,30 +258,41 @@
     }
     const status=element("div","kv-song-status",inner);
     status.setAttribute("role","status");
-    if(model.feedback==="error")status.textContent="Písničky se nepodařilo změnit.";
-    else if(model.lastRemoval>=0)status.textContent="Písnička "+(model.lastRemoval+1)+" je smazaná.";
-    else if(model.feedback==="restored")status.textContent="Písnička je zpátky.";
-    else if(model.feedback==="saved" && model.slot>=0)status.textContent="Písnička "+(model.slot+1)+" je uložená.";
+    updateShelfStatus(status);
+  }
+  function updateShelfStatus(status){
+    let next="";
+    if(model.feedback==="error")next="Písničky se nepodařilo změnit.";
+    else if(model.feedback==="restored")next="Písnička je zpátky.";
+    else if(model.feedback==="saved" && model.slot>=0)next="Písnička "+(model.slot+1)+" je uložená.";
+    else if(model.lastRemoval>=0)next="Písnička "+(model.lastRemoval+1)+" je smazaná.";
+    if(status.textContent!==next)status.textContent=next;
   }
   function renderPanel(){
     if(!pageKind || !model)return;
     const previous=modal.contains(document.activeElement)?{k:document.activeElement.dataset.k,index:document.activeElement.dataset.index,row:document.activeElement.dataset.row}:null;
     const chain=model.chain||[],shelf=model.shelf||[];
+    const onShelf=pageKind==="shelf"||pageKind==="replace";
     let signature=pageKind;
     if(pageKind==="wardrobe")signature+=pageTrack+"."+model.costumes?.[pageTrack];
-    if(pageKind==="shelf"||pageKind==="replace")signature+=[shelf.map(item=>item?.revision||0).join(","),model.slot,model.lastRemoval,model.feedback,replaceAt,replaceTarget?.revision].join(".");
-    if(pageKind==="arrange")signature+=[chain.join(""),chainPage,chainIndex,model.song,model.playing].join(".");
-    if(dialogSignature===signature)return;dialogSignature=signature;chainSlots=[];
+    if(onShelf)signature+=[shelf.map(item=>item?.revision||0).join(","),model.slot,model.lastRemoval,replaceAt,replaceTarget?.revision].join(".");
+    if(pageKind==="arrange")signature+=[chain.join(""),chainPage,chainIndex,model.song,model.playing,model.canUndo,model.canRedo].join(".");
+    if(dialogSignature===signature){
+      if(onShelf)updateShelfStatus(modal.querySelector(".kv-song-status"));
+      return;
+    }
+    dialogSignature=signature;chainSlots=[];
     if(pageKind==="wardrobe"){
       const inner=makeHeader("Zvuky nástroje · "+App.KidsView.partLabel(pageTrack),"spark"),list=element("div","kv-costumes",inner);
       for(let i=0;i<4;i++){
         const b=button(list,App.KidsView.partLabel(pageTrack)+", zvuk "+(i+1),"costume",character(pageTrack,i),()=>{call("costume",pageTrack,i);closePanel();},"kv-costume");
         b.dataset.index=i;b.style.setProperty("--part",colour[pageTrack]);pressed(b,model.costumes?.[pageTrack]===i);
       }
-    }else if(pageKind==="shelf"||pageKind==="replace"){
+    }else if(onShelf){
       shelfPanel(shelf);
     }else if(pageKind==="arrange"){
       const inner=makeHeader("Pořadí dílků","chain"),tray=element("div","kv-chain-tray",inner);
+      historyPair(modal.querySelector(".kv-sheet-head"));
       chainPage=Math.min(chainPage,Math.max(0,Math.ceil(chain.length/8)-1));
       const turn=button(tray,"Předchozí dílky","prevPage",icon("prev"),()=>{chainPage--;renderPanel();},"kv-page-key");turn.disabled=chainPage===0;
       const track=element("div","kv-chain-slots",tray);
@@ -446,7 +472,7 @@
     const output=element("div","kv-output",header);output.setAttribute("role","group");label(output,"Průběh a výšky zvuku");
     scope(output,"wave","Zvuková vlna","Vlna");scope(output,"bands","Basy → výšky");
     const group=element("div","kv-utilities",header);
-    mainButtons.undo=caption(button(group,"Zpět o jeden krok","undo",icon("undo"),()=>call("undo"),"kv-undo"),"Zpět");
+    mainButtons.syncHistory=historyPair(group);
     mainButtons.shelf=caption(button(group,"Moje písničky","shelf",icon("shelf"),e=>show("shelf",e.currentTarget),"kv-shelf"),"Písničky");
     const lock=caption(button(group,"Pro rodiče: podržet dvě sekundy pro návrat do studia","lock",icon("lock"),null,"kv-lock"),"Rodiče");
     element("span","kv-lock-time",lock).textContent="2 s";hold(lock,2000,null,()=>call("exit"));
@@ -510,8 +536,16 @@
     chainPreview.addEventListener("click",e=>{if(!e.target.closest("button"))openArrange();});
     modal=element("section","kv-sheet",host);modal.hidden=true;modal.setAttribute("role","region");
     toast=element("div","kv-flash",host);toast.setAttribute("role","status");
-    host.addEventListener("keydown",keys);host.addEventListener("pointerdown",dismissTools,true);window.addEventListener("blur",stops);
+    host.addEventListener("keydown",keys);host.addEventListener("pointerdown",dismissTools,true);window.addEventListener("blur",stops);window.addEventListener("keydown",historyKey);
     return host;
+  }
+  function historyKey(e){
+    if(!model || e.defaultPrevented || e.isComposing || e.altKey || !(e.ctrlKey || e.metaKey))return;
+    if(e.target.closest?.('textarea,input:not([type="range"]),[contenteditable="true"]'))return;
+    const key=e.key.toLowerCase();
+    if(key!=="z" && !(key==="y" && e.ctrlKey && !e.shiftKey))return;
+    e.preventDefault();
+    if(!e.repeat && (!pageKind || pageKind==="arrange"))call(key==="y"||e.shiftKey?"redo":"undo");
   }
   function keys(e){
     if(!host?.contains(e.target))return;
@@ -540,7 +574,7 @@
     const micText={pending:"Zrušit žádost",recording:"Ukončit nahrávání",saving:"Ukládám hlas"}[state.micState]||"Nahrát hlas";
     pressed(recordButton,state.micState==="recording");recordButton.classList.toggle("recording",state.micState==="recording");label(recordButton,micText);
     caption(recordButton,{pending:"Zrušit",recording:"Zastavit",saving:"Ukládám"}[state.micState]||"Nahrát hlas");recordButton.classList.toggle("has-voice",!!state.hasVoice);
-    mainButtons.undo.disabled=!state.canUndo;
+    mainButtons.syncHistory();
     mainButtons.mic.disabled=state.micState==="saving";
     const scopeName=App.KidsView.partLabel(frameTrack)+" · dílek "+letter(state.pattern);
     if(mainButtons.editScope.textContent!==scopeName)mainButtons.editScope.textContent=scopeName;
@@ -653,9 +687,9 @@
   }
   function unmount(){
     if(!host)return;stops();clearSuggestion();clearTimeout(toastTimer);
-    host.removeEventListener("keydown",keys);host.removeEventListener("pointerdown",dismissTools,true);window.removeEventListener("blur",stops);host.replaceChildren();host.classList.remove("kids-surface");
+    host.removeEventListener("keydown",keys);host.removeEventListener("pointerdown",dismissTools,true);window.removeEventListener("blur",stops);window.removeEventListener("keydown",historyKey);host.replaceChildren();host.classList.remove("kids-surface");
     host=null;send=null;model=null;pageKind="";lastFocus=null;lastStep=-1;lastPlayPattern=-1;lastFeedback=null;lastFrame={};
     cells=[];partButtons=[];patternButtons=[];lights=[];chainSlots=[];pads=[];mainButtons={};
   }
-  App.KidsView={mount,render,frame,flash,unmount,movePiece,insertPiece,removePiece,character,rowArt,rowName,partName:i=>parts[i],partColour:i=>colour[i],partLabel,rowLabel};
+  App.KidsView={mount,render,frame,flash,unmount,historyPair,movePiece,insertPiece,removePiece,character,rowArt,rowName,partName:i=>parts[i],partColour:i=>colour[i],partLabel,rowLabel};
 })();

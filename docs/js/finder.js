@@ -57,6 +57,8 @@
     note("Studio","Move a placed sound to an empty beat or another row","DRAG","kids note picture sticker sound move change time");
     note("Studio","Remove a note or song piece and restore it with Zpět","RIGHT CLICK","kids control click odebrat notu dílek undo");
     note("Studio","Drag notes back to the sounds or pieces out of the song strip","DRAG OUT","kids remove trash smazat odebrat");
+    note("Studio","Undo a music edit","CTRL/CMD Z","kids zpět edit notes effects arrangement");
+    note("Studio","Redo a music edit","CTRL/CMD SHIFT Z","kids vpřed repeat undo redo ctrl y");
     note("Studio","Accents and long notes","HOLD","kids note expression roll");
     note("Studio","Set effect scope","EFFECTS","kids channel instrument one piece whole master band echo reverb position vibrato colour EQ stereo ozvěna ostrost chvění poloha");
     note("Studio","Reset the selected effect","RESET","kids default reset effect původní vrátit");
@@ -65,7 +67,7 @@
     note("Studio","Drag A–D onto the song strip or slide its pictures to reorder","PLUS / DRAG","kids arrange chain pořadí dílků");
     note("Studio","Drag a piece over a page arrow to turn the song page","DRAG + HOLD","kids arrangement page pieces");
     note("Studio","Choose one piece or the whole song beside Play","CLICK / ARROWS","kids loop playback menu keyboard dílek píseň Enter Escape");
-    note("Studio","Save, open, delete or restore a song","PÍSNIČKY","kids shelf saved songs trash undo moje písničky smazat vrátit uložení");
+    note("Studio","Save, open, delete or restore a song","PÍSNIČKY","kids shelf saved songs trash restore deletion moje písničky smazat vrátit smazání uložení");
     note("Studio","Open a shelf song in console","HOLD","kids import parent");
     note("Studio","Return through the lock","HOLD 2 SEC","kids exit parent");
     add("Tap tempo","Transport / Tap","tap bpm tempo by hand vyťukat",()=>press("top","TAP"));

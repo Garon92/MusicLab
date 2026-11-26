@@ -150,10 +150,19 @@
 .kv-scope-choice{pointer-events:none;width:100%;height:100%;display:grid;grid-template-rows:minmax(0,1fr) auto;gap:1px;place-items:center;font:650 clamp(12px,1.13vw,16px)/1.1 system-ui,sans-serif}
 .kv-scope-choice svg{width:clamp(26px,3.7vh,39px);height:100%;max-height:36px}
 .kv-header .kv-mic{margin-left:clamp(1px,.55vw,9px)}
-.kv-header .kv-undo,.kv-header .kv-lock{width:clamp(67px,6.3vw,90px)}
+.kv-header .kv-lock{width:clamp(67px,6.3vw,90px)}
+.kv-history{display:flex;gap:3px;align-items:center;flex:0 0 auto}
+.kv-history .kv-button{width:clamp(64px,5.16vw,80px);background:#f9edcd}
+.kv-history [data-k=undo]{border-radius:14px 5px 5px 14px}
+.kv-history [data-k=redo]{border-radius:5px 14px 14px 5px}
+.kv-history [data-k=redo]>svg{transform:scaleX(-1)}
+.kv-history .kv-button:disabled .kv-caption{opacity:.56}
+.kv-sheet-arrange .kv-history{margin-left:auto}
+.kv-sheet-arrange .kv-slots{display:none}
 .kv-tempo-name{font:650 clamp(12px,1.05vw,15px)/1.1 system-ui,sans-serif;position:absolute;inset:auto 0 5px;text-align:center}
 .kv-tempo-thumb{top:36%;width:35%;height:60%;background:#fff0c9}.kv-tempo-thumb svg{width:94%;height:94%}.kv-tempo-track{bottom:64%}
 .kv-header .kv-output{max-height:var(--kv-key);border-width:1px;box-shadow:none}
+.kv-header .kv-monitor-bands{flex:1 0 77px}.kv-header .kv-monitor-wave{flex:1.6 0 64px}
 .kv-monitor-name{position:absolute;bottom:3px;left:5px;padding:1px 3px;border-radius:4px;background:#25364c;color:#d1e3d9;pointer-events:none;font:600 clamp(10px,.85vw,13px)/1.1 system-ui,sans-serif}
 .kv-glass canvas{height:calc(100% - 14px)}
 .kv-header .kv-lock{border-width:1px;background:#e7dec8;color:#4f5b56;box-shadow:0 2px #8d917e}

@@ -29,7 +29,7 @@
       canEraseRow:clip.some(n=>n.n===eraseRowPitch),canEraseSource:clip.some(n=>music.owns(who,n.n)),canErasePiece:P.tracks.some(t=>t.clips[pi].length),
       canEraseSourceInBand:pieces.some(p=>sourceClips[p].some(n=>music.owns(who,n.n))),
       costumes:music.costumes(P),tempo:music.tempoIndex(P),playing:App.Seq.playing,song:!!P.song,chain:P.chain.slice(),
-      armed,micState:music.recording(),recording:music.recording()==="recording",hasVoice:!!P.tracks[6].smp.id,canUndo:store.canUndo(),shelf:shelves,
+      armed,micState:music.recording(),recording:music.recording()==="recording",hasVoice:!!P.tracks[6].smp.id,canUndo:store.canUndo(),canRedo:store.canRedo(),shelf:shelves,
       slot:store.slot,lastRemoval:store.lastRemoval,feedback};
   }
   function paint(){if(store.active && ready){App.KidsView.render(state());App.KidsSound.paint();}}
@@ -207,27 +207,31 @@
           if(!store.active)return;if(mode==="recording")recordSince=performance.now();
           if(error)flash(error==="empty"?"quiet":error==="storage"?"error":"micError");else paint();
         },()=>{if(store.active){music.select(P,3);App.commit();App.E?.syncTrack(6);music.audition(3,3);flash("recorded");}});return;
-      case "undo":case "new":case "load":{
-        if(action==="undo" && !store.canUndo() || action==="load" && !valid(i,8))return;
-        const restoringSong=action==="undo" && store.lastRemoval>=0;
-        App.KidsSound.release();music.cancelRecording();stop();
-        const ok=action==="undo"?store.undo():action==="load"?store.load(i):store.fresh(music.newProject);
-        if(ok){
-          prepare(action!=="undo" || App.historyCrossedProject);updateShelves();
-          if(restoringSong)flash("restored");else paint();
-          hydrate();
-        }else flash("error");
+      case "undo":case "redo":case "new":case "load":{
+        if(action==="load" && !valid(i,8))return;
+        App.KidsSound.release();
+        if(action==="undo" && !store.canUndo() || action==="redo" && !store.canRedo())return;
+        music.cancelRecording();stop();
+        const history=action==="undo" || action==="redo";
+        const ok=history?store[action]():action==="load"?store.load(i):store.fresh(music.newProject);
+        if(ok){prepare(!history || App.historyCrossedProject);updateShelves();paint();hydrate();}
+        else flash("error");
         return ok;
       }
       case "save":case "saveTo":{
         const slot=action==="saveTo"?i:store.slot>=0?store.slot:shelves.findIndex(x=>!x);
-        if(!valid(slot,8) || !store.save(slot,j)){updateShelves();flash("error");return;}
+        const preview=action==="saveTo"?j:store.slot>=0?shelves[slot]:null;
+        if(!valid(slot,8) || !store.save(slot,preview)){updateShelves();flash("error");return;}
         updateShelves();flash("saved");return true;
       }
       case "removeSlot":
         if(!valid(i,8) || !shelves[i])return;
         if(!store.remove(i,j||shelves[i])){updateShelves();flash("error");return;}
-        updateShelves();paint();return true;
+        updateShelves();flash("removed");return true;
+      case "restoreRemoval":{
+        const ok=store.restoreRemoval(i);
+        updateShelves();flash(ok?"restored":"error");return ok;
+      }
       default:return;
     }
     App.commit();paint();

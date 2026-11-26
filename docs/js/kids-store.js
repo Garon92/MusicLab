@@ -4,7 +4,10 @@
   const prefix = "musiclab.kids.v1.", draftKey = prefix + "draft", modeKey = prefix + "mode";
   const size = 8, slotKey = index => prefix + "slot." + index;
   const validSlot = n => Number.isInteger(n) && n >= 0 && n < size;
-  let adult = null, journal = null, remembered = null, slot = -1;
+  let adult = null, journal = null, remembered = null;
+  // All edits of an open song share its shelf destination, including edits made before its first save.
+  let home = {slot:-1, version:null};
+  const removals = new Map();
   let lastDraft = null, volatile = false;
   const previews = Array(size).fill(null);
   let previewRevision = 0;
@@ -19,7 +22,7 @@
     if (data?.project?.app !== "MUSICLAB" || data.project.v !== 3) throw Error("Invalid song draft");
     const project = App.sanitize(data.project);
     if (!project) throw Error("Invalid song draft");
-    return {project, slot:validSlot(data.slot) ? data.slot : -1};
+    return {project, slot:validSlot(data.slot) ? data.slot : -1, version:data.version};
   }
   function failure() {
     window.dispatchEvent(new Event("kids-storage-error"));
@@ -31,9 +34,8 @@
     if (value == null) localStorage.removeItem(key);
     else localStorage.setItem(key, value);
   }
-  const draftText = (project, index) => '{"slot":' + index + ',"project":' + project + '}';
-  function writeDraft(project, index = slot) {
-    const next = draftText(project,index);
+  function writeDraft(project, index = linkedSlot(), version = home.version) {
+    const next = '{"slot":'+index+',"version":'+JSON.stringify(index<0 ? null : version??null)+',"project":'+project+'}';
     if (next === lastDraft && !volatile) return true;
     try {
       put(draftKey,next);
@@ -45,9 +47,9 @@
     }
   }
 
-  // A saved version is still a regular project for older readers. Undo writes
-  // only to that version's own key. In particular, an old WebKit tab whose
-  // localStorage snapshot is one notification behind cannot erase a newer save.
+  // A saved version is a regular project for older readers. A deletion or its
+  // restoration writes to that version's own key, even in a tab that has yet
+  // to receive the storage event for a newer occupant of the shelf space.
   const overridePrefix=prefix+"undo.", writtenOverrides=new Map();
   const overrideKey=(index,version)=>overridePrefix+index+"."+version;
   const versionTag=/^\{"_bandShelfVersion":"([a-z0-9-]+)",/;
@@ -60,35 +62,35 @@
     const override=key ? localStorage.getItem(key) : null;
     return {base,key,value:override===null ? base : override==="null" ? null : override};
   }
-  function changeShelf(edit, forward, project, index, saving=false) {
-    const from=forward ? edit.before : edit.after, to=forward ? edit.after : edit.before;
+  function linkedSlot() {
+    if (!validSlot(home.slot)) return -1;
     try {
-      const state=slotState(edit.slot);
-      if (state.value!==from || (!saving && !state.key)) return failure();
-      // Undoing a newer save can expose this tab's earlier deletion again.
-      // A different tab's replacement has its own key and cannot be restored over.
-      if (edit.version && tag(state.base)!==edit.version && writtenOverrides.get(edit.slot)!==state.key) return failure();
-      const key=saving ? slotKey(edit.slot) : state.key;
-      const value=saving ? to : to===state.base ? null : to??"null";
+      const state=slotState(home.slot);
+      return state.value!==null && (tag(state.base)??null)===home.version ? home.slot : -1;
+    } catch { return -1; }
+  }
+  function updateVersion(index, previous, version) {
+    for (const entry of journal.st) {
+      const dest=entry.destination;
+      if (dest.slot===index && dest.version===previous) dest.version=version;
+    }
+  }
+  function writeShelf(index, state, key, value, nextSlot, version, project=JSON.stringify(App.P)) {
+    try {
       const previousDraft=localStorage.getItem(draftKey), previousLocal=lastDraft, previousVolatile=volatile;
-      // A quota failure writing the draft must leave the shelf untouched. If
-      // the shelf itself is full, put the earlier draft back before returning.
-      if (!writeDraft(project,index)) return false;
+      if (!writeDraft(project,nextSlot,version)) return false;
       try { put(key,value); }
       catch {
         if (localStorage.getItem(draftKey)===lastDraft) put(draftKey,previousDraft);
         lastDraft=previousLocal;volatile=previousVolatile;return failure();
       }
-      const keep=!saving && value!==null ? key : null;
-      // Keep at most one outstanding override made by this tab per shelf space.
-      // A notification also prunes an Undo written during the propagation gap.
-      const previous=writtenOverrides.get(edit.slot);
-      for (const unused of [previous,saving?state.key:null]) {
+      const keep=key===state.key && value!==null ? key : null;
+      for (const unused of [writtenOverrides.get(index),state.key]) {
         if (unused && unused!==keep) {
           try { localStorage.removeItem(unused); } catch { /* The exclusive sweep can retry. */ }
         }
       }
-      if (keep) writtenOverrides.set(edit.slot,keep); else writtenOverrides.delete(edit.slot);
+      if (keep) writtenOverrides.set(index,keep); else writtenOverrides.delete(index);
       return true;
     } catch { return failure(); }
   }
@@ -100,12 +102,11 @@
     try { localStorage.removeItem(unused);writtenOverrides.delete(i); } catch {}
   });
   const store = {
-    slot: () => slot,
+    destination: () => home,
     write:writeDraft,
-    restore(project, index, edit, direction) {
-      if (edit && !changeShelf(edit,direction > 0,project,index)) return false;
-      if (!edit) writeDraft(project,index); // Undo also works in a memory-only session.
-      slot = index;
+    restore(project, destination) {
+      home=destination;
+      writeDraft(project); // Musical Undo and Redo also work in a memory-only session.
       return true;
     }
   };
@@ -115,17 +116,20 @@
     let raw = null;
     try { raw = localStorage.getItem(draftKey); } catch {}
     let draft;
-    if (remembered && (volatile || raw === lastDraft)) draft = {project:remembered,slot};
+    if (remembered && (volatile || raw === lastDraft)) draft = {project:remembered};
     else {
       if (raw != null) {
         try { draft = readDraft(raw); } catch { failure(); }
       }
       draft ||= {project:makeBlank(),slot:-1};
+      home={slot:draft.slot,version:draft.version??null};
+      if (draft.version===undefined && validSlot(home.slot)) {
+        try { home.version=tag(slotState(home.slot).base)??null; } catch { home.slot=-1; }
+      }
       journal = App.makeHistory(store);
       lastDraft = raw; volatile = false;
     }
     adult = {project:App.P,history:App.swapHistory(journal)};
-    slot = draft.slot;
     App.P = draft.project;
     remembered = null;
     App.commit();
@@ -144,13 +148,20 @@
   function save(index, preview) {
     if (!adult || !validSlot(index)) return false;
     const after = JSON.stringify(App.P);
-    let before;
-    try { before = slotState(index).value; } catch { return failure(); }
-    if (preview && (previews[index]?.info !== preview || previews[index].raw !== before)) return failure();
-    const edit = withoutTag(before) === after ? null : {slot:index,before,after:versioned(after)};
-    if (edit ? !changeShelf(edit,true,after,index,true) : !writeDraft(after,index)) return false;
-    slot = index;
-    App.commit(false,edit);
+    let state;
+    try { state=slotState(index); } catch { return failure(); }
+    if (preview===null && state.value!==null) return failure();
+    if (preview && (previews[index]?.info!==preview || previews[index].raw!==state.value)) return failure();
+    const oldVersion=tag(state.base)??null;
+    if (state.value!==null && index===home.slot && oldVersion!==home.version && !preview) return failure();
+    const same=withoutTag(state.value)===after, next=same ? state.base : versioned(after), version=tag(next)??null;
+    if (same ? !writeDraft(after,index,version) : !writeShelf(index,state,slotKey(index),next,index,version,after)) return false;
+    // An in-place save also updates the destination of other visits to this song.
+    if (state.value!==null && home.slot===index && home.version===oldVersion) {
+      updateVersion(index,oldVersion,version);
+    }
+    home.slot=index;home.version=version;
+    removals.delete(index);
     return true;
   }
   function read(index) {
@@ -162,33 +173,68 @@
   }
   function remove(index, preview) {
     if (!adult || !validSlot(index)) return false;
-    let state;
     try {
-      state = slotState(index);
+      const state=slotState(index);
       if (!state.value) return false;
-      // Only remove the version the child saw. Another tab can fill this
-      // space with an entirely different song while the sheet is open.
-      if (preview && (previews[index]?.info !== preview || previews[index].raw !== state.value)) return failure();
-      if (!state.key) {
-        // Older songbooks stored a plain project. Give it the version marker
-        // needed for the same reversible deletion as current saves.
-        put(slotKey(index),versioned(state.value));
-        state = slotState(index);
+      if (preview && (previews[index]?.info!==preview || previews[index].raw!==state.value)) return failure();
+      const active=linkedSlot(), nextSlot=active===index ? -1 : active;
+      let before=state.value, version=tag(state.base);
+      if (state.key) {
+        if (!writeShelf(index,state,state.key,"null",nextSlot,home.version)) return false;
+      } else {
+        // Prepare the deletion under a fresh version first. A failed write leaves
+        // the plain legacy song visible and its existing draft link valid.
+        before=versioned(before);version=tag(before);
+        const mask=overrideKey(index,version);
+        put(mask,"null");
+        if (!writeShelf(index,state,slotKey(index),before,nextSlot,home.version)) {
+          put(mask,null);
+          return false;
+        }
+        writtenOverrides.set(index,mask);
+        updateVersion(index,null,version);
       }
+      removals.delete(index);
+      removals.set(index,{version,before});
+      return true;
     } catch { return failure(); }
-    const edit = {slot:index, before:state.value, after:null, version:tag(state.base)};
-    const next = slot === index ? -1 : slot;
-    if (!changeShelf(edit,true,JSON.stringify(App.P),next)) return false;
-    slot = next;
-    App.commit(false,edit);
-    return true;
   }
-  function replace(project, index) {
+  function lastRemoval() {
+    if (!adult) return -1;
+    try {
+      for (const index of [...removals.keys()].reverse()) {
+        const state=slotState(index);
+        if (tag(state.base)===removals.get(index).version && state.value===null) return index;
+        removals.delete(index);
+      }
+    } catch { /* The storage may be temporarily unavailable. */ }
+    return -1;
+  }
+  function restoreRemoval(expected) {
+    const index=lastRemoval();
+    if (index<0 || (expected!==undefined && expected!==index)) return false;
+    try {
+      const edit=removals.get(index),state=slotState(index);
+      if (state.value!==null || tag(state.base)!==edit.version) return failure();
+      const slot=home.slot===index && home.version===edit.version ? index : linkedSlot();
+      if (!writeShelf(index,state,state.key,edit.before===state.base?null:edit.before,slot,home.version)) return false;
+      removals.delete(index);
+      return true;
+    } catch { return failure(); }
+  }
+  function replace(project, index, version=null) {
     if (!adult || !project) return false;
-    slot = index;
+    home={slot:index,version};
     App.P = project;
     App.commit(true);
     return true;
+  }
+  function load(index) {
+    if (!validSlot(index)) return false;
+    try {
+      const state=slotState(index);
+      return !!state.value && replace(soundProject(state.value),index,tag(state.base)??null);
+    } catch { return failure(); }
   }
 
   function slots() {
@@ -237,9 +283,9 @@
     const activeOverrides=new Set();
     for (let i=0;i<size;i++) {
       const {base,key,value}=slotState(i);
-      // After a reload the session Undo is gone. Reclaim a deleted record and
+      // After a reload the session deletion history is gone. Reclaim a deleted record and
       // its recording during the existing exclusive, cross-tab cleanup.
-      if (base!==null && value===null && !journal?.st.some(entry=>entry.shelfEdit?.slot===i)) {
+      if (base!==null && value===null && removals.get(i)?.version!==tag(base)) {
         put(slotKey(i),null);
         continue;
       }
@@ -256,30 +302,24 @@
     if (adult) projects.push(adult.project);
     if (remembered) projects.push(remembered);
     for (const records of [adult?.history.st, journal?.st]) {
-      for (const entry of records || []) {
-        projects.push(JSON.parse(entry.data));
-        const edit = entry.shelfEdit;
-        if (edit?.before) projects.push(soundProject(edit.before));
-        if (edit?.after) projects.push(soundProject(edit.after));
-      }
+      for (const entry of records || []) projects.push(JSON.parse(entry.data));
     }
+    for (const edit of removals.values()) projects.push(soundProject(edit.before));
     // Throwing on malformed or unreadable storage aborts this sweep before it
     // deletes anything. A later launch can retry once all roots are readable.
     return projects;
   }});
   App.KidsStore = {
-    enter,leave,read,save,remove,slots,
+    enter,leave,read,save,remove,restoreRemoval,slots,load,
     get active() { return !!adult; },
-    get slot() { return slot; },
+    get slot() { return linkedSlot(); },
     get durable() { return !volatile; },
-    load:index => replace(read(index),index),
     fresh:makeBlank => adult ? replace(makeBlank(),-1) : false,
     undo:() => !!adult && App.undo(),
     canUndo:() => !!adult && App.canUndo(),
-    get lastRemoval() {
-      const edit = journal?.st[journal.i]?.shelfEdit;
-      return adult && edit?.version && edit.after===null ? edit.slot : -1;
-    },
+    redo:() => !!adult && App.redo(),
+    canRedo:() => !!adult && App.canRedo(),
+    get lastRemoval() { return lastRemoval(); },
     preferred() {
       try { return localStorage.getItem(modeKey) === "kids"; } catch { return false; }
     },

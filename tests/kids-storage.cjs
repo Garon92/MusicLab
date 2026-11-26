@@ -25,34 +25,101 @@ module.exports = async function kidsStorage(reference) {
       const tone = new AudioBuffer({length:4800,sampleRate:48000,numberOfChannels:1});
       for (let i=0;i<tone.length;i++) tone.getChannelData(0)[i] = .25*Math.sin(i*2*Math.PI*200/48000);
       S.enter(factory);
-      const blank = !S.canUndo() && !App.P.tracks.some(t => t.clips.some(clip=>clip.length));
+      function check(condition, message) {
+        if (!condition) throw Error(message);
+      }
+      check(!S.canUndo() && !S.canRedo() && !App.P.tracks.some(t => t.clips.some(clip=>clip.length)),
+        "Fresh band history starts empty");
       App.P.tracks[6].smp.id = await App.storeBuffer("BAND VOICE",tone);
       App.P.tracks[6].clips[0].push({s:2,n:60,l:2,v:.8,p:1});
       App.commit();
-      const voice = App.P.tracks[6].smp.id, saved = S.save(0);
+      const voice = App.P.tracks[6].smp.id;
+      check(S.save(0), "Save the recorded band");
+      const firstSave = JSON.stringify(S.read(0));
+      // Follow the child's sequence: keep the recording, undo the note, save a second copy, and redo.
+      check(S.undo() && !App.P.tracks[6].smp.id && !App.P.tracks[6].clips[0].length && !S.canUndo(),
+        "Undo immediately after Save undoes the recording edit");
+      check(S.slot===0 && JSON.stringify(S.read(0))===firstSave, "Undo leaves the saved take and its slot intact");
+      check(S.save(2) && S.canRedo() && !S.canUndo(), "Saving an undone draft in another slot keeps its forward history");
+      check(S.redo() && !S.canRedo() && App.P.tracks[6].smp.id===voice && App.P.tracks[6].clips[0].length===1 && S.slot===2,
+        "Redo recovers the recording in the draft");
+      check(!S.read(2).tracks[6].smp.id && JSON.stringify(S.read(0))===firstSave, "Redo leaves both saved copies intact");
+      check(S.remove(2,S.slots()[2]) && S.slot===-1 && S.save(0), "Return the recorded draft to its first slot");
+
       App.P.bpm = 121; App.commit();
-      const independent = S.read(0).bpm === 120 && S.read(0).tracks[6].smp.id === voice;
+      check(S.read(0).bpm===120 && S.save(0) && S.read(0).bpm===121, "Overwriting updates the shelf only on Save");
+      check(S.undo() && App.P.bpm===120 && S.read(0).bpm===121 && S.canRedo(),
+        "Undo after an overwrite preserves the new snapshot");
+      check(S.save(0) && S.canRedo() && S.redo() && App.P.bpm===121 && S.read(0).bpm===120,
+        "Updating an existing slot while undone keeps forward edits");
+      check(S.undo() && App.P.bpm===120 && JSON.stringify(S.read(0))===firstSave,
+        "Both copies of the first recording are unchanged");
+
       S.fresh(factory); App.P.name = "OTHER BAND"; App.commit(); S.save(1);
-      const oldSlot = S.slot;
-      S.save(0);
-      const overwritten = S.read(0).name;
-      const restored = S.undo() && S.read(0).name === "BAND" && App.P.name === "OTHER BAND" && S.slot === oldSlot;
-      S.load(0); const loaded = App.P.tracks[6].smp.id === voice && S.slot === 0;
-      const back = S.undo() && App.P.name === "OTHER BAND" && S.slot === oldSlot;
-      const removed = S.remove(0,S.slots()[0]) && !S.read(0) && S.slot===oldSlot && S.lastRemoval===0 &&
-        S.save(0) && S.undo() && !S.read(0) && S.undo() && S.read(0).tracks[6].smp.id===voice;
-      const keptDraft = S.remove(oldSlot) && S.slot===-1 && App.P.name==="OTHER BAND" && !S.read(oldSlot) &&
-        S.undo() && S.slot===oldSlot && S.read(oldSlot).name==="OTHER BAND";
-      const legacyKey="musiclab.kids.v1.slot.7";
-      localStorage.setItem(legacyKey,JSON.stringify(App.P));
-      const legacy = S.remove(7) && !S.read(7) && S.undo() && S.read(7).name==="OTHER BAND" && S.remove(7);
-      const stale=S.slots()[0];S.save(0);
-      const changedCopyProtected=!S.remove(0,stale) && S.read(0).name==="OTHER BAND" && S.undo() && S.read(0).name==="BAND";
-      const newBlank = S.fresh(factory) && S.slot === -1;
-      const newUndo = S.undo() && App.P.name === "OTHER BAND" && S.slot === oldSlot;
-      S.fresh(factory);
+      check(S.load(0) && App.P.tracks[6].smp.id===voice && S.slot===0, "Load the saved recording");
+      check(S.undo() && App.P.name==="OTHER BAND" && S.slot===1, "Undo load recovers the previous draft and its slot");
+      check(S.redo() && App.P.tracks[6].smp.id===voice && S.slot===0 && S.undo(),
+        "Redo load recovers the selected recording and its slot");
+
+      App.P.bpm=133;App.commit();
+      check(S.remove(0,S.slots()[0]) && !S.read(0) && S.lastRemoval===0, "Delete a saved song explicitly");
+      check(S.undo() && App.P.bpm===120 && !S.read(0) && S.lastRemoval===0,
+        "Undo changes the draft while the deleted song stays off the shelf");
+      check(S.restoreRemoval() && JSON.stringify(S.read(0))===firstSave && S.canRedo(),
+        "Shelf recovery restores the recording without touching forward edits");
+      check(S.redo() && App.P.bpm===133 && S.slot===1, "Return to the latest draft");
+      check(S.remove(1) && S.slot===-1 && App.P.name==="OTHER BAND" && S.remove(0),
+        "Deleting the active save detaches its draft");
+      check(S.lastRemoval===0 && S.restoreRemoval() && S.lastRemoval===1 && S.restoreRemoval() && S.slot===1,
+        "Restore successive deletions and reattach the open song");
+
+      // Open the old unversioned save twice. Each visit remembers this shelf destination.
+      const legacyKey="musiclab.kids.v1.slot.7", legacySong=JSON.stringify({...App.P,name:"LEGACY SONG"});
+      localStorage.setItem(legacyKey,legacySong);
+      check(S.load(7), "Visit an unversioned song"); App.P.bpm=145;App.commit();
+      check(S.load(7) && App.P.bpm===133 && S.slot===7, "Second visit opens the saved version");
+      const beforeDraft=localStorage.getItem("musiclab.kids.v1.draft"), beforeRemoval=S.lastRemoval;
+      const originalSet=Storage.prototype.setItem;
+      for(const blocked of ["musiclab.kids.v1.draft",legacyKey,"musiclab.kids.v1.undo.7."]){
+        let failed=false;
+        Storage.prototype.setItem=function(key,value){
+          if(key.startsWith(blocked)){failed=true;throw new DOMException("Full","QuotaExceededError");}
+          return originalSet.call(this,key,value);
+        };
+        try {check(!S.remove(7) && failed,"Failed legacy deletion at "+blocked);}
+        finally {Storage.prototype.setItem=originalSet;}
+        check(localStorage.getItem(legacyKey)===legacySong && localStorage.getItem("musiclab.kids.v1.draft")===beforeDraft,
+          "Failed deletion preserves the exact legacy song and persisted draft");
+        check(S.slot===7 && S.read(7)?.name==="LEGACY SONG" && S.lastRemoval===beforeRemoval,
+          "Failed deletion keeps the old song selected and adds no shelf recovery");
+        check(!Object.keys(localStorage).some(key=>key.startsWith("musiclab.kids.v1.undo.7.")),
+          "A failed migration leaves no pending deletion marker");
+      }
+      check(S.remove(7) && !S.read(7) && S.slot===-1 && S.restoreRemoval(7) && S.slot===7,
+        "Successful legacy deletion and restoration reattach the active draft");
+      check(S.undo() && App.P.bpm===145 && S.slot===7 && S.redo() && App.P.bpm===133 && S.slot===7,
+        "Both older visits stay attached to the restored legacy song");
+      check(S.remove(7) && S.undo() && S.slot===-1 && S.undo() && S.slot===-1 && S.undo() && S.slot===1 && App.P.name==="OTHER BAND",
+        "Both legacy visits detach after deletion and the other song keeps its own slot");
+      // The previous build could keep a visible replacement under the version's undo key.
+      const version = "older-save";
+      localStorage.setItem("musiclab.kids.v1.slot.3", JSON.stringify({_bandShelfVersion:version, ...App.P}));
+      localStorage.setItem("musiclab.kids.v1.undo.3."+version, JSON.stringify({...App.P,name:"VISIBLE OLD TAKE"}));
+      check(S.read(3).name==="VISIBLE OLD TAKE" && S.remove(3) && S.restoreRemoval() && S.read(3).name==="VISIBLE OLD TAKE" && S.remove(3),
+        "A legacy shelf override keeps the song the child saw");
+      const stale=S.slots()[1];
+      check(S.save(1) && !S.remove(1,stale) && !S.save(1,stale) && S.read(1).bpm===133,
+        "An old cover cannot remove or overwrite the newer save");
+      check(S.fresh(factory) && S.slot===-1 && S.undo() && App.P.name==="OTHER BAND" && S.slot===1 && S.redo() && S.slot===-1,
+        "New song and its slot can be undone and redone");
+      App.P.bpm=140;App.commit();S.undo();
+      check(S.canRedo() && S.save(6), "Saving keeps the way forward");
+      App.P.bpm=141;App.commit();
+      check(!S.canRedo() && S.read(6).bpm===120 && S.remove(6),
+        "A new musical edit branches the draft but leaves its saved snapshot alone");
       const orphan = await App.storeBuffer("UNREFERENCED",tone);
-      const separate = S.slots().filter(Boolean).length === 2 && S.slots()[0].motif[1] === 1 && !S.read(2);
+      check(S.slots().filter(Boolean).length===2 && S.slots()[0].motif[1]===1 && !S.read(2),
+        "Shelf and draft contain the intended songs");
       // Either write can hit quota. The offered song, selected slot and
       // persisted draft must all survive the failed replacement.
       const set=Storage.prototype.setItem;
@@ -77,11 +144,9 @@ module.exports = async function kidsStorage(reference) {
       S.enter(factory);
       const resume = S.canUndo() === oneEdit && App.P.name === "BAND" && S.slot === -1;
       S.leave();
-      return {voice,orphan,blank,saved,independent,restored,overwritten,loaded,back,removed,keptDraft,legacy,changedCopyProtected,newBlank,newUndo,separate,atomic,cleanPaper,consoleCopy,consoleUndo,resume};
+      return {voice,orphan,atomic,cleanPaper,consoleCopy,consoleUndo,resume};
     });
-    for(const flag of ["blank","saved","independent","restored","loaded","back","removed","keptDraft","legacy","changedCopyProtected","newBlank","newUndo","separate","atomic","cleanPaper","consoleCopy","consoleUndo","resume"])
-      assert.equal(result[flag],true,flag);
-    assert.equal(result.overwritten,"OTHER BAND");
+    for(const flag of ["atomic","cleanPaper","consoleCopy","consoleUndo","resume"])assert.equal(result[flag],true,flag);
     await page.close();
 
     const reload = await open();
@@ -106,10 +171,11 @@ module.exports = async function kidsStorage(reference) {
     assert.ok(durable.refs>=3);assert.equal(durable.adult,"DESK TAKE");
     assert.equal(await reload.evaluate(()=>localStorage.getItem("musiclab.kids.v1.slot.7")),null,"The exclusive startup sweep released the deleted shelf space");
 
-    const firstVersion=await reload.evaluate(()=>{
+    const staleDeletion=await reload.evaluate(()=>{
       const S=App.KidsStore;S.enter(App.newProject);
-      if(!S.load(0)||!S.save(4))throw Error("Cannot seed the shared slot");
-      return localStorage.getItem("musiclab.kids.v1.slot.4");
+      if(!S.load(0)||!S.save(4)||!S.remove(4))throw Error("Cannot seed the shared deletion");
+      const keys=Object.keys(localStorage).filter(key=>key==="musiclab.kids.v1.slot.4" || key.startsWith("musiclab.kids.v1.undo.4."));
+      return Object.fromEntries(keys.map(key=>[key,localStorage.getItem(key)]));
     });
     const sibling=await open();
     const secondSaved=await sibling.evaluate(()=>{
@@ -118,33 +184,48 @@ module.exports = async function kidsStorage(reference) {
       return S.load(1) && S.save(4) && S.read(4).name==="OTHER BAND";
     });
     assert.ok(secondSaved,"The second tab completed its save");
-    // WebKit can finish a save in one process before it delivers the storage
-    // update to the other. Reproduce that old snapshot deterministically.
-    const localUndo=await reload.evaluate(version=>{
+    // A lagging WebKit storage snapshot can still show a deleted version after
+    // the other tab saves here. A restore may act only on the deleted version.
+    await reload.evaluate(snapshot=>{
       const get=Storage.prototype.getItem;
-      Storage.prototype.getItem=function(key){return key==="musiclab.kids.v1.slot.4"?version:get.call(this,key);};
-      try {return App.KidsStore.undo();} finally {Storage.prototype.getItem=get;}
-    },firstVersion);
-    assert.ok(localUndo,"The old snapshot still believed its version was current");
+      Storage.prototype.getItem=function(key){
+        if(key==="musiclab.kids.v1.slot.4" || key.startsWith("musiclab.kids.v1.undo.4."))return snapshot[key]??null;
+        return get.call(this,key);
+      };
+      try {App.KidsStore.restoreRemoval();} finally {Storage.prototype.getItem=get;}
+    },staleDeletion);
     await reload.waitForFunction(()=>App.KidsStore.read(4)?.name==="OTHER BAND");
-    assert.equal(await sibling.evaluate(()=>App.KidsStore.read(4)?.name),"OTHER BAND","A stale Undo did not remove the successful save");
-    // Once the writer's newer version has arrived, Undo can reject the conflict immediately.
+    assert.equal(await sibling.evaluate(()=>App.KidsStore.read(4)?.name),"OTHER BAND","A stale restore did not replace the other tab's save");
     assert.ok(await reload.evaluate(()=>App.KidsStore.save(5)));
     await sibling.waitForFunction(()=>App.KidsStore.read(5)?.name==="BAND");
+    assert.ok(await reload.evaluate(()=>{
+      const S=App.KidsStore;
+      App.P.bpm=150;App.commit();
+      window.coverBeforeDelete=S.slots()[5];
+      return S.remove(5,window.coverBeforeDelete);
+    }));
+    await sibling.waitForFunction(()=>!App.KidsStore.read(5));
     assert.ok(await sibling.evaluate(()=>App.KidsStore.save(5)));
     await reload.waitForFunction(()=>App.KidsStore.read(5)?.name==="OTHER BAND");
     const concurrent=await reload.evaluate(()=>{
-      const protectedShelf=!App.KidsStore.undo() && App.KidsStore.read(5).name==="OTHER BAND";
-      App.KidsStore.leave();App.flush();
-      return {protectedShelf,desk:App.P.name};
+      const S=App.KidsStore,version=localStorage.getItem("musiclab.kids.v1.slot.5");
+      const protectedShelf=!S.remove(5,window.coverBeforeDelete) && !S.save(5,window.coverBeforeDelete) && !S.restoreRemoval();
+      const draftHistory=S.undo() && App.P.bpm===120 && S.redo() && App.P.bpm===150;
+      const unchanged=localStorage.getItem("musiclab.kids.v1.slot.5")===version && S.read(5)?.name==="OTHER BAND";
+      S.leave();App.flush();
+      return {protectedShelf,draftHistory,unchanged,desk:App.P.name};
     });
-    assert.ok(concurrent.protectedShelf);assert.equal(concurrent.desk,"DESK TAKE");
+    assert.deepEqual(concurrent,{protectedShelf:true,draftHistory:true,unchanged:true,desk:"DESK TAKE"});
     await reload.waitForFunction(()=>App.stored().name==="DESK IN ANOTHER TAB");
     assert.equal(await sibling.evaluate(()=>App.stored().name),"DESK IN ANOTHER TAB");
     const capacity=await sibling.evaluate(()=>{
       const S=App.KidsStore;
       for(let i=0;i<8;i++)if(!S.read(i)){App.P.name="SLOT "+i;App.commit();if(!S.save(i))return false;}
-      for(let i=0;i<12;i++){App.P.name="TAKE "+i;App.commit();if(!S.save(6)||!S.undo())return false;}
+      for(let i=0;i<12;i++){
+        const name="TAKE "+i;
+        App.P.name=name; App.commit();
+        if(!S.save(6) || !S.undo() || S.read(6).name!==name)return false;
+      }
       const masks=Object.keys(localStorage).filter(k=>k.startsWith("musiclab.kids.v1.undo.6."));
       return masks.length<=1 && S.slots().length===8 && S.slots().every(Boolean) && !S.save(8) && !S.read(-1) && S.read(0).name==="BAND";
     });
@@ -202,6 +283,6 @@ module.exports = async function kidsStorage(reference) {
     assert.equal(await older.evaluate(()=>App.KidsStore.read(0).name),"POCKET BAND");
     assert.deepEqual(await older.evaluate(()=>App.KidsStore.slots()[0].sounds),[]);
     assert.deepEqual(errors,[]);
-    console.log("Kids songbook · named save/open/delete controls, eight visible songs, undoable removal and overwrite, legacy songs, streamed file, multi-tab cleanup and voice recovery");
+    console.log("Kids songbook · durable saves and overwrites, independent draft undo/redo, reversible shelf deletion, eight songs, multi-tab conflicts, streamed file and voice recovery");
   } finally { await context.close(); }
 };

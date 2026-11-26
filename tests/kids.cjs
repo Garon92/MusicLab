@@ -228,10 +228,20 @@ module.exports = async function kidsUI(reference) {
     assert.equal(await key("track").count(),12);assert.equal(await key("pad").count(),6);
     assert.equal(await key("pattern").count(),4);assert.equal(await page.locator("#kids-band canvas[data-kid-screen]").count(),2);
     assert.equal(await key("pad",'[data-row="0"]').getAttribute("aria-label"),"Přehrát zvuk: Kráva");
-    for(const [k,title] of [["play","Přehrát"],["rhythmTools","Rytmus"],["mic","Nahrát hlas"],["shelf","Písničky"]])
+    for(const [k,title] of [["play","Přehrát"],["rhythmTools","Rytmus"],["mic","Nahrát hlas"],["undo","Zpět"],["redo","Vpřed"],["shelf","Písničky"]])
       assert.equal((await key(k).innerText()).trim(),title);
     assert.equal(await page.locator("#kids-inline-sound [data-sound=pad]").isVisible(),true);
     assert.equal(await page.evaluate(()=>App.P.tracks.every(t=>t.clips.every(c=>!c.length))),true);
+    const chosen=cell(1,3),pressed=()=>chosen.getAttribute("aria-pressed");
+    assert.ok(await key("undo").isDisabled() && await key("redo").isDisabled());
+    await chosen.tap();await key("undo").tap();assert.equal(await pressed(),"false");
+    await key("redo").tap();assert.equal(await pressed(),"true");assert.ok(await key("redo").isDisabled());
+    await page.keyboard.press("Meta+z");assert.equal(await pressed(),"false");
+    await page.keyboard.press("Meta+Shift+z");assert.equal(await pressed(),"true");
+    await page.keyboard.press("Control+z");await page.keyboard.press("Control+y");assert.equal(await pressed(),"true");
+    await page.keyboard.press("Control+z");await cell(2,1).tap();
+    assert.ok(await key("redo").isDisabled(),"a new edit replaces the abandoned music branch");
+    await key("undo").tap();
     await key("lock").tap();assert.ok(await page.evaluate(()=>App.Kids.active));
     for(const [width,height] of sizes){
       await page.setViewportSize({width,height});await checkPanel(page,"Band");
@@ -322,6 +332,9 @@ module.exports = async function kidsUI(reference) {
     assert.deepEqual(await page.evaluate(()=>App.P.chain),[0,1]);
     await item("piece",1).tap();await key("moveLeft").tap();
     assert.deepEqual(await page.evaluate(()=>App.P.chain),[1,0]);
+    const arrange=page.locator(".kv-sheet-arrange");
+    await arrange.locator('[data-k="undo"]').tap();assert.deepEqual(await page.evaluate(()=>App.P.chain),[0,1]);
+    await arrange.locator('[data-k="redo"]').tap();assert.deepEqual(await page.evaluate(()=>App.P.chain),[1,0]);
     await key("moveRight").tap();assert.deepEqual(await page.evaluate(()=>App.P.chain),[0,1]);
     await key("back").tap();
     // Space is the transport. The desktop note and file shortcuts remain parked.
@@ -336,8 +349,19 @@ module.exports = async function kidsUI(reference) {
     });
     assert.ok(voice.seconds>.12 && voice.seconds<=6);assert.equal(voice.count,2);assert.equal(voice.ended,"ended");
     await key("shelf").tap();await key("save").tap();await page.waitForFunction(()=>App.KidsStore.slot===0);
+    const savedCover=await item("slot",0).elementHandle(),shelfStatus=base.locator(".kv-song-status");
+    assert.equal(await shelfStatus.textContent(),"Písnička 1 je uložená.");
+    await page.waitForFunction(()=>document.querySelector(".kv-song-status")?.textContent==="");
+    assert.ok(await savedCover.evaluate(el=>el.isConnected),"the saved cover stays under the pointer after the status clears");
+    await savedCover.dispose();
     const expected=await page.evaluate(()=>{const P=App.P;return {notes:P.tracks.map(t=>t.clips.slice(0,4)),chain:P.chain,costumes:P.kidsBand.costumes};});
-    await checkPanel(page,"Shelf");await key("new").tap();
+    await page.keyboard.press("Control+z");
+    assert.equal(await page.evaluate(()=>App.P.tracks[6].smp.id),voice.id,"a shelf shortcut leaves the song open as saved");
+    await key("back").tap();await key("undo").tap();
+    assert.equal(await page.evaluate(()=>App.P.tracks[6].smp.id),null,"one step back from Save undoes the last musical edit");
+    assert.equal(await page.evaluate(()=>App.KidsStore.read(0).tracks[6].smp.id),voice.id,"the saved recording stays on its shelf");
+    await key("redo").tap();assert.equal(await page.evaluate(()=>App.P.tracks[6].smp.id),voice.id);
+    await key("shelf").tap();await checkPanel(page,"Shelf");await key("new").tap();
     assert.ok(await page.evaluate(()=>App.P.tracks.every(t=>t.clips.every(c=>!c.length))));
     await key("shelf").tap();await item("slot",0).tap();await page.waitForFunction(id=>App.P.tracks[6].smp.id===id,voice.id);
     assert.equal(await page.evaluate(()=>kidMidi.sent),0,"The band sent notes or transport to the console's MIDI port");

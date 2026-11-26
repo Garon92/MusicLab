@@ -24,7 +24,6 @@
     arm:'<circle cx="20" cy="20" r="12" fill="#ec796d"/>',
     drag:'<path d="M6 16V7h9M6 7l8 8m7 6-3-11q-1-4 2-4t4 3l3 9 4-1 5 6-1 8-6 5-7-2-9-9q-2-3 0-5t5 0l4 4"/>',
     reverse:'<path d="m18 9-9 8 9 8m-8-8h14a8 8 0 0 1 0 16h-6"/>',
-    undo:'<path d="M15 7 5 16l10 8M6 16h15c14 0 14 15 1 16"/>',
     freeze:'<path d="M20 4v32M6 12l28 16M6 28l28-16m-20-5 6 5 6-5m-12 26 6-5 6 5"/>',
     time:'<circle cx="20" cy="21" r="13"/><path d="M16 4h8m-4 4v4m0 9 7-6"/>',
     repeat:'<path d="M4 18q3-8 6 1t7 0 7 0 5 0 6 0"/><path d="M4 27h6m3 0h4m4 0h2"/>'
@@ -69,7 +68,7 @@
     return end(from)+'<i class="ks-ruler"><i></i></i>'+end(to);
   }
   let root=null,ui=null,mode="echo",scope="family",held=null,armed=false,frozen=false,compact=false;
-  let controls,pad,puck,path,scene,trail,oldBank=null;
+  let controls,pad,puck,path,scene,trail,syncHistory,oldBank=null;
   const config=()=>rooms[mode];
   const master=()=>scope==="master";
   const piece=()=>scope==="piece";
@@ -309,7 +308,7 @@
     if(!compact){
       const freeze=el("freeze"),freezeName=frozen?"Rozhýbat obraz":"Zastavit obraz";
       freeze.setAttribute("aria-pressed",String(frozen));freeze.setAttribute("aria-label",freezeName);freeze.lastElementChild.textContent=freezeName;
-      el("undo").disabled=!App.KidsStore.canUndo();
+      syncHistory();
       root.querySelector(".ks-echo-controls").hidden=!master()||mode!=="echo";
       for(const [action,choices,k] of [["time",[2,5,8],"dtime"],["repeat",[.18,.4,.63],"dfb"]]){
         const button=el(action),n=choices.reduce((a,b)=>Math.abs(b-App.P.fx[k])<Math.abs(a-App.P.fx[k])?b:a);
@@ -338,7 +337,6 @@
       case "play":ui.play();break;
       case "arm":scope="piece";armed=!wasArmed;break;
       case "freeze":frozen=!frozen;break;
-      case "undo":App.Kids.dispatch("undo");break;
       case "reset":reset();break;
       case "reverse":{
         const i=ti(),L=App.P.tracks[i].automation[bank()];
@@ -368,10 +366,10 @@
   const restore=key("reset","Obnovit efekt","reset");
   const inlineFace='<div class="ks-shell">'+target(false)+modes+surface+
     '<div class="ks-inline-tools">'+record+restore+key("expand","Zvětšit","expand",'data-k="sound"')+'</div></div>';
-  const fullFace='<div class="ks-shell"><header class="ks-head"><div class="ks-players">'+key("back","Zpět k rytmu","back")+target(true)+'</div>'+
+  const fullFace='<div class="ks-shell"><header class="ks-head"><div class="ks-players">'+key("back","K rytmu","back")+target(true)+'</div>'+
     modes+'<div class="ks-transport">'+key("play","Přehrát","play")+record+'</div></header><div class="ks-body">'+surface+
     '<aside class="ks-monitors"><div class="ks-screen"><span>Zvuková vlna</span><canvas data-kid-screen="wave" role="img" aria-label="Živá zvuková vlna"></canvas></div><div class="ks-screen"><span>Hluboké a vysoké tóny</span><canvas data-kid-screen="bands" role="img" aria-label="Hluboké a vysoké tóny ve zvuku"></canvas></div>'+key("freeze","Zastavit obraz","freeze")+'</aside></div>'+
-    '<footer class="ks-foot"><div class="ks-echo-controls">'+key("time","Rozestup ozvěn","time")+key("repeat","Počet ozvěn","repeat")+'</div><div class="ks-tools">'+key("reverse","Obrátit pohyb","reverse")+restore+key("undo","Vrátit úpravu","undo")+'</div></footer></div>';
+    '<footer class="ks-foot"><div class="ks-echo-controls">'+key("time","Rozestup ozvěn","time")+key("repeat","Počet ozvěn","repeat")+'</div><div class="ks-tools">'+key("reverse","Obrátit pohyb","reverse")+restore+'</div></footer></div>';
   let events;
   function open(host,api,options={}){
     detach();root=host;ui=api;compact=!!options.compact;
@@ -379,6 +377,7 @@
     else root.classList.add("kids-surface","ks-room");
     root.innerHTML=compact?inlineFace:fullFace;
     controls=root.firstElementChild;controls.addEventListener("click",action);
+    if(!compact)syncHistory=App.KidsView.historyPair(controls.querySelector(".ks-tools"));
     events=new AbortController();
     const details=controls.querySelector(".ks-scope"),summary=details.querySelector("summary");
     document.addEventListener("pointerdown",e=>{if(!details.contains(e.target))details.open=false;},{capture:true,signal:events.signal});
@@ -412,7 +411,7 @@
     if(!root)return;
     events.abort();
     release();root.classList.remove("kids-surface","ks-room","ks-inline");root.replaceChildren();
-    root=null;ui=null;controls=null;pad=null;puck=null;path=null;scene=null;trail=null;
+    root=null;ui=null;controls=null;syncHistory=null;pad=null;puck=null;path=null;scene=null;trail=null;
     oldBank=null;
   }
   function dropPicture(row,clientX,clientY){
