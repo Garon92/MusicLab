@@ -169,8 +169,6 @@ html.face-kids body:has(>#kids-root[hidden])::before{content:"";position:fixed;l
 .kv-tempo-thumb{top:36%;width:35%;height:60%;background:#fff0c9}.kv-tempo-thumb svg{width:94%;height:94%}.kv-tempo-track{bottom:64%}
 .kv-header .kv-output{max-height:var(--kv-key);border-width:1px;box-shadow:none}
 .kv-header .kv-monitor-bands{flex:1 0 77px}.kv-header .kv-monitor-wave{flex:1.6 0 64px}
-.kv-monitor-name{position:absolute;bottom:3px;left:5px;padding:1px 3px;border-radius:4px;background:#25364c;color:#d1e3d9;pointer-events:none;font:600 clamp(10px,.85vw,13px)/1.1 system-ui,sans-serif}
-.kv-glass canvas{height:100%} /* the screens carry no label now: the picture fills the glass and the wave sits in its middle */
 .kv-header .kv-lock{border-width:1px;background:#e7dec8;color:#4f5b56;box-shadow:0 2px #8d917e}
 .kv-lock-time{position:absolute;right:5px;top:5px;pointer-events:none;font:650 10px/1.1 system-ui,sans-serif}
 .kv-header-menu{position:relative;flex:0 0 auto}
@@ -631,7 +629,6 @@ html.face-kids body:has(>#kids-root[hidden])::before{content:"";position:fixed;l
 @keyframes kv-breathe{from{outline-color:#f0a53a}to{outline-color:#ffd88a}}
 .kv-pattern.kv-stamp-lift,.kv-chain-print i.kv-stamp-lift{opacity:.45;outline:2px dashed #6c5a3c;outline-offset:-2px}
 .kv-chain-name{cursor:default}
-.kv-monitor-name:empty{display:none}
 @media(prefers-reduced-motion:reduce){.kv-pattern.sounding,.kv-chain-print i.sounding{animation:none}}
 
 /* Rename, download and share the open song. The name is typed into a field as large as a button. */
@@ -640,3 +637,29 @@ html.face-kids body:has(>#kids-root[hidden])::before{content:"";position:fixed;l
 .kv-share-link{font-size:13px;text-transform:none;margin-top:6px;width:100%}
 .kv-rename-field:focus-visible,.kv-share-link:focus-visible{outline:3px dashed var(--kid-focus);outline-offset:2px}
 .kv-share-song{background:#cfe9dc}.kv-download-song{background:#e3dcf3}.kv-rename-song{background:#fbe6b3}
+
+/* The sound up close. The header's screens are one button: a tap swaps the notes for eight screens in the same grey
+   frame, each named under its glass, and the screens stay pressed while they are open. Noty in the footer, Escape or
+   another tap on the header's screens brings the notes back. */
+.kids-surface .kv-output{cursor:pointer;color:inherit;font:inherit;text-align:left;transition:background .15s}
+@media(hover:hover){.kids-surface .kv-output:hover{background:#5f7475}}
+.kids-surface .kv-output:active{transform:translateY(1px)}
+.kids-surface .kv-output:focus-visible{outline:3px dashed var(--kid-focus);outline-offset:2px}
+.kids-surface .kv-output[aria-pressed=true]{background:var(--kid-selected);border-color:var(--kid-selected)}
+.kv-main.kv-show-scopes{grid-template-columns:minmax(0,1fr)}
+.kv-main.kv-show-scopes>:not(.kv-scopes){display:none!important}
+.kv-scopes{min-width:0;min-height:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:clamp(6px,.9vw,14px);
+  padding:clamp(7px,1.1vh,14px);border:var(--kv-rim) solid var(--kid-ink);border-radius:clamp(15px,2.2vh,26px);background:#526566;box-shadow:inset 0 2px #99aba2,0 2px #676955}
+.kv-scopes[hidden]{display:none}
+.kv-scope{margin:0;min-width:0;min-height:0;display:flex;flex-direction:column;gap:clamp(3px,.5vh,6px)}
+.kv-scope .kv-glass{flex:1;min-height:0;border-radius:clamp(8px,1.2vh,14px);border-color:#1d2c3d}
+.kv-scope figcaption{color:#f2f0df;font:750 clamp(12px,1.7vh,18px)/1.1 system-ui,sans-serif;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Who plays: a bar for each musician and set with notes, as loud as its own strip sounds, its picture lifted while it does. */
+.kv-band-meter{position:absolute;inset:0;display:grid;grid-template-columns:repeat(var(--count,4),minmax(0,1fr));gap:clamp(2px,.5vw,8px);padding:9% 5% 4%}
+.kv-band-voice{min-width:0;min-height:0;display:flex;flex-direction:column;align-items:center;gap:5%}
+.kv-band-bar{flex:1;width:min(62%,26px);min-height:0;position:relative;border-radius:5px;background:#2f4359;overflow:hidden}
+.kv-band-bar i{position:absolute;inset:auto 0 0;height:calc(var(--level,0)*100%);border-radius:5px;background:var(--part);transition:height 80ms linear}
+.kv-band-face{flex:0 0 auto;width:100%;max-width:64px;aspect-ratio:1.2;display:block;opacity:.5;filter:saturate(.55);transition:opacity .15s,transform .15s,filter .15s}
+.kv-band-face svg{display:block;width:100%;height:100%}
+.kv-band-voice.on .kv-band-face{opacity:1;filter:none;transform:translateY(-6%) scale(1.08)}
+@media(prefers-reduced-motion:reduce){.kv-band-bar i,.kv-band-face{transition:none}}

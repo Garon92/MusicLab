@@ -336,7 +336,7 @@
       micLevel:music.micLevel(),recordProgress:mic==="recording"?Math.min(1,(now-recordSince)/6000):0};
     if(sound.hidden)App.KidsView.frame(f);
     App.KidsSound.frame(c,f.levels);
-    if(now-signalFrame>=32){App.KidsScopes.draw(root);signalFrame=now;}
+    if(now-signalFrame>=32){App.KidsScopes.draw(root,f);signalFrame=now;}
   }
   function init(api){
     bridge=api;root=document.getElementById("kids-root");surface=document.getElementById("kids-band");sound=document.getElementById("kids-sound");

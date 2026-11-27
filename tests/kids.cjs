@@ -226,7 +226,7 @@ module.exports = async function kidsUI(reference) {
     }));
     assert.equal(await key("note").count(),48);
     assert.equal(await key("track").count(),12);assert.equal(await key("pad").count(),6);
-    assert.equal(await key("pattern").count(),4);assert.equal(await page.locator("#kids-band canvas[data-kid-screen]").count(),2);
+    assert.equal(await key("pattern").count(),4);assert.equal(await page.locator("#kids-band .kv-output canvas[data-kid-screen]").count(),2);
     assert.equal(await key("pad",'[data-row="0"]').getAttribute("aria-label"),"Přehrát zvuk: Kráva");
     for(const [k,title] of [["play","Přehrát"],["rhythmTools","Rytmus"],["mic","Nahrát hlas"],["undo","Zpět"],["redo","Vpřed"],["shelf","Písničky"]])
       assert.equal((await key(k).innerText()).trim(),title);
@@ -260,7 +260,7 @@ module.exports = async function kidsUI(reference) {
     await key("play").tap();await key("rhythmTools").press("ArrowDown");await key("arm").press("Escape");
     assert.equal(await page.locator(".kv-empty-hint").count(),0,"playing an empty grid never draws a floating pointer");
     assert.equal(await key("arm").count(),0);assert.equal(await key("rhythmTools").evaluate(el=>el===document.activeElement),true);
-    await key("song").tap();await page.locator(".kv-monitor-wave canvas").click();assert.equal(await key("songAll").count(),0);
+    await key("song").tap();await page.locator(".kv-beats").click();assert.equal(await key("songAll").count(),0);
     assert.ok(await page.evaluate(()=>App.Seq.playing));await key("play").tap();
     await checkDeskDrags(page);
     await checkEraser(page,key);

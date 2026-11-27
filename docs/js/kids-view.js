@@ -108,6 +108,10 @@
   // The band on stage: everyone with notes in what PLAY plays (this piece or the whole song). Each hops on its own notes.
   let stage,stageFloor,stageRiser,stageOn=false,stageMembers=new Map(),stageKeys=[],stageList=[],lastBeat="",lastResting="";
   const stageSize=new ResizeObserver(()=>{if(stageOn&&stageList.length)App.KidsStage.arrange(stageFloor,stageList,stageRiser);});
+  // The sound up close: a tap on the header's screens swaps the notes for eight screens (kids-scopes.js draws seven).
+  let scopes,bandMeter,scopesOn=false;
+  const SCREENS=[["scope","Vlna","Zvuková vlna zblízka"],["spectrum","Hloubky a výšky","Hluboké a vysoké tóny ve zvuku"],["waterfall","Vodopád","Hluboké a vysoké tóny v čase, nové vpravo"],["keys","Tóny","Které tóny zní, na klávesách"],
+    ["rhythm","Rytmus","Jak silně zní každá z osmi dob dílku"],["loudness","Síla zvuku","Jak silně kapela hrála v posledních vteřinách"],["stereo","Vlevo a vpravo","Odkud zvuk zní, zleva nebo zprava"],["band","Kdo hraje","Jak nahlas hraje každý hudebník a sada"]];
   const reduced=matchMedia("(prefers-reduced-motion: reduce)");
   const memberKey=(part,row)=>part<4?String(part):part+":"+row;
   // A picture plays its note: a squash, a hop and back, in the time of one beat.
@@ -127,19 +131,26 @@
     note.innerHTML=svg('<path d="M15 29V8l12-3v18" fill="none"/><ellipse cx="11" cy="29" rx="5" ry="4" fill="var(--note)"/><ellipse cx="23" cy="24" rx="5" ry="4" fill="var(--note)"/>');
     note.animate([{opacity:0,transform:"translate(-50%,0) scale(.6)"},{opacity:1,transform:"translate(-50%,-30%) scale(1)",offset:.2},{opacity:0,transform:"translate(-50%,-160%) scale(.9) rotate(12deg)"}],{duration:900,easing:"ease-out"}).onfinish=()=>note.remove();
   }
-  function toggleStage(on){
-    if(!model||on===stageOn)return;
-    if(on&&model.armed)call("disarm");
-    stageOn=on;lastResting="";host.querySelector(".kv-main").classList.toggle("kv-show-stage",on);stage.hidden=!on;
-    render(model);if(on&&stageList.length)App.KidsStage.arrange(stageFloor,stageList,stageRiser);
-    (on?stage.querySelector(".kv-member,[data-k=stageBack]"):mainButtons.stage)?.focus({preventScroll:true});
+  // What the middle of the desk shows: the notes (""), the band on stage or the screens up close.
+  function showView(next){
+    const was=stageOn?"stage":scopesOn?"scopes":"";
+    if(!model||next===was)return;
+    if(next&&model.armed)call("disarm");
+    stageOn=next==="stage";scopesOn=next==="scopes";lastResting="";
+    const main=host.querySelector(".kv-main");main.classList.toggle("kv-show-stage",stageOn);main.classList.toggle("kv-show-scopes",scopesOn);
+    stage.hidden=!stageOn;scopes.hidden=!scopesOn;
+    render(model);if(stageOn&&stageList.length)App.KidsStage.arrange(stageFloor,stageList,stageRiser);
+    (stageOn?stage.querySelector(".kv-member,[data-k=stageBack]"):was==="stage"&&!next?mainButtons.stage:null)?.focus({preventScroll:true});
   }
+  const toggleStage=on=>showView(on?"stage":"");
   function renderStage(state){
-    const b=mainButtons.stage,goal=stageOn?"notes":"stage";
+    const b=mainButtons.stage,away=stageOn||scopesOn,goal=away?"notes":"stage";
     if(b.dataset.goal!==goal){
-      b.dataset.goal=goal;setIcon(b,goal);caption(b,stageOn?"Noty":"Kapela");
-      label(b,stageOn?"Zpět k notám":"Kapela: kdo hraje, ten skáče");
+      b.dataset.goal=goal;setIcon(b,goal);caption(b,away?"Noty":"Kapela");
+      label(b,away?"Zpět k notám":"Kapela: kdo hraje, ten skáče");
     }
+    pressed(mainButtons.scopes,scopesOn);
+    if(scopesOn)renderScopes(state);
     if(!stageOn)return;
     // This piece, or every piece of the song when PLAY plays the song.
     const scope=state.song&&state.chain.length?[...new Set(state.chain)]:[state.pattern],found=new Map();
@@ -162,6 +173,16 @@
       m.dataset.key=key;m.style.setProperty("--part",colour[part]);stageMembers.set(key,m);stageList.push({key,part,el:m});
     }
     App.KidsStage.arrange(stageFloor,stageList,stageRiser);
+  }
+  // Who plays: everyone with notes in what PLAY plays, the four musicians when nobody has any yet.
+  function renderScopes(state){
+    const scope=state.song&&state.chain.length?[...new Set(state.chain)]:[state.pattern],found=new Set();
+    for(const p of scope)for(const beat of state.hits[p])for(const [part] of beat)found.add(part);
+    const list=found.size?[...found].sort((a,b)=>a-b):[0,1,2,3],signature=list.join(",")+"|"+(state.costumes||[]).join(",");
+    if(bandMeter.dataset.parts===signature)return;
+    bandMeter.dataset.parts=signature;bandMeter.style.setProperty("--count",list.length);
+    bandMeter.innerHTML=list.map(i=>'<span class="kv-band-voice" data-part="'+i+'" style="--part:'+colour[i]+'"><span class="kv-band-bar"><i></i></span><span class="kv-band-face">'+character(i,state.costumes?.[i]||0)+'</span></span>').join("");
+    label(bandMeter,"Kdo hraje: "+list.map(partLabel).join(", "));
   }
   // Called on every beat that passes while PLAY runs: everyone with a note on it hops, wherever they are shown.
   function beatHits(pattern,beat){
@@ -450,10 +471,10 @@
     const note='<ellipse cx="'+x+'" cy="'+top+'" rx="3.3" ry="2.7" fill="'+ink+'" stroke="none"/><path d="M'+(x+3)+' '+top+'v-9" stroke="'+ink+'" stroke-width="1.8"/>';
     return svg('<g transform="translate(1 1) scale(.42)" stroke-width="3.4">'+symbols[["","bass","melody","mic"][part]]+'</g>'+bars+note);
   }
-  function scope(parent,type,name,caption=name){
-    const monitor=element("div","kv-monitor kv-monitor-"+type,parent),face=element("div","kv-glass",monitor);
-    const cv=element("canvas","",face);cv.dataset.kidScreen=type;cv.setAttribute("role","img");label(cv,name);
-    const legend=element("span","kv-monitor-name",face);legend.setAttribute("aria-hidden","true");legend.textContent=caption;
+  // A screen in the header; the header's screens together are the button that opens them up close.
+  function scope(parent,type){
+    const monitor=element("span","kv-monitor kv-monitor-"+type,parent),face=element("span","kv-glass",monitor);
+    const cv=element("canvas","",face);cv.dataset.kidScreen=type;cv.setAttribute("aria-hidden","true");
     return monitor;
   }
   function dismissTools(e){
@@ -555,8 +576,9 @@
     recordButton=mainButtons.mic=caption(button(transport,"Nahrát hlas","mic",icon("mic"),()=>call("mic"),"kv-mic"),"Nahrát hlas");
     const editTools=element("div","kv-edit-tools",header);
     rhythmTools(editTools);eraser(editTools);
-    const output=element("div","kv-output",header);output.setAttribute("role","group");label(output,"Průběh a výšky zvuku");
-    scope(output,"wave","Zvuková vlna","");scope(output,"bands","Basy a výšky",""); // the screens show their pictures without labels over them
+    const output=mainButtons.scopes=element("button","kv-output",header);output.type="button";output.dataset.k="scopes";
+    label(output,"Zvuk zblízka: osm obrazovek");output.addEventListener("click",()=>showView(scopesOn?"":"scopes"));
+    scope(output,"wave");scope(output,"bands");
     const group=element("div","kv-utilities",header);
     mainButtons.syncHistory=historyPair(group);
     mainButtons.shelf=caption(button(group,"Moje písničky","shelf",icon("shelf"),e=>show("shelf",e.currentTarget),"kv-shelf"),"Písničky");
@@ -613,6 +635,13 @@
     const waiting=element("div","kv-stage-empty",stage);
     waiting.innerHTML='<span class="kv-stage-chairs">'+svg('<path d="M10 40V22h14v18M10 30h14M44 40V22h14v18M44 30h14M78 40V22h14v18M78 30h14" stroke-width="2.6"/><path d="M7 22h20M41 22h20M75 22h20" stroke-width="3.4"/>',"0 0 102 44")+'</span><strong>Kapela čeká na noty</strong>';
     caption(button(waiting,"Zpět k notám","stageBack",icon("notes"),()=>toggleStage(false),"kv-captioned"),"K notám");
+    scopes=element("section","kv-scopes",main);scopes.hidden=true;label(scopes,"Zvuk zblízka");
+    for(const [type,name,description] of SCREENS){
+      const cell=element("figure","kv-scope kv-scope-"+type,scopes),face=element("div","kv-glass",cell);
+      if(type==="band"){bandMeter=element("div","kv-band-meter",face);bandMeter.setAttribute("role","img");}
+      else{const cv=element("canvas","",face);cv.dataset.kidScreen=type;cv.setAttribute("role","img");label(cv,description);}
+      element("figcaption","",cell).textContent=name;
+    }
     const foot=element("footer","kv-bottom",deck);
     const bank=element("div","kv-patterns",foot);bank.setAttribute("role","group");label(bank,"Dílky písničky");element("strong","kv-foot-label",bank).textContent="Dílky písničky";patternButtons=[];
     for(let i=0;i<4;i++){
@@ -629,7 +658,7 @@
     // A tap on a place in the song brings that piece onto the board.
     chainPreview.addEventListener("click",e=>{const t=e.target.closest(".kv-chain-print i");if(t)call("pattern",+t.dataset.pattern);});
     // The band: beside the pieces and the song it plays, and still there while the stage is shown.
-    mainButtons.stage=button(foot,"Kapela","stage","",()=>toggleStage(!stageOn),"kv-captioned kv-stage-toggle");
+    mainButtons.stage=button(foot,"Kapela","stage","",()=>showView(stageOn||scopesOn?"":"stage"),"kv-captioned kv-stage-toggle");
     element("span","kv-caption",mainButtons.stage);
     modal=element("section","kv-sheet",host);modal.hidden=true;modal.setAttribute("role","region");
     toast=element("div","kv-flash",host);toast.setAttribute("role","status");
@@ -640,7 +669,7 @@
     // Escape leaves the stage wherever the focus is, as long as nothing else on the page takes the key first.
     if(model && e.key==="Escape" && !e.defaultPrevented && !document.querySelector("dialog[open]")){
       if(pageKind){e.preventDefault();closePanel();return;}
-      if(stageOn){e.preventDefault();toggleStage(false);return;}
+      if(stageOn||scopesOn){e.preventDefault();showView("");return;}
     }
     if(!model || e.defaultPrevented || e.isComposing || e.altKey || !(e.ctrlKey || e.metaKey))return;
     if(e.target.closest?.('textarea,input:not([type="range"]),[contenteditable="true"]'))return;
@@ -652,7 +681,7 @@
   function keys(e){
     if(!host?.contains(e.target))return;
     if(e.key==="Escape"&&pageKind){e.preventDefault();e.stopPropagation();closePanel();}
-    else if(e.key==="Escape"&&stageOn){e.preventDefault();e.stopPropagation();toggleStage(false);}
+    else if(e.key==="Escape"&&(stageOn||scopesOn)){e.preventDefault();e.stopPropagation();showView("");}
     else if(e.key==="Escape"&&model?.armed){e.preventDefault();e.stopPropagation();call("disarm");mainButtons.rhythm.focus({preventScroll:true});}
   }
   function render(state){
@@ -704,8 +733,9 @@
     }
     mainButtons.tapHint.textContent="Ťukej vlevo. Tóny se zapíšou do dílku "+letter(state.pattern)+".";
     label(armButton,"Hrát na obrázky vlevo. Tóny se zapíšou do dílku "+letter(state.pattern)+".");
-    mainButtons.rhythm.parentElement.hidden=!!state.armed||stageOn;mainButtons.finish.hidden=!state.armed||stageOn;
-    mainButtons.eraseRow.closest("details").hidden=stageOn;
+    const away=stageOn||scopesOn; // the board is not shown, so neither are the tools that write on it
+    mainButtons.rhythm.parentElement.hidden=!!state.armed||away;mainButtons.finish.hidden=!state.armed||away;
+    mainButtons.eraseRow.closest("details").hidden=away;
     board.classList.toggle("kv-live-input",!!state.armed);
     const row=state.row??0,rowName=rowLabel(frameTrack,row);
     mainButtons.eraseScope.textContent="Vymazat noty";
@@ -780,6 +810,12 @@
       const resting=model.playing&&model.song&&f.pattern!=null?String(f.pattern):"";
       if(resting!==lastResting){lastResting=resting;for(const [key,m] of stageMembers)m.classList.toggle("resting",!!resting&&!stageKeys[+resting]?.has(key));}
     }
+    // Each bar jumps up with its strip and falls back slowly, as a level meter does.
+    if(scopesOn)for(const voice of bandMeter.children){
+      voice.shown=Math.max(App.clamp(Number(f.levels?.[+voice.dataset.part])||0,0,1),(voice.shown||0)*.93);
+      const level=String(+voice.shown.toFixed(3));
+      if(voice.style.getPropertyValue("--level")!==level){voice.style.setProperty("--level",level);voice.classList.toggle("on",+level>.04);}
+    }
     const step=model.playing && (f.pattern??model.pattern)===model.pattern ? (f.step??-1) : -1;
     if(step!==lastStep){
       for(let i=0;i<8;i++){lights[i].classList.toggle("lit",i===step);for(const row of cells)row[i].classList.toggle("beat",i===step);}
@@ -808,7 +844,7 @@
     host.removeEventListener("keydown",keys);host.removeEventListener("pointerdown",dismissTools,true);window.removeEventListener("blur",stops);window.removeEventListener("keydown",historyKey);host.replaceChildren();host.classList.remove("kids-surface");
     host=null;send=null;model=null;pageKind="";lastFocus=null;lastStep=-1;lastPlayPattern=-1;lastFeedback=null;lastFrame={};
     if(stageFloor)stageSize.unobserve(stageFloor);
-    stage=stageFloor=stageRiser=null;stageOn=false;stageMembers=new Map();stageKeys=[];stageList=[];lastBeat="";lastResting="";
+    stage=stageFloor=stageRiser=scopes=bandMeter=null;stageOn=scopesOn=false;stageMembers=new Map();stageKeys=[];stageList=[];lastBeat="";lastResting="";
     cells=[];partButtons=[];patternButtons=[];lights=[];chainSlots=[];pads=[];mainButtons={};
   }
   App.KidsView={mount,render,frame,flash,unmount,historyPair,movePiece,insertPiece,removePiece,character,rowArt,rowName,partName:i=>parts[i],partColour:i=>colour[i],partLabel,rowLabel};

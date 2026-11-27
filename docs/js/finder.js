@@ -51,6 +51,7 @@
     note("Studio","Costumes · hold a musician","HOLD","kids band change sound");
     note("Studio","How loud the band plays","HLASITOST","kids master volume loud quiet hlasitost potichu nahlas");
     note("Studio","Watch the band play","KAPELA","kids stage concert crowd band hop pódium kapela koncert skáčou");
+    note("Studio","The sound up close","SCREENS","kids scope spectrum waterfall keys rhythm stereo loudness meter vlna vodopád tóny rytmus síla vlevo vpravo kdo hraje obrazovky");
     note("Studio","Delete a saved song","HOLD SMAZAT","kids shelf remove song písnička smazat podržet");
     note("Studio","Name, download or share the open song","PÍSNIČKY","kids rename download wav share link url přejmenovat stáhnout sdílet odkaz");
     note("Studio","Six rows in each of 12 sets","PICTURE","kids pads farm animals jungle silly burp fart toy space Czech legrace krknutí prdík vesmír hračky džungle");
