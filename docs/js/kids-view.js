@@ -40,6 +40,9 @@
     drum:'<ellipse cx="20" cy="14" rx="14" ry="6"/><path d="M6 14v14c8 7 21 7 28 0V14M11 21l4 9 6-10 6 9 4-10"/>',
     bass:'<path d="m19 22 12-15 3 2-12 15c2 5 1 8-2 10-5 3-11-1-12-5-1-5 3-10 7-8Z"/><circle cx="17" cy="26" r="2"/><path d="m29 9 4 3"/>',
     melody:'<path d="m4 23 23-5 6 6-23 7ZM9 23l6 6m1-7 5 6m0-7 5 5M12 14l12-5"/><circle cx="10" cy="15" r="3" fill="currentColor"/>',
+    rename:'<path d="m8 32 3-9L27 7l6 6-16 16Z" fill="#f4c65c"/><path d="m24 10 6 6M8 32l9-3"/><path d="M21 34h12"/>',
+    download:'<path d="M20 5v19m-8-8 8 8 8-8"/><path d="M6 26v7h28v-7"/>',
+    share:'<circle cx="11" cy="20" r="5" fill="#8bceb7"/><circle cx="29" cy="10" r="5" fill="#f2a58b"/><circle cx="29" cy="30" r="5" fill="#b0b5e9"/><path d="m15.5 17.5 9-5m-9 10 9 5"/>',
     pads:'<rect x="5" y="5" width="12" height="12" rx="3"/><rect x="23" y="5" width="12" height="12" rx="3"/><rect x="5" y="23" width="12" height="12" rx="3"/><rect x="23" y="23" width="12" height="12" rx="3"/>',
     stage:'<path d="M3 6h34v4H3Z" fill="#d9614e"/><path d="M4 10v24q7-3 9-12 1-7-2-12Zm32 0v24q-7-3-9-12-1-7 2-12Z" fill="#e9795e"/><path d="M3 34h34" stroke-width="3"/><g fill="currentColor" stroke="none"><circle cx="15" cy="24" r="3"/><circle cx="20" cy="20.5" r="3.2"/><circle cx="25" cy="24" r="3"/><path d="M11 33q0-6 4-6t4 6Zm5 0q0-8 4-8t4 8Zm5 0q0-6 4-6t4 6Z"/></g>',
     notes:'<rect x="4" y="6" width="32" height="28" rx="5"/><path d="M4 15h32M4 25h32M15 6v28M25 6v28" stroke-width="1.6"/><circle cx="10" cy="20" r="3" fill="currentColor"/><circle cx="20" cy="10.5" r="3" fill="currentColor"/><circle cx="30" cy="29.5" r="3" fill="currentColor"/>'
@@ -240,7 +243,7 @@
   }
   function flash(type,subject){
     if(!host||!type||pageKind==="shelf"||pageKind==="replace")return;
-    const messages={kept:["shelf","Rozdělaná písnička je na poličce"],saved:["star","Písnička uložena"],restored:["shelf","Písnička je zpátky"],recorded:["mic","Hlas nahrán"],error:["warn","Akce se nepovedla"],micError:["mic","Mikrofon není dostupný"],quiet:["mic","Nebyl slyšet žádný hlas"]};
+    const messages={linked:["share","Písnička z odkazu je otevřená"],kept:["shelf","Rozdělaná písnička je na poličce"],saved:["star","Písnička uložena"],restored:["shelf","Písnička je zpátky"],recorded:["mic","Hlas nahrán"],error:["warn","Akce se nepovedla"],micError:["mic","Mikrofon není dostupný"],quiet:["mic","Nebyl slyšet žádný hlas"]};
     const [mark,message]=type==="erased"?["erase","Vymazáno · "+subject]:messages[type]||["check","Hotovo"];
     toast.innerHTML=icon(mark);element("span","",toast).textContent=message;toast.classList.toggle("bad",["error","micError","quiet"].includes(type));toast.classList.remove("visible");
     void toast.offsetWidth;toast.classList.add("visible");clearTimeout(toastTimer);
@@ -297,6 +300,22 @@
         replaceAt=-1;replaceTarget=null;pageKind="replace";renderPanel();modal.querySelector('[data-k="slot"]')?.focus();
       },"kv-save");
       songAction(actions,"Nová písnička","new","newSong",()=>{if(call("new"))closePanel();});
+      // The open song: its name, its sound as a file, and a link that opens it anywhere.
+      const status=()=>modal.querySelector(".kv-song-status");
+      songAction(actions,"Přejmenovat","rename","rename",()=>renameRow(inner,status),"kv-rename-song");
+      const down=songAction(actions,"Stáhnout","download","download",async()=>{
+        down.disabled=true;status().textContent="Připravuji zvuk…";
+        try{const file=await call("download");status().textContent="Staženo: "+file;}catch{status().textContent="Stažení se nepovedlo.";}
+        finally{if(down.isConnected)down.disabled=false;}
+      },"kv-download-song");
+      label(down,"Stáhnout písničku jako zvuk");
+      const share=songAction(actions,"Sdílet","share","share",async()=>{
+        const got=await call("share");if(!got)return;
+        const s=status();s.replaceChildren();
+        element("span","",s).textContent=got.copied?"Odkaz je zkopírovaný. Kdo ho otevře, uslyší tuhle písničku (bez nahraného hlasu).":"Zkopíruj si odkaz:";
+        if(!got.copied){const field=element("input","kv-share-link",s);field.readOnly=true;field.value=got.link;label(field,"Odkaz na písničku");field.select();}
+      },"kv-share-song");
+      label(share,"Sdílet písničku odkazem");
       if(model.lastRemoval>=0){
         const index=model.lastRemoval;
         const restore=songAction(actions,"Vrátit smazání","restoreSlot","undo",()=>{
@@ -339,6 +358,19 @@
     status.setAttribute("role","status");
     updateShelfStatus(status);
   }
+  // A name typed in place: Enter or Hotovo keeps it, Escape or Zrušit leaves the old one.
+  function renameRow(inner,status){
+    if(inner.querySelector(".kv-rename-row"))return;
+    const row=element("div","kv-rename-row",inner),field=element("input","kv-rename-field",row);
+    inner.insertBefore(row,inner.querySelector(".kv-shelf-grid"));
+    Object.assign(field,{type:"text",maxLength:28,placeholder:"Název písničky",value:["POCKET BAND","UNTITLED"].includes(App.P.name)?"":App.P.name});label(field,"Název písničky");
+    const done=()=>{const name=field.value.trim();if(!name){field.focus();return;}row.remove();if(call("rename",name))status().textContent="Písnička se jmenuje "+name.toUpperCase().slice(0,28)+".";};
+    const cancel=()=>{row.remove();modal.querySelector('[data-k="rename"]')?.focus({preventScroll:true});};
+    caption(button(row,"Uložit název","renameDone",icon("check"),done,"kv-save"),"Hotovo");
+    caption(button(row,"Zrušit přejmenování","renameCancel",icon("back"),cancel),"Zrušit");
+    field.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();done();}else if(e.key==="Escape"){e.preventDefault();e.stopPropagation();cancel();}else e.stopPropagation();});
+    field.focus();
+  }
   function updateShelfStatus(status){
     let next="";
     if(model.feedback==="error")next="Písničky se nepodařilo změnit.";
@@ -355,7 +387,6 @@
     let signature=pageKind;
     if(pageKind==="wardrobe")signature+=pageTrack+"."+model.costumes?.[pageTrack];
     if(onShelf)signature+=[shelf.map(item=>item?.revision||0).join(","),model.slot,model.lastRemoval,replaceAt,replaceTarget?.revision].join(".");
-    if(pageKind==="arrange")signature+=[chain.join(""),chainPage,chainIndex,model.song,model.playing,model.canUndo,model.canRedo].join(".");
     if(dialogSignature===signature){
       if(onShelf)updateShelfStatus(modal.querySelector(".kv-song-status"));
       return;
@@ -369,38 +400,6 @@
       }
     }else if(onShelf){
       shelfPanel(shelf);
-    }else if(pageKind==="arrange"){
-      const inner=makeHeader("Pořadí dílků","chain"),tray=element("div","kv-chain-tray",inner);
-      historyPair(modal.querySelector(".kv-sheet-head"));
-      chainPage=Math.min(chainPage,Math.max(0,Math.ceil(chain.length/8)-1));
-      const turn=button(tray,"Předchozí dílky","prevPage",icon("prev"),()=>{chainPage--;renderPanel();},"kv-page-key");turn.disabled=chainPage===0;
-      const track=element("div","kv-chain-slots",tray);
-      for(let col=0;col<8;col++){
-        const i=chainPage*8+col,p=chain[i];
-        if(p===undefined){element("span","kv-vacant",track);continue;}
-        const b=caption(button(track,"Místo "+(i+1)+", dílek "+letter(p),"piece",patternIcon(p),()=>{chainIndex=i;renderPanel();},"kv-piece"),letter(p));
-        b.dataset.index=i;b.style.setProperty("--piece",colour[p]);pressed(b,chainIndex===i);
-        chainSlots.push([i,b]);
-        b.setAttribute("aria-description","Dílek přesuneš tažením nebo šipkami. Vytažením z pořadí nebo pravým kliknutím ho odebereš.");
-      }
-      const next=button(tray,"Další dílky","nextPage",icon("next"),()=>{chainPage++;renderPanel();},"kv-page-key");next.disabled=(chainPage+1)*8>=chain.length;
-      const edit=element("div","kv-chain-actions",inner);
-      const left=button(edit,"Move piece earlier","moveLeft",icon("prev"),()=>movePiece(chainIndex,chainIndex-1));left.disabled=chainIndex<=0;
-      const del=button(edit,"Remove piece","removePiece",icon("minus"),()=>removePiece(chainIndex));del.disabled=chainIndex<0;
-      const right=button(edit,"Move piece later","moveRight",icon("next"),()=>movePiece(chainIndex,chainIndex+1));right.disabled=chainIndex<0||chainIndex>=chain.length-1;
-      for(const [b,name] of [[left,"Posunout vlevo"],[del,"Odebrat dílek"],[right,"Posunout vpravo"]]){label(b,name);caption(b,name);}
-      const library=element("div","kv-piece-bank",inner);
-      for(let i=0;i<4;i++){
-        const b=caption(button(library,"Přidat dílek "+letter(i),"addPiece",patternIcon(i)+'<i>'+icon("plus")+'</i>',()=>insertPiece(i,chain.length),"kv-add-piece"),"Přidat "+letter(i));
-        b.dataset.index=i;b.style.setProperty("--piece",colour[i]);b.disabled=chain.length>=32;
-        b.setAttribute("aria-description","Ťuknutím přidáš na konec. Přetažením vybereš místo.");
-      }
-      const playSong=model.playing&&model.song?"Zastavit":"Přehrát píseň";
-      const listen=caption(button(library,playSong,"songPlay",icon(model.playing&&model.song?"stop":"play"),()=>{
-        const needsStart=!model.playing,alreadySong=model.song;
-        if(!alreadySong)call("song",true);
-        if(needsStart||alreadySong)call("play");
-      },"kv-play"),playSong);listen.disabled=!chain.length;
     }
     if(previous?.k){
       const target=Array.from(modal.querySelectorAll("[data-k]")).find(b=>b.dataset.k===previous.k && b.dataset.index===previous.index && b.dataset.row===previous.row && !b.disabled);
@@ -557,7 +556,7 @@
     const editTools=element("div","kv-edit-tools",header);
     rhythmTools(editTools);eraser(editTools);
     const output=element("div","kv-output",header);output.setAttribute("role","group");label(output,"Průběh a výšky zvuku");
-    scope(output,"wave","Zvuková vlna","Vlna");scope(output,"bands","Basy → výšky");
+    scope(output,"wave","Zvuková vlna","");scope(output,"bands","Basy a výšky",""); // the screens show their pictures without labels over them
     const group=element("div","kv-utilities",header);
     mainButtons.syncHistory=historyPair(group);
     mainButtons.shelf=caption(button(group,"Moje písničky","shelf",icon("shelf"),e=>show("shelf",e.currentTarget),"kv-shelf"),"Písničky");
@@ -622,12 +621,13 @@
     }
     const song=element("div","kv-song-strip",foot);
     chainPreview=element("div","kv-arrange",song);chainPreview.dataset.k="arrange";chainPreview.setAttribute("role","group");
-    const openArrange=()=>show("arrange",mainButtons.openArrange);
-    mainButtons.openArrange=button(chainPreview,"Otevřít pořadí dílků","openArrange",'<span class="kv-chain-name">Pořadí dílků</span>',openArrange,"kv-arrange-open");
+    // The order of the song is set here, by dragging: a piece from A–D onto the strip, a picture along it, one off it.
+    element("span","kv-chain-name",chainPreview).textContent="Pořadí dílků";
     const sequence=element("div","kv-sequence",chainPreview);
     element("span","kv-chain-print",sequence).setAttribute("aria-hidden","true");
     mainButtons.append=button(sequence,"Přidat dílek","appendSlot",icon("plus"),()=>insertPiece(model.pattern,model.chain.length),"kv-chain-add");
-    chainPreview.addEventListener("click",e=>{if(!e.target.closest("button"))openArrange();});
+    // A tap on a place in the song brings that piece onto the board.
+    chainPreview.addEventListener("click",e=>{const t=e.target.closest(".kv-chain-print i");if(t)call("pattern",+t.dataset.pattern);});
     // The band: beside the pieces and the song it plays, and still there while the stage is shown.
     mainButtons.stage=button(foot,"Kapela","stage","",()=>toggleStage(!stageOn),"kv-captioned kv-stage-toggle");
     element("span","kv-caption",mainButtons.stage);
@@ -647,7 +647,7 @@
     const key=e.key.toLowerCase();
     if(key!=="z" && !(key==="y" && e.ctrlKey && !e.shiftKey))return;
     e.preventDefault();
-    if(!e.repeat && (!pageKind || pageKind==="arrange"))call(key==="y"||e.shiftKey?"redo":"undo");
+    if(!e.repeat && !pageKind)call(key==="y"||e.shiftKey?"redo":"undo");
   }
   function keys(e){
     if(!host?.contains(e.target))return;
@@ -738,10 +738,11 @@
       const previews=Math.max(1,chain.length);
       chainPreview.style.setProperty("--piece-columns",previews>12?Math.ceil(previews/2):previews);
       chainPreview.classList.toggle("long-chain",previews>12);
-      chainPreview.querySelector(".kv-chain-print").innerHTML=chain.map(i=>'<i style="--piece:'+colour[i]+'"><b>'+letter(i)+'</b>'+patternIcon(i)+'</i>').join("");
+      chainPreview.querySelector(".kv-chain-print").innerHTML=chain.map(i=>'<i style="--piece:'+colour[i]+'" data-pattern="'+i+'"><b>'+letter(i)+'</b>'+patternIcon(i)+'</i>').join("");
       label(chainPreview,"Pořadí dílků: "+(chain.length?chain.map(letter).join(", "):"prázdné"));
     }
-    if(chain.length===32 && document.activeElement===mainButtons.append)mainButtons.openArrange.focus({preventScroll:true});
+    if(chain.length===32 && document.activeElement===mainButtons.append)mainButtons.append.blur();
+    chainPreview.querySelectorAll(".kv-chain-print i").forEach(t=>t.classList.toggle("current",+t.dataset.pattern===state.pattern));
     mainButtons.append.hidden=chain.length===32;
     label(mainButtons.append,"Přidat dílek "+letter(state.pattern)+" na konec písničky");
     for(let r=0;r<pads.length;r++){

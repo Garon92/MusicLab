@@ -15,6 +15,77 @@
   const part=()=>music.part(App.P);
   const pattern=()=>App.clamp(App.P.sel.p,0,3);
   function updateShelves(){shelves=store.slots();}
+  /* A song travels in a link: what it plays, packed, compressed and written after # in the address, a part that never
+     reaches a server. The recorded voice does not fit and stays at home. */
+  const SHARE="#song=";
+  const b64=bytes=>{let s="";for(let i=0;i<bytes.length;i+=8192)s+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");};
+  const unb64=text=>Uint8Array.from(atob(text.replace(/-/g,"+").replace(/_/g,"/")),c=>c.charCodeAt(0));
+  const through=async(bytes,stream)=>new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
+  const shareable=()=>[...new Set(music.tracks)];
+  const EFFECT_ROUTES=[["macro2","tone",-1],["macro1","drive",.85],["macro4","vibratoRate",1],["macro3","vibratoDepth",1]];
+  function songData(P){
+    const strip=P.rack.strips[music.tracks[0]],spin=strip.routes.find(r=>r.source==="lfo"&&r.target==="pan");
+    return {v:1,name:P.name,tempo:music.tempoIndex(P),song:P.song?1:0,chain:P.chain.slice(),costumes:music.costumes(P),piece:App.clamp(P.sel.p,0,3),
+      notes:shareable().map(ti=>ti===music.tracks[3]?[]:P.tracks[ti].clips.slice(0,4).map(c=>c.map(n=>[n.s,n.n,n.l,+n.v.toFixed(3),+(n.p??1).toFixed(3),n.r||1]))),
+      fx:[P.fx.mixDelay,P.fx.mixReverb,P.fx.dtime,P.fx.dfb].map(v=>+(+v).toFixed(4)),macros:strip.macros.map(v=>+v.toFixed(4)),spin:spin?[strip.lfoRate,spin.high]:null};
+  }
+  async function shareLink(){
+    const json=new TextEncoder().encode(JSON.stringify(songData(App.P)));
+    let code;
+    try{code="z"+b64(await through(json,new CompressionStream("deflate-raw")));}catch{code="j"+b64(json);}
+    const url=new URL(location.pathname,location.origin);url.search="?kids";url.hash=SHARE.slice(1)+code;
+    return url.href;
+  }
+  // Every number from a link is checked before it reaches the song: a link is data from anyone.
+  function songFrom(data){
+    const num=(v,lo,hi,d)=>Number.isFinite(+v)?App.clamp(+v,lo,hi):d,int=(v,n)=>Number.isInteger(v)&&v>=0&&v<n;
+    if(data?.v!==1)throw Error("Unknown song link");
+    const P=music.newProject();
+    if(typeof data.name==="string" && data.name.trim())P.name=data.name.trim().toUpperCase().slice(0,28);
+    if(int(data.tempo,4))music.tempo(P,data.tempo);
+    (Array.isArray(data.costumes)?data.costumes:[]).slice(0,4).forEach((c,i)=>{if(int(c,4)&&c)music.costume(P,i,c);});
+    P.chain=(Array.isArray(data.chain)?data.chain:[]).filter(p=>int(p,4)).slice(0,32);
+    P.song=data.song && P.chain.length?1:0;P.arrangement.slots=P.chain.map(()=>null);
+    if(int(data.piece,4))P.sel.p=data.piece;
+    shareable().forEach((ti,k)=>{
+      if(ti===music.tracks[3])return;
+      for(let p=0;p<4;p++){
+        const list=Array.isArray(data.notes?.[k]?.[p])?data.notes[k][p]:[];
+        P.tracks[ti].clips[p]=list.slice(0,256).filter(n=>Array.isArray(n)&&int(n[0],256)&&int(n[1],128))
+          .map(([s,n,l,v,pr,r])=>({s,n,l:Math.round(num(l,1,64,1)),v:num(v,.05,1,.8),p:num(pr,0,1,1),...(int(r,9)&&r>1?{r}:{})}));
+      }
+    });
+    const fx=Array.isArray(data.fx)?data.fx:[];
+    P.fx.mixDelay=num(fx[0],0,1,0);P.fx.mixReverb=num(fx[1],0,1,0);if(int(fx[2],10))P.fx.dtime=fx[2];P.fx.dfb=num(fx[3],0,.95,P.fx.dfb);
+    const macros=[0,1,2,3].map(j=>num(data.macros?.[j],0,1,0)),spin=Array.isArray(data.spin)?[num(data.spin[0],.25,6,1),num(data.spin[1],0,1,0)]:null;
+    for(const ti of shareable()){
+      const s=P.rack.strips[ti];s.macros=macros.slice();
+      for(const [source,target,high] of EFFECT_ROUTES)if(!s.routes.some(r=>r.source===source&&r.target===target))s.routes.push({source,target,low:0,high});
+      if(spin && spin[1]>0){Object.assign(s,{lfoRate:spin[0],lfoBeats:0,lfoWave:"sine"});s.routes.push({source:"lfo",target:"pan",low:-spin[1],high:spin[1]},{source:"lfo",target:"level",low:-.55*spin[1],high:0});}
+    }
+    return App.sanitize(P);
+  }
+  async function openShared(code){
+    let P;
+    try{
+      const bytes=unb64(code.slice(1)),json=code[0]==="z"?await through(bytes,new DecompressionStream("deflate-raw")):bytes;
+      P=songFrom(JSON.parse(new TextDecoder().decode(json)));
+    }catch{flash("error");return false;}
+    history.replaceState(history.state,"",location.pathname+location.search); // a reload does not open it again
+    const ok=dispatch("openShared",P);
+    if(ok)setTimeout(()=>flash("linked"),1200);
+    return ok;
+  }
+  // The open song as sound, the whole song when it has an order of pieces, else the piece on the board.
+  async function downloadSong(){
+    const P=App.sanitize(App.P);P.song=P.chain.length?1:0;
+    await App.restoreSamples(P);
+    const {full,cut}=await App.Seq.renderSong({project:P}),a=document.createElement("a");
+    const name=!["POCKET BAND","UNTITLED"].includes(P.name)?P.name:"Pisnicka";
+    a.href=URL.createObjectURL(App.wav(full,cut));a.download=name+".wav";document.body.append(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),20000);
+    return name+".wav";
+  }
   function state(){
     const P=App.P,who=part(),pi=pattern(),grid=music.grid(P,who,pi);
     const eraseRowPitch=music.pitch(who,lastRows[who]),sourceClips=P.tracks[music.tracks[who]].clips,clip=sourceClips[pi];
@@ -98,6 +169,7 @@
       document.body.classList.add("band-open");updateShelves();
       App.KidsView.mount(surface,dispatch);App.KidsStamp.mount(surface,dispatch);surface.hidden=false;sound.hidden=true;
       ready=true;preference(true);paint();soundPage(false);hydrate();
+      if(location.hash.startsWith(SHARE))void openShared(location.hash.slice(SHARE.length));
       if(loadError)flash("error");
       if(!auto)surface.querySelector('[data-k="play"]')?.focus({preventScroll:true});
     }finally{switching=false;if(!store.active){consoleRoot.inert=false;document.documentElement.classList.remove("face-kids");}}
@@ -225,7 +297,18 @@
           if(!store.active)return;if(mode==="recording")recordSince=performance.now();
           if(error)flash(error==="empty"?"quiet":error==="storage"?"error":"micError");else paint();
         },()=>{if(store.active){music.select(P,3);App.commit();App.E?.syncTrack(6);music.audition(3,3);flash("recorded");}});return;
-      case "undo":case "redo":case "new":case "load":{
+      case "share":return shareLink().then(async link=>{
+        try{await navigator.clipboard.writeText(link);return {link,copied:true};}catch{return {link,copied:false};}
+      });
+      case "download":return downloadSong();
+      case "rename":{
+        if(typeof i!=="string" || !i.trim())return false;
+        const name=i.trim().toUpperCase().slice(0,28),slot=store.slot;
+        if(slot>=0){if(!store.rename(slot,name,shelves[slot])){updateShelves();flash("error");return false;}}
+        else {P.name=name;App.commit();}
+        updateShelves();paint();return true;
+      }
+      case "undo":case "redo":case "new":case "load":case "openShared":{
         if(action==="load" && !valid(i,8))return;
         App.KidsSound.release();
         if(action==="undo" && !store.canUndo() || action==="redo" && !store.canRedo())return;
@@ -236,9 +319,9 @@
         let kept=-1;
         if(!history && store.slot<0 && P.tracks.some(t=>t.clips.some(c=>c.length))){
           const free=shelves.findIndex((x,k)=>!x && k!==store.lastRemoval); // a deleted song's place stays free for Vrátit smazání
-          if(free>=0 && free!==i && store.save(free,null))kept=free;
+          if(free>=0 && (action!=="load" || free!==i) && store.save(free,null))kept=free;
         }
-        const ok=history?store[action]():action==="load"?store.load(i):store.fresh(music.newProject);
+        const ok=history?store[action]():action==="load"?store.load(i):action==="openShared"?store.fresh(()=>i):store.fresh(music.newProject);
         if(ok){prepare(!history || App.historyCrossedProject);updateShelves();paint();hydrate();if(kept>=0)setTimeout(()=>flash("kept"));}
         else flash("error");
         return ok;

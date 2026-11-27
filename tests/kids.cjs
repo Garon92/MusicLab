@@ -327,16 +327,12 @@ module.exports = async function kidsUI(reference) {
     await key("appendSlot").tap();
     assert.deepEqual(await page.evaluate(()=>App.P.chain),[0,1],"append the selected piece without leaving the score");
     assert.deepEqual(await page.locator(".kv-chain-print i>b").allTextContents(),["A","B"],"every piece shows its letter in running order");
-    await key("openArrange").tap();
-    await checkPanel(page,"Song arrangement");
-    assert.deepEqual(await page.evaluate(()=>App.P.chain),[0,1]);
-    await item("piece",1).tap();await key("moveLeft").tap();
-    assert.deepEqual(await page.evaluate(()=>App.P.chain),[1,0]);
-    const arrange=page.locator(".kv-sheet-arrange");
-    await arrange.locator('[data-k="undo"]').tap();assert.deepEqual(await page.evaluate(()=>App.P.chain),[0,1]);
-    await arrange.locator('[data-k="redo"]').tap();assert.deepEqual(await page.evaluate(()=>App.P.chain),[1,0]);
-    await key("moveRight").tap();assert.deepEqual(await page.evaluate(()=>App.P.chain),[0,1]);
-    await key("back").tap();
+    // The song strip is the only place for the order: nothing opens from it, a tap on a place selects its piece.
+    assert.equal(await key("openArrange").count(),0);
+    await page.locator(".kv-chain-print i").first().tap();
+    assert.equal(await item("pattern",0).getAttribute("aria-pressed"),"true");assert.equal(await page.locator(".kv-sheet:not([hidden])").count(),0);
+    assert.deepEqual(await page.locator(".kv-chain-print i.current").count(),1,"the edited piece's places in the song are marked");
+    await item("pattern",1).tap();
     // Space is the transport. The desktop note and file shortcuts remain parked.
     await page.keyboard.press("Space");await page.waitForFunction(()=>App.Seq.playing && App.Seq.frame()?.step>=1);
     await page.keyboard.press("Space");await page.waitForFunction(()=>!App.Seq.playing);

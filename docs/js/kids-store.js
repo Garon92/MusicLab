@@ -164,6 +164,25 @@
     removals.delete(index);
     return true;
   }
+  // A new name for a song on the shelf. Only its saved copy changes; when it is the open song, its name changes too,
+  // and its other unsaved edits stay unsaved.
+  function rename(index, name, preview) {
+    if (!adult || !validSlot(index) || typeof name !== "string" || !name.trim()) return false;
+    let state, project;
+    try { state=slotState(index); } catch { return failure(); }
+    if (state.value===null) return false;
+    if (preview && (previews[index]?.info!==preview || previews[index].raw!==state.value)) return failure();
+    try { project=soundProject(state.value); } catch { return failure(); }
+    project.name=name.trim().toUpperCase().slice(0,28);
+    const oldVersion=tag(state.base)??null, next=versioned(JSON.stringify(project)), version=tag(next);
+    const open=linkedSlot()===index;
+    if (open) App.P.name=project.name;
+    if (!writeShelf(index,state,slotKey(index),next,open?index:linkedSlot(),open?version:home.version,JSON.stringify(App.P))) return false;
+    updateVersion(index,oldVersion,version);
+    if (open) home.version=version;
+    removals.delete(index);
+    return true;
+  }
   function read(index) {
     if (!validSlot(index)) return null;
     try {
@@ -310,7 +329,7 @@
     return projects;
   }});
   App.KidsStore = {
-    enter,leave,read,save,remove,restoreRemoval,slots,load,
+    enter,leave,read,save,remove,restoreRemoval,slots,load,rename,
     get active() { return !!adult; },
     get slot() { return linkedSlot(); },
     get durable() { return !volatile; },

@@ -619,3 +619,24 @@ html.face-kids body:has(>#kids-root[hidden])::before{content:"";position:fixed;l
 .ks-heading .ks-family svg{color:var(--kid-ink)}
 .ks-heading .ks-target{flex-wrap:nowrap;gap:6px;align-items:baseline}
 .ks-inline .ks-heading .ks-target{flex-wrap:wrap;gap:0 6px}
+
+/* What is edited, what plays and what is carried, each in its own way.
+   Edited (the piece on the board): green, with the tick, and its places in the song strip underlined in green.
+   Playing: an amber ring that breathes, on the piece A–D and on its place in the strip; the piece keeps its colour.
+   Carried: the picture under the finger, its source faded and dashed, the place it would land marked. */
+.kv-pattern.sounding{outline:4px solid #f0a53a;outline-offset:2px;animation:kv-breathe 1s ease-in-out infinite alternate}
+.kv-pattern[aria-pressed=true].sounding{border-color:var(--kid-selected)}
+.kv-chain-print i.sounding{background:var(--piece);border-color:#7d5628;box-shadow:none;outline:3px solid #f0a53a;outline-offset:1px;z-index:1;transform:scale(1.12);animation:kv-breathe 1s ease-in-out infinite alternate}
+.kv-chain-print i.current{box-shadow:inset 0 -4px var(--kid-selected)}
+@keyframes kv-breathe{from{outline-color:#f0a53a}to{outline-color:#ffd88a}}
+.kv-pattern.kv-stamp-lift,.kv-chain-print i.kv-stamp-lift{opacity:.45;outline:2px dashed #6c5a3c;outline-offset:-2px}
+.kv-chain-name{cursor:default}
+.kv-monitor-name:empty{display:none}
+@media(prefers-reduced-motion:reduce){.kv-pattern.sounding,.kv-chain-print i.sounding{animation:none}}
+
+/* Rename, download and share the open song. The name is typed into a field as large as a button. */
+.kv-rename-row{display:flex;align-items:center;gap:clamp(6px,.8vw,12px);margin:0 0 clamp(6px,1vh,12px)}
+.kv-rename-field,.kv-share-link{flex:1;min-width:0;min-height:64px;padding:0 16px;border:var(--kv-rim) solid var(--kid-ink);border-radius:14px;background:#fffaf0;color:var(--kid-ink);font:700 clamp(18px,2.4vh,26px)/1 system-ui,sans-serif;text-transform:uppercase}
+.kv-share-link{font-size:13px;text-transform:none;margin-top:6px;width:100%}
+.kv-rename-field:focus-visible,.kv-share-link:focus-visible{outline:3px dashed var(--kid-focus);outline-offset:2px}
+.kv-share-song{background:#cfe9dc}.kv-download-song{background:#e3dcf3}.kv-rename-song{background:#fbe6b3}

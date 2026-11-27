@@ -52,6 +52,7 @@
     note("Studio","How loud the band plays","HLASITOST","kids master volume loud quiet hlasitost potichu nahlas");
     note("Studio","Watch the band play","KAPELA","kids stage concert crowd band hop pódium kapela koncert skáčou");
     note("Studio","Delete a saved song","HOLD SMAZAT","kids shelf remove song písnička smazat podržet");
+    note("Studio","Name, download or share the open song","PÍSNIČKY","kids rename download wav share link url přejmenovat stáhnout sdílet odkaz");
     note("Studio","Six rows in each of 12 sets","PICTURE","kids pads farm animals jungle silly burp fart toy space Czech legrace krknutí prdík vesmír hračky džungle");
     note("Studio","Play pictures into a piece","RYTMUS / ESC","kids live record sound row hrát na obrázky hotovo");
     note("Studio","Erase a row, set or piece","GUMA","kids erase smazat guma current letter dílek all pieces A–D instrument sound");
@@ -68,7 +69,7 @@
     note("Studio","Record or erase a movement","NAHRÁT POHYB","kids gesture automation reverse smazat pohyb");
     note("Studio","Freeze the signal displays","SNOWFLAKE","kids waveform spectrum");
     note("Studio","Drag A–D onto the song strip or slide its pictures to reorder","PLUS / DRAG","kids arrange chain pořadí dílků");
-    note("Studio","Drag a piece over a page arrow to turn the song page","DRAG + HOLD","kids arrangement page pieces");
+    note("Studio","Tap a place in the song to edit its piece","TAP","kids arrangement song order strip piece select pořadí dílků");
     note("Studio","Choose one piece or the whole song beside Play","CLICK / ARROWS","kids loop playback menu keyboard dílek píseň Enter Escape");
     note("Studio","Save, open, delete or restore a song","PÍSNIČKY","kids shelf saved songs trash restore deletion moje písničky smazat vrátit smazání uložení");
     note("Studio","Open a shelf song in console","HOLD","kids import parent");
