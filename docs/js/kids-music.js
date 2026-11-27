@@ -103,6 +103,7 @@
       P.kidsBand.world=2;
     }
     if (P.kidsBand.effects!==1) wholeBand(P);
+    legato(P);
     P.fx.vol = Math.min(P.fx.vol, masterMax);
     P.bpm = tempos[tempoIndex(P)];
     return P;
@@ -165,7 +166,21 @@
     return P;
   }
 
-  const intensity = n => n.r > 1 || n.l >= 2 ? 3 : n.v > .84 ? 2 : 1;
+  const intensity = (n, sung) => !sung && (n.r > 1 || n.l >= 2) ? 3 : n.v > .84 ? 2 : 1;
+  // A recorded voice sings each note until its next one, round to the first again at the end of the piece: the whole
+  // recording is heard when there is room for it, and its notes never pile up on each other. Its notes are plain or
+  // accented; their length is not the child's to set.
+  const sung = (P, part) => part === voicePart && P.tracks[tracks[voicePart]].kind === "smp" && !!P.tracks[tracks[voicePart]].smp.id;
+  function legato(P) {
+    if (!sung(P, voicePart)) return;
+    for (const clip of P.tracks[tracks[voicePart]].clips.slice(0, 4)) {
+      const own = clip.filter(n => owns(voicePart, n.n)), steps = [...new Set(own.map(n => n.s))].sort((a, b) => a - b);
+      for (const n of own) {
+        const next = steps[(steps.indexOf(n.s) + 1) % steps.length];
+        n.l = next > n.s ? next - n.s : 16 - n.s + next; delete n.r;
+      }
+    }
+  }
   function makeNote(part,row,col,strength) {
     const long = strength === 3;
     return {
@@ -180,7 +195,7 @@
     const clip = P.tracks[tracks[part]].clips[pattern];
     for (const note of clip) {
       const row = pitches[part].indexOf(note.n), col = note.s / 2;
-      if (row >= 0 && Number.isInteger(col) && col >= 0 && col < 8) rows[row][col] = intensity(note);
+      if (row >= 0 && Number.isInteger(col) && col >= 0 && col < 8) rows[row][col] = intensity(note, sung(P, part));
     }
     return rows;
   }
@@ -188,13 +203,14 @@
     if (!validPart(part) || !inFour(pattern) || !validRow(row) || !Number.isInteger(col) || col < 0 || col > 7) return 0;
     const clip = P.tracks[tracks[part]].clips[pattern], key = pitches[part][row];
     const index = clip.findIndex(n => n.s === 2*col && n.n === key);
-    const old = index < 0 ? 0 : intensity(clip[index]);
-    const next = hold ? (old === 0 ? 2 : old % 3 + 1) : old ? 0 : 1;
+    const voiced = sung(P, part), old = index < 0 ? 0 : intensity(clip[index], voiced);
+    const next = hold ? (old === 0 ? 2 : old % (voiced ? 2 : 3) + 1) : old ? 0 : 1;
     if (index >= 0) clip.splice(index,1);
     if (next) {
       clip.push(makeNote(part,row,col,next));
       clip.sort((a,b) => a.s-b.s || a.n-b.n);
     }
+    legato(P);
     return next;
   }
   function clear(P,part,pattern,row){
@@ -202,7 +218,7 @@
     const clips=P.tracks[tracks[part]].clips, clip=clips[pattern];
     const kept=clip.filter(n=>row===undefined?!owns(part,n.n):n.n!==pitch(part,row));
     if(kept.length===clip.length)return false;
-    clips[pattern]=kept;return true;
+    clips[pattern]=kept;legato(P);return true;
   }
   const clearRow=(P,part,pattern,row)=>validRow(row)&&clear(P,part,pattern,row);
   function moveNote(P,part,pattern,fromRow,fromCol,toRow,toCol){
@@ -214,7 +230,8 @@
     if(!note)return 0;
     note.s=2*toCol;note.n=destPitch;
     clip.sort((a,b)=>a.s-b.s || a.n-b.n);
-    return intensity(note);
+    legato(P);
+    return intensity(note, sung(P, part));
   }
   function audition(part,row,strength=1) {
     if (!validPart(part) || !validRow(row)) return;
@@ -266,6 +283,7 @@
     }
     notes.push(...track.clips[pattern].filter(n=>!owns(part,n.n)));
     track.clips[pattern] = notes.sort((a,b) => a.s-b.s || a.n-b.n);
+    legato(P);
     return true;
   }
 
@@ -336,6 +354,7 @@
       const T = job.project.tracks[tracks[voicePart]];
       T.smp.id = id;
       costume(job.project,voicePart,job.project.kidsBand.costumes[voicePart]);
+      legato(job.project); // the notes already written now sing the recording to the next one
       capture = null; job.onSaved(); job.onState("idle");
     } catch {
       if (capture === job) {capture = null; job.onState("idle","unavailable");}
@@ -376,6 +395,7 @@
     cancelRecording();
     if (App.P?.kidsBand) App.E?.panic(true);
   }
-  App.KidsMusic = {masterMax,tracks,rows,owns,part,select,clearRow,mixDefaults,tempos,tempo,tempoIndex,newProject,prepare,costumes,costume,sync,pitch,
+  App.KidsMusic = {masterMax,tracks,rows,owns,part,select,clearRow,mixDefaults,tempos,tempo,tempoIndex,newProject,prepare,costumes,costume,sync,pitch,legato,sung,
+    note:makeNote,strength:intensity,
     grid,edit,clear,moveNote,audition,variation,levels,record,recording,micLevel,cancelRecording,dispose};
 })();

@@ -15,28 +15,16 @@
   const part=()=>music.part(App.P);
   const pattern=()=>App.clamp(App.P.sel.p,0,3);
   function updateShelves(){shelves=store.slots();}
-  /* A song travels in a link: what it plays, packed, compressed and written after # in the address, a part that never
-     reaches a server. The recorded voice does not fit and stays at home. */
-  const SHARE="#song=";
-  const b64=bytes=>{let s="";for(let i=0;i<bytes.length;i+=8192)s+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");};
-  const unb64=text=>Uint8Array.from(atob(text.replace(/-/g,"+").replace(/_/g,"/")),c=>c.charCodeAt(0));
-  const through=async(bytes,stream)=>new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
+  /* A song travels in a link: what it plays, as short as it can be (kids-link.js), written after #s in the address,
+     a part that never reaches a server. The recorded voice does not fit and stays at home; its notes come along. */
+  const sharedCode=()=>location.hash.match(/^#s([ABJ][A-Za-z0-9_-]+)$/)?.[1]||location.hash.match(/^#song=([zj][A-Za-z0-9_-]+)$/)?.[1]||null;
   const shareable=()=>[...new Set(music.tracks)];
   const EFFECT_ROUTES=[["macro2","tone",-1],["macro1","drive",.85],["macro4","vibratoRate",1],["macro3","vibratoDepth",1]];
-  function songData(P){
-    const strip=P.rack.strips[music.tracks[0]],spin=strip.routes.find(r=>r.source==="lfo"&&r.target==="pan");
-    return {v:1,name:P.name,tempo:music.tempoIndex(P),song:P.song?1:0,chain:P.chain.slice(),costumes:music.costumes(P),piece:App.clamp(P.sel.p,0,3),
-      notes:shareable().map(ti=>ti===music.tracks[3]?[]:P.tracks[ti].clips.slice(0,4).map(c=>c.map(n=>[n.s,n.n,n.l,+n.v.toFixed(3),+(n.p??1).toFixed(3),n.r||1]))),
-      fx:[P.fx.mixDelay,P.fx.mixReverb,P.fx.dtime,P.fx.dfb].map(v=>+(+v).toFixed(4)),macros:strip.macros.map(v=>+v.toFixed(4)),spin:spin?[strip.lfoRate,spin.high]:null};
-  }
   async function shareLink(){
-    const json=new TextEncoder().encode(JSON.stringify(songData(App.P)));
-    let code;
-    try{code="z"+b64(await through(json,new CompressionStream("deflate-raw")));}catch{code="j"+b64(json);}
-    const url=new URL(location.pathname,location.origin);url.search="?kids";url.hash=SHARE.slice(1)+code;
+    const url=new URL(location.pathname,location.origin);
+    url.hash="s"+await App.KidsLink.encode(App.P);
     return url.href;
   }
-  // Every number from a link is checked before it reaches the song: a link is data from anyone.
   function songFrom(data){
     const num=(v,lo,hi,d)=>Number.isFinite(+v)?App.clamp(+v,lo,hi):d,int=(v,n)=>Number.isInteger(v)&&v>=0&&v<n;
     if(data?.v!==1)throw Error("Unknown song link");
@@ -48,7 +36,6 @@
     P.song=data.song && P.chain.length?1:0;P.arrangement.slots=P.chain.map(()=>null);
     if(int(data.piece,4))P.sel.p=data.piece;
     shareable().forEach((ti,k)=>{
-      if(ti===music.tracks[3])return;
       for(let p=0;p<4;p++){
         const list=Array.isArray(data.notes?.[k]?.[p])?data.notes[k][p]:[];
         P.tracks[ti].clips[p]=list.slice(0,256).filter(n=>Array.isArray(n)&&int(n[0],256)&&int(n[1],128))
@@ -68,8 +55,7 @@
   async function openShared(code){
     let P;
     try{
-      const bytes=unb64(code.slice(1)),json=code[0]==="z"?await through(bytes,new DecompressionStream("deflate-raw")):bytes;
-      P=songFrom(JSON.parse(new TextDecoder().decode(json)));
+      P=songFrom(await App.KidsLink.decode(code));
     }catch{flash("error");return false;}
     history.replaceState(history.state,"",location.pathname+location.search); // a reload does not open it again
     const ok=dispatch("openShared",P);
@@ -169,7 +155,7 @@
       document.body.classList.add("band-open");updateShelves();
       App.KidsView.mount(surface,dispatch);App.KidsStamp.mount(surface,dispatch);surface.hidden=false;sound.hidden=true;
       ready=true;preference(true);paint();soundPage(false);hydrate();
-      if(location.hash.startsWith(SHARE))void openShared(location.hash.slice(SHARE.length));
+      if(sharedCode())void openShared(sharedCode());
       if(loadError)flash("error");
       if(!auto)surface.querySelector('[data-k="play"]')?.focus({preventScroll:true});
     }finally{switching=false;if(!store.active){consoleRoot.inert=false;document.documentElement.classList.remove("face-kids");}}
@@ -364,7 +350,7 @@
     window.addEventListener("storage",e=>{if(store.active && e.key?.includes("kids")){updateShelves();paint();}});
     document.addEventListener("visibilitychange",()=>{if(document.hidden && store.active){music.cancelRecording();App.KidsSound.release();paint();}});
     window.addEventListener("pagehide",()=>{if(store.active){music.cancelRecording();App.KidsSound.release();}});
-    if(new URL(location.href).searchParams.has("kids")||store.preferred())void enter(true);
+    if(new URL(location.href).searchParams.has("kids")||store.preferred()||sharedCode())void enter(true); // a song link opens the kids' face
   }
   App.Kids={get active(){return store.active;},get entering(){return switching && !store.active;},init,enter,leave,dispatch,frame,play,confirmImport};
 })();

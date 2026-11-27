@@ -42,7 +42,7 @@ module.exports = async function kidsShare(reference) {
     assert.equal(await page.locator(".kv-sheet:not([hidden])").count(), 1, "and leaves the shelf open");
     await page.evaluate(() => App.Kids.dispatch("tempo", 2));
     // The sound of the whole song as a file.
-    const [file] = await Promise.all([page.waitForEvent("download"), key("download").click()]);
+    const [file] = await Promise.all([page.waitForEvent("download", { timeout: 40000 }), key("download").click()]); // rendering the whole song takes a while
     assert.equal(file.suggestedFilename().normalize("NFC"), "KRAVIČKA A PRDÍK.wav"); // WebKit spells the accents decomposed, as macOS does
     const bytes = require("fs").readFileSync(await file.path());
     assert.ok(bytes.length > 100000 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WAVE", "a WAV file of " + bytes.length + " bytes");
@@ -50,7 +50,17 @@ module.exports = async function kidsShare(reference) {
     await key("share").click();
     await page.waitForFunction(() => window.copiedLink && /zkopírovaný/.test(document.querySelector(".kv-song-status").textContent));
     const link = await page.evaluate(() => window.copiedLink);
-    assert.ok(link.length < 600 && /\?kids#song=z/.test(link), "a compressed link of " + link.length + " characters");
+    assert.ok(link.length < 160 && /\/#s[AB][A-Za-z0-9_-]+$/.test(link), "a short link of " + link.length + " characters");
+    // A link made before the short form still opens, and so does the shortest: an empty song.
+    const legacy = await page.evaluate(async () => {
+      const P = App.P, m = App.KidsMusic, strip = P.rack.strips[m.tracks[0]];
+      const data = { v: 1, name: P.name, tempo: m.tempoIndex(P), song: P.song ? 1 : 0, chain: P.chain, costumes: m.costumes(P), piece: P.sel.p,
+        notes: [...new Set(m.tracks)].map(ti => P.tracks[ti].clips.slice(0, 4).map(c => c.map(n => [n.s, n.n, n.l, n.v, n.p ?? 1, n.r || 1]))),
+        fx: [P.fx.mixDelay, P.fx.mixReverb, P.fx.dtime, P.fx.dfb], macros: strip.macros, spin: null };
+      const z = new Uint8Array(await new Response(new Blob([JSON.stringify(data)]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer());
+      let s = ""; for (const b of z) s += String.fromCharCode(b);
+      return location.origin + location.pathname + "?kids#song=z" + btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    });
     const other = await browser.newContext({ viewport: { width: 1100, height: 620 } });
     try {
       const there = await other.newPage();there.on("pageerror", e => errors.push("other: " + e.message));
@@ -60,6 +70,9 @@ module.exports = async function kidsShare(reference) {
       assert.equal(await there.evaluate(() => [App.P.name, location.hash].join("|")), "KRAVIČKA A PRDÍK|", "with its name, and the link leaves the address so a reload does not open it again");
       await there.mouse.click(5, 5);await there.locator('#kids-root [data-k="play"]').click();
       await there.waitForFunction(() => App.Seq.playing && Math.max(...App.KidsMusic.levels()) > .001);
+      await there.goto(legacy);
+      await there.waitForFunction(() => App.Kids?.active && App.P.chain.length === 4 && !location.hash);
+      assert.equal(await song(there), made, "a link of the earlier, longer form opens the same song");
       // A broken or foreign link opens nothing and says so: the song already open stays.
       await there.goto(new URL("?kids#song=zAAAA", reference.url()).href);
       await there.waitForFunction(() => App.Kids?.active && document.querySelector("#kids-root .kv-cell"));
@@ -73,6 +86,6 @@ module.exports = async function kidsShare(reference) {
     await page.waitForFunction(() => App.Kids.active && App.P.chain.length === 4);
     assert.equal(await page.evaluate(() => App.KidsStore.slots().filter(Boolean).length), shelfBefore + 1, "the unsaved song went on the shelf");
     assert.deepEqual(errors, []);
-    console.log("Kids sharing · rename in place on the shelf copy, the song as a WAV, a " + link.length + "-character link that opens the same song elsewhere, broken links refused, unsaved work kept");
+    console.log("Kids sharing · rename in place on the shelf copy, the song as a WAV, a " + link.length + "-character link that opens the same song elsewhere, the earlier link form, broken links refused, unsaved work kept");
   } finally { await context.close(); }
 };

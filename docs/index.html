@@ -8,7 +8,7 @@
     <title>MUSICLAB</title>
     <link rel="icon" href="./assets/mark.svg" type="image/svg+xml" />
     <!-- When the kids' face will open, its paper goes down before the first frame: the console never flashes under it. -->
-    <script>try{if(new URLSearchParams(location.search).has("kids")||localStorage.getItem("musiclab.kids.v1.mode")==="kids")document.documentElement.classList.add("face-kids")}catch(e){}</script>
+    <script>try{if(new URLSearchParams(location.search).has("kids")||/^#s(ong=)?[ABJzj]/.test(location.hash)||localStorage.getItem("musiclab.kids.v1.mode")==="kids")document.documentElement.classList.add("face-kids")}catch(e){}</script>
     <link rel="stylesheet" href="./assets/fonts/fonts.css?v=4e1bcf0d02" />
     <link rel="stylesheet" href="./style.css?v=5315a989e2" />
     <link rel="stylesheet" href="./compact.css?v=5ccc4c3f65" />
@@ -68,14 +68,15 @@
     <script src="./js/finder.js?v=9da6fc32bc"></script>
     <script src="./js/kids-store.js?v=7c0847a462"></script>
     <script src="./js/kids-world.js?v=f1aa8db64e"></script>
-    <script src="./js/kids-music.js?v=16a451480b"></script>
+    <script src="./js/kids-music.js?v=51fc04ae15"></script>
+    <script src="./js/kids-link.js?v=c2455273f7"></script>
     <script src="./js/kids-pictures.js?v=59075d4a43"></script>
     <script src="./js/kids-stage.js?v=2d0365dfaf"></script>
     <script src="./js/kids-view.js?v=3136aa16d1"></script>
     <script src="./js/kids-scopes.js?v=c0c941be96"></script>
     <script src="./js/kids-sound.js?v=d5dbbce32e"></script>
     <script src="./js/kids-stamp.js?v=67fcd13888"></script>
-    <script src="./js/kids.js?v=ca022ebbd8"></script>
+    <script src="./js/kids.js?v=f385d90f48"></script>
     <script src="./js/main.js?v=f5447d0b1a"></script>
   </body>
 </html>

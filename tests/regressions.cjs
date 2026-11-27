@@ -695,6 +695,28 @@ module.exports = async function regressions(page) {
     assert.equal(await loudPage.evaluate(() => App.P.fx.vol), await loudPage.evaluate(() => App.KidsMusic.masterMax), "the loudest step is the ceiling for children's ears");
   } finally { await loudPage.close(); }
 
+  // Reported from use: a recorded voice played only its first few hundred milliseconds, however long it was. Each note
+  // was one sixteenth and the voice plays only while its note lasts. A recorded voice now sings each note until its
+  // next one, round to the first again, and its notes are plain or accented.
+  const voicePage = await page.context().browser().newPage({ viewport: { width: 1100, height: 620 } });
+  try {
+    const at = new URL(page.url()); at.search = "?kids";
+    await voicePage.goto(at.href);
+    await voicePage.waitForFunction(() => App.Kids.active && document.querySelector("#kids-root .kv-cell"));
+    const sung = await voicePage.evaluate(async () => {
+      const sr = 24000, buf = new AudioBuffer({ length: sr * 2, sampleRate: sr }), d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = .4 * Math.sin(2 * Math.PI * 220 * i / sr);
+      const P = App.P, M = App.KidsMusic; P.tracks[6].smp.id = await App.storeBuffer("MY VOICE", buf); M.costume(P, 3, 0);
+      App.Kids.dispatch("track", 3); App.Kids.dispatch("stamp", 2, 0); App.Kids.dispatch("stamp", 3, 4); App.Kids.dispatch("expression", 3, 4);
+      const lengths = P.tracks[6].clips[0].map(n => n.s + ":" + n.l).join(" "), grid = M.grid(P, 3, 0)[3][4];
+      const { full, cut } = await App.Seq.renderSong({ project: App.sanitize(P), stems: [{ type: "track", index: 6 }] });
+      const x = full.getChannelData(0), win = Math.round(full.sampleRate * .02); let silent = 0, windows = 0;
+      for (let i = cut + win; i + win < cut + Math.round(full.sampleRate * 2.3); i += win) { let m = 0; for (let k = i; k < i + win; k++) m = Math.max(m, Math.abs(x[k])); windows++; if (m < .01) silent++; }
+      return { lengths, grid, silent, windows };
+    });
+    assert.deepEqual([sung.lengths, sung.grid, sung.silent], ["0:8 8:8", 2, 0], "each note sings to the next, an accent stays an accent, and the voice never falls silent between them: " + JSON.stringify(sung));
+  } finally { await voicePage.close(); }
+
   await reset();
-  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, note values, launcher hands the transport back, lists in popups, wheel grid, console number fields, long audio in a sampler, first recording on its frame, transport after a dialog, editor keys from anywhere, reasons on unavailable buttons, typed time unit, idle and lit controls, undo while playing, draft guard, duplicate on the beat, folded rows, song start slot, module wiring, loop export, page turn on drag, pad row menu, no console under a reload into the kids' face, kids' slow tap, unsaved song kept, piece name, replaced kids' sounds reach a browser that kept the old ones, kids' master volume");
+  console.log("Regressions · arrow-key moves, untouched values, view outside undo, scheduled notes kept, modular patch finite, mix aligned with stems, last zone, MIDI rests, pieced project files, sample store cleared, input delay, note values, launcher hands the transport back, lists in popups, wheel grid, console number fields, long audio in a sampler, first recording on its frame, transport after a dialog, editor keys from anywhere, reasons on unavailable buttons, typed time unit, idle and lit controls, undo while playing, draft guard, duplicate on the beat, folded rows, song start slot, module wiring, loop export, page turn on drag, pad row menu, no console under a reload into the kids' face, kids' slow tap, unsaved song kept, piece name, replaced kids' sounds reach a browser that kept the old ones, kids' master volume, a recorded voice sings to its next note");
 };
