@@ -478,24 +478,22 @@ html.face-kids body:has(>#kids-root[hidden])::before{content:"";position:fixed;l
 .ks-pad[data-room=balance]{background:#f7eac3}
 .ks-inline .ks-inline-tools .ks-key{max-width:none}
 .ks-master .ks-family{display:none}
+/* A narrow panel: the heading across the top, the four scenes and the two tools in a 3 × 2 grid, then the pad. */
 @container (max-width:285px){
-  .ks-inline:not(.ks-master) .ks-shell{
-    grid-template-areas:"scope scope arm" "echo colour reset" "motion position expand" "stage stage stage";
+  .ks-inline .ks-shell{
+    grid-template-areas:"head head head" "echo colour reset" "motion spin expand" "stage stage stage";
     grid-template-rows:auto auto auto minmax(0,1fr);grid-template-columns:repeat(3,minmax(64px,1fr));column-gap:3px
   }
-  .ks-inline:not(.ks-master) :is(.ks-modes,.ks-inline-tools){display:contents}
-  .ks-inline:not(.ks-master) .ks-scope{grid-area:scope}
-  .ks-inline:not(.ks-master) .ks-scope summary{gap:3px;padding-inline:4px}
-  .ks-inline:not(.ks-master) .ks-stage{grid-area:stage}
-  .ks-inline:not(.ks-master) [data-sound=arm]{grid-area:arm}
-  .ks-inline:not(.ks-master) [data-sound=reset]{grid-area:reset}
-  .ks-inline:not(.ks-master) [data-sound=expand]{grid-area:expand}
-  .ks-inline:not(.ks-master) [data-mode=echo]{grid-area:echo}
-  .ks-inline:not(.ks-master) [data-mode=colour]{grid-area:colour}
-  .ks-inline:not(.ks-master) [data-mode=motion]{grid-area:motion}
-  .ks-inline:not(.ks-master) [data-mode=position]{grid-area:position}
-  .ks-inline:not(.ks-master) .ks-inline-tools .ks-key{width:100%}
-  .ks-inline:not(.ks-master) .ks-scope-list{width:max(100%,200px)}
+  .ks-inline :is(.ks-modes,.ks-inline-tools){display:contents}
+  .ks-inline .ks-heading{grid-area:head}
+  .ks-inline .ks-stage{grid-area:stage}
+  .ks-inline [data-sound=reset]{grid-area:reset}
+  .ks-inline [data-sound=expand]{grid-area:expand}
+  .ks-inline [data-mode=echo]{grid-area:echo}
+  .ks-inline [data-mode=colour]{grid-area:colour}
+  .ks-inline [data-mode=motion]{grid-area:motion}
+  .ks-inline [data-mode=spin]{grid-area:spin}
+  .ks-inline .ks-inline-tools .ks-key{width:100%}
   .ks-inline .ks-axis-x .ks-end{gap:1px}
   .ks-inline .ks-axis-x .ks-end svg{width:23px}
 }
@@ -611,3 +609,13 @@ html.face-kids body:has(>#kids-root[hidden])::before{content:"";position:fixed;l
 .kv-left-drops{top:auto;bottom:30%}
 .kv-left-waves{top:40%}
 @media(prefers-reduced-motion:reduce){.kv-stage.grooving .kv-member .kv-member-figure>svg{animation:none}}
+
+/* The sound room acts on the whole band: a heading says so, four scenes, the carousel among them. */
+.ks-key[data-mode=spin]{background:#f6c3cf}
+.ks-pad[data-room=spin]{background:#f6dde3}
+.ks-inline .ks-modes{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(min-width:1500px){.ks-inline .ks-modes{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.ks-inline-tools .ks-key[data-sound=expand]{max-width:none}
+.ks-heading .ks-family svg{color:var(--kid-ink)}
+.ks-heading .ks-target{flex-wrap:nowrap;gap:6px;align-items:baseline}
+.ks-inline .ks-heading .ks-target{flex-wrap:wrap;gap:0 6px}

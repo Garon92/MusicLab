@@ -131,10 +131,7 @@
           if(E===App.E)App.Rules?.hit?.(ti,bank,s,pass,key,e.velocity,time,duration,e);
         }
       };
-      const stored=T.automation?.[bank];
-      // While a finger is on the XY pad, the live strip follows it on the audio
-      // clock. Offline audio and MIDI continue to use the saved automation.
-      const automation=E===App.E && App.Kids?.active ? App.KidsSound?.lanes(ti,bank,stored) ?? stored : stored;
+      const automation=T.automation?.[bank];
       App.SongCurves.schedule(E,P,ti,automation,s,absolute,t,at(s+1),songOn(P));
       if (!clip.length) continue;
       for(const nt of clip)if(nt.fixed && nt.s===s) {

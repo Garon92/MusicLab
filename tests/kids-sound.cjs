@@ -1,5 +1,6 @@
 "use strict";
-
+/* The sound room acts on the whole band and the whole song: four scenes, each a pair of settings the console also
+   edits (master returns, the strips' macros, the strips' LFO). Measured offline where it is a sound. */
 const assert=require("node:assert/strict");
 
 module.exports=async function kidsSound(reference) {
@@ -11,27 +12,12 @@ module.exports=async function kidsSound(reference) {
   const key=(k,host=room)=>host.locator('[data-sound="'+k+'"]');
   const band=(k,i)=>page.locator('#kids-band [data-k="'+k+'"]'+(i===undefined?"":'[data-index="'+i+'"]')).filter({visible:true});
   const mode=(m,host=room)=>host.locator('[data-sound="mode"][data-mode="'+m+'"]');
-  async function scope(which,host=room){
-    await host.locator(".ks-scope summary").click();await host.locator('[data-scope="'+which+'"]').click();
-  }
-  const automation=()=>page.evaluate(()=>App.sanitize(App.P).tracks[2].automation[0]);
-  const extent=lane=>Math.max(...lane.points.map(p=>p.v))-Math.min(...lane.points.map(p=>p.v));
-  async function at(host,x,y){
-    const r=await host.locator(".ks-trail").boundingBox();
-    await page.mouse.click(r.x+x*r.width,r.y+(1-y)*r.height);
-  }
-  async function paintPath(host=room) {
-    const b=await key("pad",host).boundingBox();assert.ok(b);
-    const pos=(x,y)=>page.mouse.move(b.x+b.width*x,b.y+b.height*y);
-    await pos(.05,.94);await page.mouse.down();
-    try {
-      for(const [x,y] of [[.1,.89],[.26,.70],[.43,.54],[.62,.35],[.78,.2],[.95,.06]]) {
-        const at=await page.evaluate(()=>App.E.ctx.currentTime+.16);
-        await page.waitForFunction(t=>App.E.ctx.currentTime>=t,at);
-        await pos(x,y);
-      }
-    } finally {await page.mouse.up();}
-  }
+  // What every strip of the band holds, so a setting can be seen to reach all of them.
+  const settings=()=>page.evaluate(()=>{
+    const strips=[...new Set(App.KidsMusic.tracks)].map(i=>App.P.rack.strips[i]);
+    const lfo=s=>s.routes.find(r=>r.source==="lfo"&&r.target==="pan");
+    return {fx:[App.P.fx.mixDelay,App.P.fx.mixReverb],macros:strips.map(s=>s.macros.join("/")),spin:strips.map(s=>lfo(s)?s.lfoRate.toFixed(3)+"@"+lfo(s).high:"off")};
+  });
   async function holdUntil(target,fn) {
     const b=await target.boundingBox();
     await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.down();
@@ -64,6 +50,8 @@ module.exports=async function kidsSound(reference) {
         if(left.top<pad.bottom || left.right>=right.left || down.right>pad.left || up.right>pad.left ||
           up.bottom>pad.top+pad.height/2 || down.top<pad.top+pad.height/2)out.push("Axis ends must sit on the matching sides of the playing field");
         if(box(".ks-puck").width<42 || box("button[data-mode] svg").width<32)out.push("Sound pictures too small");
+        const heading=root.querySelector(".ks-heading");
+        if(!heading || heading.getBoundingClientRect().bottom>pad.top)out.push("The heading says what the room acts on, above the pad");
         return out;
       });
       assert.deepEqual(issues,[],width+"×"+height+" sound controls");
@@ -72,6 +60,7 @@ module.exports=async function kidsSound(reference) {
   }
   try {
     await page.goto(url.href);await key("pad",inline).waitFor();
+    await page.mouse.click(5,5);
     // A second touch can open the shelf while the first still holds the effect pad.
     await holdUntil(key("pad",inline),async()=>{
       assert.equal(await inline.locator(".ks-pad.held").count(),1);
@@ -79,47 +68,52 @@ module.exports=async function kidsSound(reference) {
       assert.equal(await inline.locator(".ks-pad.held").count(),0);
     });
     await band("back").click();
-    assert.equal(await inline.locator(".ks-target-name").innerText(),"Farma + Džungle");
-    assert.deepEqual(await inline.locator("[data-mode]:visible .ks-key-name").allTextContents(),["Ozvěna","Ostrost","Chvění","Poloha"]);
-    assert.equal(await inline.locator(".ks-cue").isVisible(),false);
-    assert.equal(await key("arm",inline).getAttribute("aria-label"),"Nahrát pohyb");
+    // One setting for everyone: the room says so, and there is nothing to choose about where it applies.
+    assert.equal(await inline.locator(".ks-target-name").innerText(),"Celá kapela");
+    assert.equal(await inline.locator(".ks-scope-name").innerText(),"Celá písnička");
+    assert.equal(await inline.locator(".ks-scope, [data-sound=arm], [data-sound=reverse]").count(),0);
+    assert.deepEqual(await inline.locator("[data-mode] .ks-key-name").allTextContents(),["Ozvěna","Ostrost","Chvění","Kolotoč"]);
+    // The hold above put the picture in the middle of the cave: reset takes the band back out.
     assert.equal(await key("reset",inline).isEnabled(),true);await key("reset",inline).click();
-    assert.equal(await key("reset",inline).isDisabled(),true);
-    await checkBounds(inline);
-    await scope("piece",inline);await mode("position",inline).click();await checkBounds(inline);
-    const farm=()=>page.evaluate(()=>{
-      const t=App.P.tracks[3];
-      return {vol:t.vol,pan:t.pan,lanes:t.automation,map:App.P.rack.strips[3].macros};
-    });
-    const cleanFarm=await farm();
-    await at(inline,.23,.68);const local=await farm();
-    assert.equal(local.vol,cleanFarm.vol);assert.equal(local.pan,cleanFarm.pan);
-    assert.ok(Math.abs(local.lanes[0].pan.points[0].v-.23)<.02 && Math.abs(local.lanes[0].vol.points[0].v-.68)<.02);
-    assert.deepEqual(local.lanes.slice(1),cleanFarm.lanes.slice(1));
-    await scope("family",inline);await at(inline,.82,.47);const family=await farm();
-    assert.ok(Math.abs(family.pan-.64)<.03 && Math.abs(family.vol-.47)<.02);assert.deepEqual(family.lanes,local.lanes);
-    await key("reset",inline).click();assert.deepEqual(await farm(),local);
-    await scope("piece",inline);await key("reset",inline).click();assert.deepEqual(await farm(),cleanFarm);
-    await band("undo").click();assert.deepEqual(await farm(),local);await key("reset",inline).click();
-    await scope("master",inline);await checkBounds(inline);await at(inline,.8,.61);
-    const mix=()=>page.evaluate(()=>[App.P.fx.mixDelay,App.P.fx.mixReverb,App.P.fx.low,App.P.fx.high]);
-    const master=await mix();assert.ok(Math.abs(master[0]-.8)<.02 && Math.abs(master[1]-.61)<.02);
-    assert.deepEqual(await farm(),cleanFarm);
-    await mode("balance",inline).click();await checkBounds(inline);await at(inline,.25,.75);
-    assert.ok((await mix())[2]<-5 && (await mix())[3]>5);await key("reset",inline).click();assert.deepEqual(await mix(),master);
-    await mode("echo",inline).click();await key("reset",inline).click();assert.deepEqual(await mix(),[0,0,0,0]);
-    await band("undo").click();assert.deepEqual(await mix(),master);await key("reset",inline).click();
-    await scope("family",inline);
+    assert.equal(await key("reset",inline).isDisabled(),true,"at rest there is nothing to reset");
+    const clean=await settings();
+    // Each scene: the corners of the pad reach the ends of both settings on every strip at once, and the marker beside
+    // each ruler follows the picture.
+    const scenes=[
+      ["echo","Bez dozvuku","Doznívá",s=>s.fx],
+      ["colour","Čistý","Drsný",s=>[1-+s.macros[0].split("/")[1],+s.macros[0].split("/")[0]]],
+      ["motion","Klid","Silně",s=>[+s.macros[0].split("/")[3],+s.macros[0].split("/")[2]]],
+      ["spin","Na místě","Dokola",s=>s.spin[0]==="off"?[null,0]:[+s.spin[0].split("@")[0],+s.spin[0].split("@")[1]]]
+    ];
+    for(const [id,bottom,top,pick] of scenes){
+      await mode(id,inline).click();await checkBounds(inline);
+      assert.deepEqual(await inline.locator(".ks-axis-y .ks-end").allTextContents(),[top,bottom]);
+      const trial=async(x,y)=>{
+        const r=await inline.locator(".ks-trail").boundingBox();
+        await page.mouse.click(r.x+r.width*x,r.y+r.height*(1-y));
+        await page.waitForTimeout(60);
+        const s=await settings(),marks=await inline.evaluate(el=>{
+          const rect=q=>el.querySelector(q).getBoundingClientRect(),p=rect(".ks-puck"),h=rect(".ks-axis-x .ks-ruler>i"),v=rect(".ks-axis-y .ks-ruler>i");
+          return {xError:Math.abs((h.left+h.width/2)-(p.left+p.width/2)),yError:Math.abs((v.top+v.height/2)-(p.top+p.height/2))};
+        });
+        return {s,vals:pick(s),...marks};
+      };
+      const low=await trial(.2,0),high=await trial(.2,1),right=await trial(.8,1);
+      assert.ok(low.vals[1]<.02 && high.vals[1]>.98,id+" vertical endpoints "+JSON.stringify([low.vals,high.vals]));
+      assert.ok(high.vals[0]!==null && right.vals[0]!==null && Math.abs(high.vals[0]-right.vals[0])>.5 && Math.abs(high.vals[1]-right.vals[1])<.01,id+" horizontal endpoints "+JSON.stringify([high.vals,right.vals]));
+      if(id!=="echo")assert.equal(new Set(id==="spin"?right.s.spin:right.s.macros).size,1,id+" reaches every strip alike");
+      for(const sample of [low,high,right])assert.ok(sample.xError<3 && sample.yError<3,id+" ruler marker follows puck: "+JSON.stringify(sample));
+      assert.equal(await key("reset",inline).isEnabled(),true);
+      await key("reset",inline).click();assert.equal(await key("reset",inline).isDisabled(),true,id+" reset returns to rest");
+      await band("undo").click();assert.deepEqual(await settings(),right.s,id+" undo brings the setting back");
+      await key("reset",inline).click();
+    }
+    assert.deepEqual(await settings(),clean,"every scene back at rest");
+    // While the picture is held, the sound last touched on the score plays through the effect.
     await band("track",6).click();
     await page.locator('#kids-band [data-k="pad"][data-row="2"]').click();
-    const objectName=await page.evaluate(()=>App.KidsView.rowLabel(6,2));
-    assert.ok((await key("pad",inline).getAttribute("aria-label")).includes(objectName));
-    assert.equal(await inline.locator(".ks-sound-token svg").count(),1);
-    // The effects preview plays exactly the picture the child just touched on
-    // the score, even before any note has been put into this kit's pattern.
     await page.evaluate(()=>{
-      window.previewHit=null;
-      const original=window.priorKidAudition=App.KidsMusic.audition;
+      window.previewHit=null;const original=window.priorKidAudition=App.KidsMusic.audition;
       App.KidsMusic.audition=function(part,row,...args){
         const track=App.P.tracks[App.KidsMusic.tracks[part]],k=App.KidsMusic.pitch(part,row)-36;
         window.previewHit={part,row,loaded:App.samples.has(track.kit.pads[k]?.id)};
@@ -128,55 +122,13 @@ module.exports=async function kidsSound(reference) {
     });
     await holdUntil(key("pad",inline),()=>page.waitForFunction(()=>previewHit?.part===6 && previewHit.row===2 && previewHit.loaded && App.KidsMusic.levels()[6]>.001));
     await page.evaluate(()=>{App.KidsMusic.audition=window.priorKidAudition;});
-    // Lock x while travelling up and down, then lock y while moving across.
-    // The marker alongside each ruler must match the real puck and the audible parameter.
-    for(const [id,bottom,top,xKey,yKey] of [["echo","Bez dozvuku","Doznívá","dly","rev"],["colour","Čistý","Drsný","macro2","macro1"],["motion","Klid","Silně","macro4","macro3"]]){
-      await mode(id,inline).click();await checkBounds(inline);
-      assert.deepEqual(await inline.locator(".ks-axis-y .ks-end").allTextContents(),[top,bottom]);
-      const trial=async(x,y)=>{
-        const r=await inline.locator(".ks-trail").boundingBox();
-        await page.mouse.click(r.x+r.width*x,r.y+r.height*(1-y));
-        return inline.evaluate((el,keys)=>{
-          const i=App.KidsMusic.tracks[6];
-          const vals=keys.map(k=>k.startsWith("macro")?App.Rack.getMacro(i,Number(k.slice(-1))-1):App.P.tracks[i][k]);
-          const rect=s=>el.querySelector(s).getBoundingClientRect(),p=rect(".ks-puck"),h=rect(".ks-axis-x .ks-ruler>i"),v=rect(".ks-axis-y .ks-ruler>i");
-          return {vals,xError:Math.abs((h.left+h.width/2)-(p.left+p.width/2)),yError:Math.abs((v.top+v.height/2)-(p.top+p.height/2))};
-        },[xKey,yKey]);
-      };
-      const low=await trial(.2,0),high=await trial(.2,1),right=await trial(.8,1);
-      assert.ok(low.vals[1]<.02 && high.vals[1]>.98 && Math.abs(high.vals[0]-low.vals[0])<.01,id+" vertical endpoints");
-      assert.ok(Math.abs(high.vals[0]-right.vals[0])>.55 && Math.abs(high.vals[1]-right.vals[1])<.01,id+" horizontal endpoints");
-      for(const sample of [low,high,right])assert.ok(sample.xError<3 && sample.yError<3,id+" ruler marker follows puck: "+JSON.stringify(sample));
-    }
+    // The larger room: monitors that freeze, the echo's spacing and repeats, the same scenes.
     await band("track",2).click();
-    // Give the meters signal at several positions in the timbre sweep, including its bright half.
-    for(const [r,c] of [[0,0],[2,2],[1,4],[3,6]]){
-      await page.locator('#kids-band [data-k="note"][data-row="'+r+'"][data-col="'+c+'"]').click();
-    }
-    await mode("colour",inline).click();await key("arm",inline).click();
-    assert.equal(await inline.locator(".ks-cue").innerText(),"Táhni a pusť");
-    await key("arm",inline).click();
-    assert.equal(await key("arm",inline).getAttribute("aria-pressed"),"false");
-    await key("arm",inline).click();await band("sound").click();
-    assert.equal(await mode("colour").getAttribute("aria-pressed"),"true");
-    assert.equal(await key("arm").getAttribute("aria-pressed"),"true");
-    await key("back").click();
-    assert.equal(await mode("colour",inline).getAttribute("aria-pressed"),"true");
-    await paintPath(inline);
-    const first=await automation();
-    for(const k of ["macro1","macro2"])assert.ok(first[k].points.length>=3 && extent(first[k])>.35,"inline colour movement "+k);
-    assert.equal(await key("arm",inline).getAttribute("aria-pressed"),"false","lifting the finger ends the take");
-    assert.ok((await inline.locator(".ks-trail polyline").getAttribute("points"))?.length);
-    await band("play").click();
-    await checkBounds(inline); // The recorded path can be restored at every size.
-    assert.equal(await inline.locator(".ks-cue").isVisible(),false);
-    await key("reset",inline).click();assert.deepEqual(await automation(),{});
-    await band("undo").click();assert.deepEqual(await automation(),first);
-    await mode("echo",inline).click();await band("sound").click();await key("pad").waitFor();
-    assert.equal(await room.locator(".ks-target-name").innerText(),"Melodie");
+    for(const [r,c] of [[0,0],[2,2],[1,4],[3,6]])await page.locator('#kids-band [data-k="note"][data-row="'+r+'"][data-col="'+c+'"]').click();
+    await band("sound").click();await key("pad").waitFor();
+    assert.equal(await room.locator(".ks-target-name").innerText(),"Celá kapela");
     assert.equal(await room.locator("canvas[data-kid-screen]").count(),2);
-    assert.deepEqual(await automation(),first);
-    for(const id of ["position","motion","colour","echo"]){await mode(id).click();await checkBounds(room);}
+    for(const id of ["spin","motion","colour","echo"]){await mode(id).click();await checkBounds(room);}
     await key("play").click();
     await page.waitForFunction(()=>{
       const screens=Array.from(document.querySelectorAll("#kids-sound canvas[data-kid-screen]"));
@@ -192,125 +144,68 @@ module.exports=async function kidsSound(reference) {
     await page.waitForFunction(t=>App.E.ctx.currentTime>=t,await page.evaluate(()=>App.E.ctx.currentTime+.24));
     assert.deepEqual(await pixels(),frozen);
     await key("freeze").click();
-    await page.waitForFunction(()=>Array.from(document.querySelectorAll("#kids-sound canvas")).every(c=>+c.dataset.level<.001));
-    await scope("master");
     for(const [action,param] of [["time","dtime"],["repeat","dfb"]]){
       const values=[];
       for(let i=0;i<3;i++){await key(action).click();values.push(await page.evaluate(k=>App.P.fx[k],param));}
       assert.equal(new Set(values).size,3);
     }
-    await scope("piece");
-    const recordings={...first};
-    for(const name of ["echo","motion"]) {
-      await mode(name).click();
-      if(await key("arm").getAttribute("aria-pressed")!=="true")await key("arm").click();
-      await paintPath();
-      const bank=await automation();
-      const changed=Object.keys(bank).filter(k=>!recordings[k]);
-      assert.equal(changed.length,2,name+" must record two independent musical parameters");
-      for(const k of changed){
-        assert.ok(bank[k].points.length>=3 && extent(bank[k])>.35,name+" "+k+" "+JSON.stringify(bank[k]));
-        recordings[k]=bank[k];
-      }
-      if(await page.evaluate(()=>App.Seq.playing))await key("play").click();
-    }
-    const complete=await automation();
-    assert.ok(complete.dly && complete.rev && complete.macro3 && complete.macro4);
-    await mode("echo").click();await key("play").click();
-    const pad=await key("pad").boundingBox();
-    await page.mouse.move(pad.x+pad.width*.99,pad.y+pad.height*.01);await page.mouse.down();
-    let live;
-    try {
-      live=await page.evaluate(async()=>{
-        const original=App.SongCurves.schedule,live=[],offline=[];
-        App.SongCurves.schedule=function(engine,P,ti,lane,...rest){
-          if(ti===2 && lane?.rev)(engine===App.E?live:offline).push(lane.rev.points.map(p=>p.v));
-          return original.call(this,engine,P,ti,lane,...rest);
-        };
-        try {
-          await App.Seq.renderSong({project:App.P});
-          const until=App.E.ctx.currentTime+.48;
-          while(App.E.ctx.currentTime<until)await new Promise(requestAnimationFrame);
-          return {live,offline,gain:App.E.tracks[2].params.rev.value};
-        }finally{App.SongCurves.schedule=original;}
-      });
-    } finally{await page.mouse.up();}
-    assert.ok(live.gain>.9 && live.live.length>=2 && live.live.every(v=>v.length===1 && v[0]>.95));
-    assert.ok(live.offline.length && live.offline.every(v=>v.length>2 && Math.min(...v)<.4));
-    assert.deepEqual(await automation(),complete);
-    await key("play").click();await mode("motion").click();
-    await key("reverse").click();
-    const mirrored=await automation();
-    assert.notDeepEqual(mirrored.macro3,complete.macro3);
-    assert.deepEqual(mirrored.rev,complete.rev);
-    await key("reset").click();
-    const cleared=await automation();
-    assert.ok(!cleared.macro3 && !cleared.macro4);
-    assert.deepEqual(cleared.dly,complete.dly);
-    await room.locator('[data-k="undo"]').click();assert.deepEqual(await automation(),mirrored);
-    await room.locator('[data-k="redo"]').click();assert.deepEqual(await automation(),cleared);
-    await page.keyboard.press("Control+z");assert.deepEqual(await automation(),mirrored);
+    await mode("colour").click();assert.equal(await room.locator(".ks-echo-controls").isHidden(),true,"the echo's own keys only with the echo");
     await key("back").click();
-    await band("shelf").click();
-    await band("save").click();
-    const confirm=page.getByRole("dialog",{name:"Open band song?"});
-    await holdUntil(band("slot",0),()=>confirm.waitFor());
-    await confirm.getByRole("button",{name:"Open in console",exact:true}).click();
-    await page.waitForFunction(()=>!App.Kids.active && !!App.P.tracks[2].automation[0].macro3);
-    const transferred=await automation();
-    assert.deepEqual(transferred,mirrored);
-    const wet=await page.evaluate(async()=>{
-      const P=App.sanitize(App.P),track=P.tracks[2],clip=track.automation[0];
-      track.clips[0]=[{n:60,s:0,l:1,v:1,p:1}];
-      Object.assign(track.syn,{aa:.001,ad:.04,as:.6,ar:.015});
-      // Sample both ends of the actual exported echo trajectory. The returns
-      // stem isolates echoes after the source and the dry strip have stopped.
-      async function tail(high) {
-        for(const key of ["dly","rev"]){
-          const lane=App.P.tracks[2].automation[0][key];
-          const values=lane.points.map(p=>p.v);
-          clip[key]={mode:"step",points:[{s:0,v:high?Math.max(...values):Math.min(...values)}]};
-        }
-        const {full,cut}=await App.Seq.renderSong({project:P,stems:[{type:"returns"}]});
-        let energy=0,peak=0,count=0;
-        for(let c=0;c<full.numberOfChannels;c++){
-          const data=full.getChannelData(c),sr=full.sampleRate;
-          for(let i=cut+Math.round(.35*sr);i<cut+Math.round(1.4*sr);i++){
-            const v=data[i];if(!Number.isFinite(v))throw Error("Non-finite echo stem");
-            energy+=v*v;peak=Math.max(peak,Math.abs(v));count++;
-          }
-        }
-        return {rms:Math.sqrt(energy/count),peak};
-      }
-      const low=await tail(false),high=await tail(true);
-      // Measure the higher harmonics relative to the fundamental of a held
-      // saw at A3. Rectify neither the signal nor its changing pitch.
-      track.clips[0]=[{n:57,s:0,l:12,v:1,p:1}];
-      Object.assign(track.syn,{w1:2,lv1:.5,lv2:0,sub:0,noise:0,fm:0,fenv:0,cut:18000,as:1,ldest:0});
-      for(const k of ["macro1","macro3","macro4"])clip[k]={mode:"step",points:[{s:0,v:0}]};
-      const shades=App.P.tracks[2].automation[0].macro2.points.map(p=>p.v);
-      async function harmonics(value){
-        clip.macro2={mode:"step",points:[{s:0,v:value}]};
-        const {full,cut}=await App.Seq.renderSong({project:P,stems:[{type:"track",index:2}]});
-        const d=full.getChannelData(0),sr=full.sampleRate,from=cut+Math.floor(sr*.22),length=4096;
-        const power=h=>{
-          let x=0,y=0;
-          for(let i=0;i<length;i++){
-            const v=d[from+i]*(.5-.5*Math.cos(2*Math.PI*i/length)),phase=2*Math.PI*i*220*h/sr;
-            x+=Math.cos(phase)*v;y+=Math.sin(phase)*v;
-          }
-          return x*x+y*y;
-        };
-        let overtones=0;for(let h=8;h<=24;h++)overtones+=power(h);
-        return overtones/power(1);
-      }
-      const bright=await harmonics(Math.min(...shades)),dark=await harmonics(Math.max(...shades));
-      const {blob}=await App.ProjectFiles.blob(App.P),{raw}=await App.ProjectFiles.read(blob);
-      return {low,high,bright,dark,portable:App.sanitize(raw).tracks[2].automation[0]};
+    // A song made when each instrument and piece had its own effects: the strongest setting reaches the whole band,
+    // the curves of single pieces go, and it happens once.
+    const folded=await page.evaluate(()=>{
+      const M=App.KidsMusic,P=M.newProject();delete P.kidsBand.effects;
+      P.rack.strips[3].macros=[.7,0,0,.4];P.rack.strips[5].macros=[.2,.5,0,0];
+      P.tracks[3].dly=.6;P.tracks[3].vol=.3;P.tracks[3].automation[1].rev={mode:"step",points:[{s:0,v:.9}]};
+      P.tracks[2].automation[0].macro2={mode:"step",points:[{s:0,v:.1},{s:8,v:.9}]};
+      M.prepare(P);
+      const strips=[...new Set(M.tracks)].map(i=>P.rack.strips[i].macros.join("/"));
+      const lanes=P.tracks.flatMap(t=>t.automation.flatMap(a=>Object.keys(a)));
+      const again=JSON.stringify(P);P.rack.strips[3].macros=[.1,.1,.1,.1];M.prepare(P);
+      return {strips:[...new Set(strips)],lanes,farm:[P.tracks[3].dly,P.tracks[3].vol],flag:P.kidsBand.effects,once:P.rack.strips[3].macros.join("/"),
+        kept:App.sanitize(JSON.parse(again)).kidsBand.effects};
     });
-    assert.deepEqual(wet.portable,transferred);
-    assert.ok(wet.high.rms>.00005 && wet.high.rms>3*wet.low.rms,JSON.stringify(wet));
-    assert.ok(wet.bright>3*wet.dark,JSON.stringify([wet.bright,wet.dark]));
+    assert.deepEqual(folded,{strips:["0.7/0.5/0/0.4"],lanes:[],farm:[.6,.3],flag:1,once:"0.1/0.1/0.1/0.1",kept:1},JSON.stringify(folded));
+    // Measured: the echo of the whole band, the brightness and the carousel's swing from side to side.
+    const dsp=await page.evaluate(async()=>{
+      const base=App.sanitize(App.P),ti=2;
+      base.tracks.forEach((t,i)=>{t.dly=0;t.rev=0;t.clips[0]=i===ti?[{n:57,s:0,l:2,v:1,p:1}]:[];});
+      Object.assign(base.tracks[ti].syn,{aa:.001,ad:.04,as:.6,ar:.015});
+      const strips=[...new Set(App.KidsMusic.tracks)];
+      async function render(change,stems){
+        const P=App.sanitize(base);change(P);
+        return App.Seq.renderSong({project:P,stems});
+      }
+      async function tail(amount){
+        const {full,cut}=await render(P=>{P.fx.mixDelay=amount;P.fx.mixReverb=amount;},[{type:"returns"}]);
+        let energy=0,count=0;
+        for(let c=0;c<full.numberOfChannels;c++){const d=full.getChannelData(c),sr=full.sampleRate;for(let i=cut+Math.round(.35*sr);i<cut+Math.round(1.4*sr);i++){if(!Number.isFinite(d[i]))throw Error("Non-finite echo");energy+=d[i]*d[i];count++;}}
+        return Math.sqrt(energy/count);
+      }
+      const low=await tail(0),high=await tail(.9);
+      async function harmonics(dark){
+        const {full,cut}=await render(P=>{
+          P.tracks[ti].clips[0]=[{n:57,s:0,l:12,v:1,p:1}];Object.assign(P.tracks[ti].syn,{w1:2,lv1:.5,lv2:0,sub:0,noise:0,fm:0,fenv:0,cut:18000,as:1,ldest:0});
+          for(const i of strips){const s=P.rack.strips[i];s.routes.push({source:"macro2",target:"tone",low:0,high:-1});s.macros[1]=dark;}
+        },[{type:"track",index:ti}]);
+        const d=full.getChannelData(0),sr=full.sampleRate,from=cut+Math.floor(sr*.22),length=4096;
+        const power=h=>{let x=0,y=0;for(let i=0;i<length;i++){const v=d[from+i]*(.5-.5*Math.cos(2*Math.PI*i/length)),ph=2*Math.PI*i*220*h/sr;x+=Math.cos(ph)*v;y+=Math.sin(ph)*v;}return x*x+y*y;};
+        let over=0;for(let h=8;h<=24;h++)over+=power(h);return over/power(1);
+      }
+      const bright=await harmonics(0),dark=await harmonics(1);
+      const {full,cut}=await render(P=>{
+        P.tracks[ti].clips[0]=[{n:48,s:0,l:16,v:1,p:1}];
+        for(const i of strips){const s=P.rack.strips[i];Object.assign(s,{lfoRate:2,lfoBeats:0,lfoWave:"sine"});s.routes.push({source:"lfo",target:"pan",low:-1,high:1},{source:"lfo",target:"level",low:-.55,high:0});}
+      },[{type:"track",index:ti}]);
+      const L=full.getChannelData(0),R=full.getChannelData(1),sr=full.sampleRate,w=Math.round(sr*.04),sides=[];
+      for(let i=cut+Math.round(sr*.1);i+w<cut+Math.round(sr*1.6);i+=w){let l=0,r=0;for(let k=i;k<i+w;k++){l+=L[k]*L[k];r+=R[k]*R[k];}sides.push(10*Math.log10((l+1e-12)/(r+1e-12)));}
+      const {blob}=await App.ProjectFiles.blob(App.P),{raw}=await App.ProjectFiles.read(blob),back=App.sanitize(raw);
+      return {low,high,bright,dark,left:Math.max(...sides),right:Math.min(...sides),portable:back.kidsBand.effects};
+    });
+    assert.ok(dsp.high>.00005 && dsp.high>3*dsp.low,"the whole band's echo rings on: "+JSON.stringify(dsp));
+    assert.ok(dsp.bright>3*dsp.dark,"darker is darker: "+JSON.stringify([dsp.bright,dsp.dark]));
+    assert.ok(dsp.left>15 && dsp.right<-15,"the carousel swings the sound from side to side: "+JSON.stringify([dsp.left,dsp.right]));
+    assert.equal(dsp.portable,1,"a saved song knows its effects are the whole band's");
     const masterDSP=await page.evaluate(async()=>{
       const P=App.sanitize(App.P);
       P.tracks.forEach(t=>{t.dly=0;t.rev=0;});P.fx.dtime=2;P.fx.dfb=.22;
@@ -334,6 +229,6 @@ module.exports=async function kidsSound(reference) {
     assert.deepEqual(masterDSP.portable,[.8,.8]);
     console.log("Master returns · dry/isolated silence, direct and grouped sources · RMS "+[masterDSP.kit,masterDSP.group,masterDSP.verb].map(v=>v.rms.toFixed(5)).join(", ")+" · peak "+masterDSP.kit.peak.toFixed(4));
     assert.deepEqual(errors,[]);
-    console.log("Kids sound room · two-axis drawing, measured scopes and freeze, live override, reverse, clear, undo, portable lanes · echo tail RMS "+wet.low.rms.toFixed(5)+"–"+wet.high.rms.toFixed(5)+" · high harmonic ratio "+(wet.bright/wet.dark).toFixed(1));
+    console.log("Kids sound room · four scenes for the whole band on every strip, rulers, reset and undo, preview, monitors and freeze, older songs folded once · echo tail RMS "+dsp.low.toFixed(5)+"–"+dsp.high.toFixed(5)+" · harmonic ratio "+(dsp.bright/dsp.dark).toFixed(1)+" · carousel "+dsp.left.toFixed(0)+"/"+dsp.right.toFixed(0)+" dB");
   } finally {await context.close();}
 };

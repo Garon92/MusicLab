@@ -632,8 +632,8 @@ module.exports = async function regressions(page) {
     const kept = await kidsPage.evaluate(() => App.KidsStore.slots().findIndex(Boolean));
     assert.ok(kept >= 0 && await kidsPage.evaluate(i => App.KidsMusic.grid(App.KidsStore.read(i), App.KidsMusic.part(App.KidsStore.read(i)), 0)[0][0] === 1, kept), "the unsaved song went onto the shelf before the new one replaced it");
     await kidsPage.evaluate(() => { App.KidsStore.remove(App.KidsStore.slots().findIndex(Boolean), App.KidsStore.slots().find(Boolean)); });
-    const scopes = await kidsPage.locator('#kids-root [data-scope="piece"] small').allTextContents();
-    assert.ok(scopes.length && scopes.every(t => t === "Jen dílek A"), JSON.stringify(scopes));
+    // (The effect room no longer has a place to choose: it acts on the whole band and says so.)
+    assert.equal(await kidsPage.locator("#kids-inline-sound .ks-target-name").innerText(), "Celá kapela");
   } finally { await kidsPage.close(); }
 
   // Reported from use: some kids' sounds were off. They were replaced, but a browser that had played the old ones kept

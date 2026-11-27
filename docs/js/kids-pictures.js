@@ -193,10 +193,15 @@
       ellipse(31,10,8.3,7.7,coral)+path("M27 8q1-3 4-3","none",'stroke="'+ivory+'" stroke-width="2"')+
       path("M19 7q-3 2-4 7m0-11q-6 4-7 10m36-1q2 3 1 6m3-10q5 6 3 12","none",'stroke-width="2.2"')
   };
+  // A merry-go-round for the effect that turns the sound around the room.
+  effects.spin=path("M5 15 29 3l24 12Z",coral)+path("M17 15 29 3l-4 12m4-12 4 12m-4-12 12 12","none",'stroke="'+ivory+'" stroke-width="2.4"')+path("M5 15h48")+
+    path("M11 15v18m18-18v18m18-18v18")+ellipse(29,34,22,4,"#cfb38c")+ellipse(11,25,3.6,3,yellow)+ellipse(29,22,3.6,3,blue)+ellipse(47,26,3.6,3,green)+
+    path("M1 21q-2 6 1 10m54-10q2 6-1 10","none",'stroke-width="1.8"');
   const ground={
     echo:ellipse(72,36,20,7,"#9bc8c1")+ellipse(72,36,12,3.5,"none")+path("m66 35 3-5 6-1 5 6Z","#abc3ac"),
     colour:path("M64 37q2-6 8-6 7 0 10 7l-4 2H65Z","#cea383")+ellipse(86,40,4,2,"#d5ad8d")+
       path("M9 38q-3-6-7-7 6 0 8 3 2-8 5-9 0 8-2 13Z","#aabd8b"),
+    spin:ellipse(76,40,16,4,"#e6b9c4")+path("M68 34l3-7 3 7m6 1 3-6 3 6","none",'stroke="#9c6b7a"'),
     motion:path("m8 37 45-3 10 4-50 3Z","#cfb38c")+path("m15 41 1 3 39-3v-2","#bc996e")+
       path("m70 37-3-5m4 5 2-9 3 8 4-5m5 10h5","none",'stroke="#79877b"')
   };

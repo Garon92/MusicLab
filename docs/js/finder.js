@@ -63,7 +63,7 @@
     note("Studio","Undo a music edit","CTRL/CMD Z","kids zpět edit notes effects arrangement");
     note("Studio","Redo a music edit","CTRL/CMD SHIFT Z","kids vpřed repeat undo redo ctrl y");
     note("Studio","Accents and long notes","HOLD","kids note expression roll");
-    note("Studio","Set effect scope","EFFECTS","kids channel instrument one piece whole master band echo reverb position vibrato colour EQ stereo ozvěna ostrost chvění poloha");
+    note("Studio","Effects for the whole band","EFFECTS","kids whole band song echo reverb brightness distortion vibrato carousel auto pan tremolo ozvěna ostrost chvění kolotoč");
     note("Studio","Reset the selected effect","RESET","kids default reset effect původní vrátit");
     note("Studio","Record or erase a movement","NAHRÁT POHYB","kids gesture automation reverse smazat pohyb");
     note("Studio","Freeze the signal displays","SNOWFLAKE","kids waveform spectrum");

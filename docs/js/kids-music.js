@@ -78,6 +78,7 @@
     if (!Array.isArray(raw.kidsBand?.costumes)) return;
     P.kidsBand = {costumes: quartets.map(i => inFour(raw.kidsBand.costumes[i]) ? raw.kidsBand.costumes[i] : 0)};
     if ([1,2].includes(raw.kidsBand.world)) P.kidsBand.world=raw.kidsBand.world;
+    if (raw.kidsBand.effects===1) P.kidsBand.effects=1;
     if (validPart(raw.sel?.kidsPart)) P.sel.kidsPart=raw.sel.kidsPart;
   }});
   function costumes(P) {
@@ -101,9 +102,23 @@
       }
       P.kidsBand.world=2;
     }
+    if (P.kidsBand.effects!==1) wholeBand(P);
     P.fx.vol = Math.min(P.fx.vol, masterMax);
     P.bpm = tempos[tempoIndex(P)];
     return P;
+  }
+  /* Effects are one setting for the whole band and the whole song. A song made when each instrument and each piece
+     had its own keeps what was heard, made visible: every strip takes the strongest setting any of them had, and the
+     effect curves of single pieces are dropped, since nothing on the kids' face would show them. Each instrument's
+     own level, pan and sends are its mix and stay. Done once per song. */
+  function wholeBand(P) {
+    const strips = [...new Set(tracks)];
+    if (P.rack?.strips) {
+      const most = [0,1,2,3].map(j => Math.max(0, ...strips.map(i => P.rack.strips[i]?.macros?.[j] || 0)));
+      for (const i of strips) if (P.rack.strips[i]) P.rack.strips[i].macros = most.slice();
+    }
+    for (const T of P.tracks) for (const lanes of T.automation) for (const k of ["dly","rev","pan","vol","macro1","macro2","macro3","macro4"]) delete lanes[k];
+    P.kidsBand.effects = 1;
   }
   function sync(part) {
     if (!App.E || !App.P?.kidsBand) return;
@@ -207,7 +222,6 @@
     const project=App.P, ti=tracks[part], n=makeNote(part,row,0,strength || 1);
     const play=()=>{
       if (project!==App.P) return;
-      App.KidsSound?.audition?.(engine,ti,project.sel.p);
       const step=15/project.bpm, t=Math.max(.16,engine.ctx.currentTime+Math.max(.009,engine.ctx.baseLatency||0));
       const count=n.r||1,width=n.l*step/count;
       for(let i=0;i<count;i++)engine.play(ti,n.n,n.v,t+i*width,Math.max(.02,width-.004),true);

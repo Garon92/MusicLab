@@ -42,7 +42,7 @@ async function checkDeskDrags(page) {
   const note=(r,c)=>page.locator('.kv-cell[data-row="'+r+'"][data-col="'+c+'"]');
   const undo=page.locator('#kids-band [data-k="undo"]');
   const track=()=>page.evaluate(()=>{
-    const t=App.P.tracks[App.P.sel.t];return {dly:t.dly,rev:t.rev,notes:t.clips[0]};
+    const t=App.P.tracks[App.P.sel.t];return {dly:App.P.fx.mixDelay,rev:App.P.fx.mixReverb,notes:t.clips[0]}; // the band's echo
   });
   async function move(from,to,x=.5,y=.5,hover){
     const a=await from.boundingBox(),b=await to.boundingBox();
@@ -56,7 +56,7 @@ async function checkDeskDrags(page) {
   await page.evaluate(()=>{
     window.previousAudition=App.KidsMusic.audition;window.droppedPreviews=[];
     App.KidsMusic.audition=(part,row,...args)=>{
-      window.droppedPreviews.push({row,amount:App.P.tracks[App.KidsMusic.tracks[part]].dly});
+      window.droppedPreviews.push({row,amount:App.P.fx.mixDelay});
       window.previousAudition(part,row,...args);
     };
   });
