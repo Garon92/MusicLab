@@ -170,7 +170,7 @@ html.face-kids body:has(>#kids-root[hidden])::before{content:"";position:fixed;l
 .kv-header .kv-output{max-height:var(--kv-key);border-width:1px;box-shadow:none}
 .kv-header .kv-monitor-bands{flex:1 0 77px}.kv-header .kv-monitor-wave{flex:1.6 0 64px}
 .kv-monitor-name{position:absolute;bottom:3px;left:5px;padding:1px 3px;border-radius:4px;background:#25364c;color:#d1e3d9;pointer-events:none;font:600 clamp(10px,.85vw,13px)/1.1 system-ui,sans-serif}
-.kv-glass canvas{height:calc(100% - 14px)}
+.kv-glass canvas{height:100%} /* the screens carry no label now: the picture fills the glass and the wave sits in its middle */
 .kv-header .kv-lock{border-width:1px;background:#e7dec8;color:#4f5b56;box-shadow:0 2px #8d917e}
 .kv-lock-time{position:absolute;right:5px;top:5px;pointer-events:none;font:650 10px/1.1 system-ui,sans-serif}
 .kv-header-menu{position:relative;flex:0 0 auto}
